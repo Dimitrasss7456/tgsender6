@@ -271,11 +271,17 @@ class TelegramManager:
                 with open(session_file_path, "rb") as f:
                     session_data = f.read()
 
-            try:
-                encrypted_session = self.cipher.encrypt(session_data.encode()).decode()
-            except Exception:
-                import base64
-                encrypted_session = base64.b64encode(session_data).decode()
+            # Правильная обработка данных сессии
+            if isinstance(session_data, bytes):
+                # Если данные уже в байтах (из файла), шифруем напрямую
+                encrypted_session = self.cipher.encrypt(session_data).decode()
+            else:
+                # Если данные в виде строки, сначала кодируем в байты
+                try:
+                    encrypted_session = self.cipher.encrypt(session_data.encode()).decode()
+                except Exception:
+                    import base64
+                    encrypted_session = base64.b64encode(session_data.encode()).decode()
 
             existing_account = db.query(Account).filter(
                 Account.phone == phone).first()
@@ -285,16 +291,16 @@ class TelegramManager:
                 existing_account.proxy = proxy
                 existing_account.status = "online"
                 existing_account.is_active = True
-                existing_account.user_id = user_id # Обновляем user_id
-                existing_account.current_user_id = current_user_id # Обновляем current_user_id
+                existing_account.user_id = current_user_id if current_user_id else user_id # Используем current_user_id как приоритетный
             else:
                 account = Account(
                     phone=phone,
+                    name=name,
                     session_data=encrypted_session,
                     proxy=proxy,
-                    status="awaiting_code",
-                    user_id=user_id, # Добавлен user_id
-                    current_user_id=current_user_id # Добавлен current_user_id
+                    status="online",  # Устанавливаем статус "online" после успешной авторизации
+                    is_active=True,
+                    user_id=current_user_id if current_user_id else user_id # Используем current_user_id как приоритетный
                 )
                 db.add(account)
 
