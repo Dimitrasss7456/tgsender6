@@ -59,7 +59,8 @@ class TelegramManager:
 
     async def add_account(self,
                           phone: str,
-                          proxy: Optional[str] = None) -> Dict:
+                          proxy: Optional[str] = None,
+                          current_user_id: Optional[int] = None) -> Dict: # Добавлен current_user_id
         """Добавление нового аккаунта"""
         try:
             # Очищаем номер телефона
@@ -90,7 +91,7 @@ class TelegramManager:
             try:
                 me = await client.get_me()
                 await self._save_account(phone, session_path, me.first_name,
-                                         proxy, me.id, None) # Передаем user_id
+                                         proxy, me.id, None, current_user_id) # Передаем user_id и current_user_id
                 await client.disconnect()
                 return {"status": "success", "name": me.first_name}
             except:
@@ -131,7 +132,8 @@ class TelegramManager:
                           code: str,
                           phone_code_hash: str,
                           session_name: str,
-                          proxy: Optional[str] = None):
+                          proxy: Optional[str] = None,
+                          current_user_id: Optional[int] = None): # Добавлен current_user_id
         """Подтверждение кода из SMS"""
         try:
             # Очищаем код от лишних символов и пробелов
@@ -168,7 +170,7 @@ class TelegramManager:
 
             me = await client.get_me()
             session_path = os.path.join(SESSIONS_DIR, session_name)
-            await self._save_account(phone, session_path, me.first_name, proxy, me.id, None) # Передаем user_id
+            await self._save_account(phone, session_path, me.first_name, proxy, me.id, None, current_user_id) # Передаем user_id и current_user_id
 
             await client.disconnect()
 
@@ -222,7 +224,8 @@ class TelegramManager:
                               phone: str,
                               password: str,
                               session_name: str,
-                              proxy: Optional[str] = None) -> Dict:
+                              proxy: Optional[str] = None,
+                              current_user_id: Optional[int] = None) -> Dict: # Добавлен current_user_id
         """Подтверждение двухфакторной аутентификации"""
         try:
             client = self.pending_clients.get(session_name)
@@ -241,7 +244,7 @@ class TelegramManager:
             await client.check_password(password)
             me = await client.get_me()
             session_path = os.path.join(SESSIONS_DIR, session_name)
-            await self._save_account(phone, session_path, me.first_name, proxy, me.id, None) # Передаем user_id
+            await self._save_account(phone, session_path, me.first_name, proxy, me.id, None, current_user_id) # Передаем user_id и current_user_id
             await client.disconnect()
 
             if session_name in self.pending_clients:
@@ -255,7 +258,7 @@ class TelegramManager:
             return {"status": "error", "message": str(e)}
 
     async def _save_account(self, phone: str, session_path: str, name: str,
-                            proxy: Optional[str], user_id: int, session_data: Optional[str]): # Добавлен user_id и session_data
+                            proxy: Optional[str], user_id: int, session_data: Optional[str], current_user_id: Optional[int]): # Добавлены user_id и current_user_id
         """Сохранение аккаунта в базу данных"""
         db = next(get_db())
         try:
@@ -283,13 +286,15 @@ class TelegramManager:
                 existing_account.status = "online"
                 existing_account.is_active = True
                 existing_account.user_id = user_id # Обновляем user_id
+                existing_account.current_user_id = current_user_id # Обновляем current_user_id
             else:
                 account = Account(
                     phone=phone,
                     session_data=encrypted_session,
                     proxy=proxy,
                     status="awaiting_code",
-                    user_id=user_id # Добавлен user_id
+                    user_id=user_id, # Добавлен user_id
+                    current_user_id=current_user_id # Добавлен current_user_id
                 )
                 db.add(account)
 
@@ -860,7 +865,7 @@ class TelegramManager:
                 # Удаляем проблемную сессию и просим пользователя войти заново
                 await self._handle_auth_key_unregistered(account_id)
                 return {
-                    "status": "error", 
+                    "status": "error",
                     "message": "Сессия аккаунта недействительна. Необходимо войти заново"
                 }
             # Нормализация получателя
@@ -1001,7 +1006,7 @@ class TelegramManager:
         except AuthKeyUnregistered:
             await self._handle_auth_key_unregistered(account_id)
             return {
-                "status": "error", 
+                "status": "error",
                 "message": "Сессия аккаунта недействительна. Необходимо войти заново"
             }
         except Exception as e:
