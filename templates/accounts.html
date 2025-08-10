@@ -55,75 +55,156 @@
 
 <!-- Модальное окно добавления аккаунта -->
 <div class="modal fade" id="addAccountModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Добавить аккаунт</h5>
+                <h5 class="modal-title">
+                    <i class="fas fa-user-plus me-2"></i>
+                    Добавить аккаунт Telegram
+                </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <h5>Добавить аккаунт</h5>
-                                <div class="btn-group btn-group-sm" role="group">
-                                    <input type="radio" class="btn-check" name="addMethod" id="methodPhone" checked>
-                                    <label class="btn btn-outline-primary" for="methodPhone">По номеру</label>
+                <!-- Навигация по вкладкам -->
+                <ul class="nav nav-tabs mb-4" id="addAccountTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="phone-tab" data-bs-toggle="tab" data-bs-target="#phone-pane" type="button" role="tab">
+                            <i class="fas fa-phone me-2"></i>
+                            По номеру телефона
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tdata-tab" data-bs-toggle="tab" data-bs-target="#tdata-pane" type="button" role="tab">
+                            <i class="fas fa-folder-open me-2"></i>
+                            Импорт TDATA
+                        </button>
+                    </li>
+                </ul>
 
-                                    <input type="radio" class="btn-check" name="addMethod" id="methodTdata">
-                                    <label class="btn btn-outline-primary" for="methodTdata">TDATA</label>
+                <!-- Содержимое вкладок -->
+                <div class="tab-content" id="addAccountTabContent">
+                    <!-- Вкладка добавления по номеру -->
+                    <div class="tab-pane fade show active" id="phone-pane" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-8 mx-auto">
+                                <div class="card border-0 shadow-sm">
+                                    <div class="card-body">
+                                        <div class="text-center mb-4">
+                                            <div class="bg-primary bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 60px; height: 60px;">
+                                                <i class="fas fa-mobile-alt text-primary" style="font-size: 24px;"></i>
+                                            </div>
+                                            <h6 class="mt-3 mb-2">Добавление по номеру телефона</h6>
+                                            <p class="text-muted small">Введите номер телефона для создания новой сессии</p>
+                                        </div>
+                                        
+                                        <form id="addAccountForm">
+                                            <div class="mb-4">
+                                                <label for="phone" class="form-label fw-bold">
+                                                    <i class="fas fa-phone me-2 text-primary"></i>
+                                                    Номер телефона
+                                                </label>
+                                                <input type="text" class="form-control form-control-lg" id="phone" 
+                                                       placeholder="+1234567890" required>
+                                                <div class="form-text">
+                                                    <i class="fas fa-info-circle me-1"></i>
+                                                    Укажите номер в международном формате
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="mb-4">
+                                                <div class="card bg-light border-0">
+                                                    <div class="card-body p-3">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="checkbox" id="useAutoProxy">
+                                                            <label class="form-check-label fw-bold" for="useAutoProxy">
+                                                                <i class="fas fa-shield-alt me-2 text-success"></i>
+                                                                Использовать автоматический прокси
+                                                            </label>
+                                                            <div class="form-text small mt-1">
+                                                                Рекомендуется для защиты от блокировок
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="d-grid">
+                                                <button type="submit" class="btn btn-primary btn-lg">
+                                                    <i class="fas fa-paper-plane me-2"></i>
+                                                    Добавить аккаунт
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="card-body">
-                                <!-- Форма добавления по номеру телефона -->
-                                <div id="phoneForm" class="add-method-form">
-                                    <form id="addAccountForm">
-                                        <div class="mb-3">
-                                            <label for="phone" class="form-label">Номер телефона</label>
-                                            <input type="text" class="form-control" id="phone" placeholder="+1234567890" required>
-                                        </div>
-                                        <div class="mb-3">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" id="useAutoProxy">
-                                                <label class="form-check-label" for="useAutoProxy">
-                                                    Использовать автоматический прокси
-                                                </label>
-                                            </div>
-                                        </div>
-                                        <button type="submit" class="btn btn-primary">Добавить аккаунт</button>
-                                    </form>
-                                </div>
+                        </div>
+                    </div>
 
-                                <!-- Форма загрузки TDATA -->
-                                <div id="tdataForm" class="add-method-form" style="display: none;">
-                                    <form id="addTdataForm" enctype="multipart/form-data">
-                                        <div class="mb-3">
-                                            <label for="tdataFiles" class="form-label">Файлы TDATA</label>
-                                            <input type="file" class="form-control" id="tdataFiles" multiple accept="*" required>
-                                            <div class="form-text">
-                                                Выберите все файлы из папки TDATA (обычно находится в %APPDATA%\Telegram Desktop\tdata)
+                    <!-- Вкладка импорта TDATA -->
+                    <div class="tab-pane fade" id="tdata-pane" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-8 mx-auto">
+                                <div class="card border-0 shadow-sm">
+                                    <div class="card-body">
+                                        <div class="text-center mb-4">
+                                            <div class="bg-success bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 60px; height: 60px;">
+                                                <i class="fas fa-upload text-success" style="font-size: 24px;"></i>
                                             </div>
+                                            <h6 class="mt-3 mb-2">Импорт TDATA файлов</h6>
+                                            <p class="text-muted small">Загрузите файлы из папки TDATA Telegram Desktop</p>
                                         </div>
-                                        <div class="mb-3">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" id="useAutoProxyTdata">
-                                                <label class="form-check-label" for="useAutoProxyTdata">
-                                                    Использовать автоматический прокси
+
+                                        <form id="addTdataForm" enctype="multipart/form-data">
+                                            <div class="mb-4">
+                                                <label for="tdataFiles" class="form-label fw-bold">
+                                                    <i class="fas fa-folder-open me-2 text-success"></i>
+                                                    Файлы TDATA
                                                 </label>
+                                                <div class="file-upload-area">
+                                                    <input type="file" class="form-control" id="tdataFiles" multiple accept="*" required>
+                                                </div>
+                                                <div class="alert alert-info mt-3 py-2">
+                                                    <i class="fas fa-info-circle me-2"></i>
+                                                    <strong>Путь к папке TDATA:</strong><br>
+                                                    <small class="d-block mt-1">
+                                                        <i class="fab fa-windows me-1"></i> Windows: <code>%APPDATA%\Telegram Desktop\tdata</code><br>
+                                                        <i class="fab fa-apple me-1"></i> macOS: <code>~/Library/Application Support/Telegram Desktop/tdata</code><br>
+                                                        <i class="fab fa-linux me-1"></i> Linux: <code>~/.local/share/TelegramDesktop/tdata</code>
+                                                    </small>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <button type="submit" class="btn btn-success">Импортировать TDATA</button>
-                                    </form>
+                                            
+                                            <div class="mb-4">
+                                                <div class="card bg-light border-0">
+                                                    <div class="card-body p-3">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="checkbox" id="useAutoProxyTdata">
+                                                            <label class="form-check-label fw-bold" for="useAutoProxyTdata">
+                                                                <i class="fas fa-shield-alt me-2 text-success"></i>
+                                                                Использовать автоматический прокси
+                                                            </label>
+                                                            <div class="form-text small mt-1">
+                                                                Рекомендуется для защиты от блокировок
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="d-grid">
+                                                <button type="submit" class="btn btn-success btn-lg">
+                                                    <i class="fas fa-download me-2"></i>
+                                                    Импортировать TDATA
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                <!-- Кнопка добавления будет внутри форм -->
             </div>
         </div>
     </div>
@@ -308,20 +389,7 @@ function deleteAccount(accountId) {
     }
 }
 
-// Переключение между методами добавления
-        document.querySelectorAll('input[name="addMethod"]').forEach(radio => {
-            radio.addEventListener('change', function() {
-                document.querySelectorAll('.add-method-form').forEach(form => {
-                    form.style.display = 'none';
-                });
-
-                if (this.id === 'methodPhone') {
-                    document.getElementById('phoneForm').style.display = 'block';
-                } else if (this.id === 'methodTdata') {
-                    document.getElementById('tdataForm').style.display = 'block';
-                }
-            });
-        });
+// Вкладки уже обрабатываются Bootstrap, удаляем старый код переключения
 
         // Обработчик формы добавления аккаунта по номеру
         document.getElementById('addAccountForm').addEventListener('submit', async function(e) {
