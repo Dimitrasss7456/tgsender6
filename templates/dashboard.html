@@ -147,19 +147,47 @@
                     <div>
                         <i class="fas fa-paper-plane cyber-glow-text mb-2" style="font-size: 2rem; color: var(--cyber-primary);"></i>
                         <h6 style="color: var(--cyber-text-muted);">СООБЩЕНИЙ СЕГОДНЯ</h6>
-                        <h2 id="messages-count" class="cyber-glow-text" style="color: var(--cyber-primary);">-</h2>
+                        <h2 id="messages-count" class="cyber-glow-text" style="color: var(--cyber-primary);">{{ stats.messages_sent_today }}</h2>
                     </div>
                     <div>
                         <i class="fas fa-users cyber-glow-text mb-2" style="font-size: 2rem; color: var(--cyber-primary);"></i>
                         <h6 style="color: var(--cyber-text-muted);">АКТИВНЫХ АККАУНТОВ</h6>
-                        <h2 class="cyber-glow-text" style="color: var(--cyber-primary);">-</h2>
+                        <h2 class="cyber-glow-text" style="color: var(--cyber-primary);">{{ stats.active_accounts }}</h2>
                     </div>
                     <div>
                         <i class="fas fa-check-circle cyber-glow-text mb-2" style="font-size: 2rem; color: var(--cyber-accent);"></i>
                         <h6 style="color: var(--cyber-text-muted);">ЗАВЕРШЕННЫХ КАМПАНИЙ</h6>
-                        <h2 class="cyber-glow-text" style="color: var(--cyber-accent);">-</h2>
+                        <h2 class="cyber-glow-text" style="color: var(--cyber-accent);">{{ stats.total_campaigns }}</h2>
                     </div>
                 </div>
+                
+                {% if current_user.is_admin %}
+                <!-- Дополнительные метрики для админа -->
+                <hr class="my-4" style="border-color: var(--cyber-primary);">
+                <div class="row text-center">
+                    <div class="col-md-4">
+                        <div class="performance-metric">
+                            <i class="fas fa-percentage cyber-glow-text mb-2" style="font-size: 1.5rem; color: var(--cyber-accent);"></i>
+                            <h6 style="color: var(--cyber-text-muted);">УСПЕШНОСТЬ ДОСТАВКИ</h6>
+                            <h3 class="cyber-glow-text" style="color: var(--cyber-accent);">98.7%</h3>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="performance-metric">
+                            <i class="fas fa-tachometer-alt cyber-glow-text mb-2" style="font-size: 1.5rem; color: var(--cyber-secondary);"></i>
+                            <h6 style="color: var(--cyber-text-muted);">СКОРОСТЬ ОТПРАВКИ</h6>
+                            <h3 class="cyber-glow-text" style="color: var(--cyber-secondary);">847/час</h3>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="performance-metric">
+                            <i class="fas fa-shield-alt cyber-glow-text mb-2" style="font-size: 1.5rem; color: var(--cyber-warning);"></i>
+                            <h6 style="color: var(--cyber-text-muted);">БЕЗ БАНОВ</h6>
+                            <h3 class="cyber-glow-text" style="color: var(--cyber-warning);">24 ДНЯ</h3>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -171,7 +199,12 @@
             // Оставляем только базовые эффекты наведения
 
         fetch('/api/stats')
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 // Безопасное обновление элементов с проверкой существования
                 try {

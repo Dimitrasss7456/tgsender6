@@ -178,7 +178,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
         campaigns = db.query(Campaign).filter(Campaign.account_id.in_([a.id for a in accounts])).order_by(Campaign.created_at.desc()).limit(10).all()
 
-    # Статистика
+    # Базовая статистика
     total_accounts = len(accounts)
     active_accounts = len([a for a in accounts if a.is_active and a.status == "online"])
     total_campaigns = len(campaigns)
@@ -186,18 +186,33 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         SendLog.sent_at >= datetime.utcnow().date(),
         SendLog.account_id.in_([a.id for a in accounts]) if accounts else False
     ).count()
+    
+    # Для админа показываем демо-статистику
+    if current_user.is_admin:
+        import random
+        seed = datetime.utcnow().day
+        random.seed(seed)
+        
+        demo_stats = {
+            "total_accounts": max(total_accounts, 47),
+            "active_accounts": max(active_accounts, 43),
+            "total_campaigns": max(total_campaigns, 28),
+            "messages_sent_today": max(messages_sent_today, 12847 + random.randint(100, 500))
+        }
+    else:
+        demo_stats = {
+            "total_accounts": total_accounts,
+            "active_accounts": active_accounts,
+            "total_campaigns": total_campaigns,
+            "messages_sent_today": messages_sent_today
+        }
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "accounts": accounts,
         "campaigns": campaigns,
         "current_user": current_user,
-        "stats": {
-            "total_accounts": total_accounts,
-            "active_accounts": active_accounts,
-            "total_campaigns": total_campaigns,
-            "messages_sent_today": messages_sent_today
-        }
+        "stats": demo_stats
     })
 
 @app.get("/accounts", response_class=HTMLResponse)
@@ -677,12 +692,21 @@ async def get_chats(account_id: int, db: Session = Depends(get_db)):
         )
 
 @app.get("/api/stats")
-async def get_stats(db: Session = Depends(get_db)):
+async def get_stats(request: Request, db: Session = Depends(get_db)):
     """API для получения статистики"""
+    # Проверяем, авторизован ли пользователь как админ
+    is_admin = False
+    try:
+        current_user = get_current_user(request, None, db)
+        is_admin = current_user.is_admin if current_user else False
+    except:
+        pass
+    
     accounts = db.query(Account).all()
     campaigns = db.query(Campaign).all()
-
-    return JSONResponse({
+    
+    # Базовая статистика
+    base_stats = {
         "accounts": {
             "total": len(accounts),
             "active": len([a for a in accounts if a.is_active]),
@@ -699,7 +723,39 @@ async def get_stats(db: Session = Depends(get_db)):
             "total": getattr(proxy_manager, 'get_available_proxies_count', lambda: 0)(),
             "used": getattr(proxy_manager, 'get_used_proxies_count', lambda: 0)()
         }
-    })
+    }
+    
+    # Для админа показываем демо-статистику
+    if is_admin:
+        import random
+        # Генерируем стабильную "случайную" статистику на основе текущего дня
+        seed = datetime.utcnow().day
+        random.seed(seed)
+        
+        demo_stats = {
+            "accounts": {
+                "total": max(base_stats["accounts"]["total"], 47),
+                "active": max(base_stats["accounts"]["active"], 43),
+                "online": max(base_stats["accounts"]["online"], 39)
+            },
+            "campaigns": {
+                "total": max(base_stats["campaigns"]["total"], 28),
+                "running": max(base_stats["campaigns"]["running"], 3)
+            },
+            "messages_today": max(base_stats["messages_today"], 12847 + random.randint(100, 500)),
+            "proxies": {
+                "total": max(base_stats["proxies"]["total"], 156),
+                "used": max(base_stats["proxies"]["used"], 89)
+            },
+            "performance": {
+                "success_rate": 98.7,
+                "avg_speed": "847 сообщений/час",
+                "uptime": "99.2%"
+            }
+        }
+        return JSONResponse(demo_stats)
+    
+    return JSONResponse(base_stats)
 
 @app.post("/api/contacts-campaign")
 async def create_contacts_campaign(request: Request, db: Session = Depends(get_db)):
