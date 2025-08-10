@@ -62,28 +62,68 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <form id="addAccountForm">
-                    <div class="mb-3">
-                        <label class="form-label">Номер телефона</label>
-                        <input type="text" class="form-control" name="phone" placeholder="+7xxxxxxxxxx" required>
-                    </div>
-                    <div class="mb-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="useAutoProxy" name="use_auto_proxy" value="true">
-                                <label class="form-check-label" for="useAutoProxy">
-                                    Использовать автоматический прокси из загруженного списка
-                                </label>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5>Добавить аккаунт</h5>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <input type="radio" class="btn-check" name="addMethod" id="methodPhone" checked>
+                                    <label class="btn btn-outline-primary" for="methodPhone">По номеру</label>
+
+                                    <input type="radio" class="btn-check" name="addMethod" id="methodTdata">
+                                    <label class="btn btn-outline-primary" for="methodTdata">TDATA</label>
+                                </div>
                             </div>
-                            <div class="form-text">
-                                <a href="/proxies" target="_blank">Управление прокси</a> -
-                                автоматически назначит прокси из загруженного списка
+                            <div class="card-body">
+                                <!-- Форма добавления по номеру телефона -->
+                                <div id="phoneForm" class="add-method-form">
+                                    <form id="addAccountForm">
+                                        <div class="mb-3">
+                                            <label for="phone" class="form-label">Номер телефона</label>
+                                            <input type="text" class="form-control" id="phone" placeholder="+1234567890" required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="useAutoProxy">
+                                                <label class="form-check-label" for="useAutoProxy">
+                                                    Использовать автоматический прокси
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary">Добавить аккаунт</button>
+                                    </form>
+                                </div>
+
+                                <!-- Форма загрузки TDATA -->
+                                <div id="tdataForm" class="add-method-form" style="display: none;">
+                                    <form id="addTdataForm" enctype="multipart/form-data">
+                                        <div class="mb-3">
+                                            <label for="tdataFiles" class="form-label">Файлы TDATA</label>
+                                            <input type="file" class="form-control" id="tdataFiles" multiple accept="*" required>
+                                            <div class="form-text">
+                                                Выберите все файлы из папки TDATA (обычно находится в %APPDATA%\Telegram Desktop\tdata)
+                                            </div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="useAutoProxyTdata">
+                                                <label class="form-check-label" for="useAutoProxyTdata">
+                                                    Использовать автоматический прокси
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-success">Импортировать TDATA</button>
+                                    </form>
+                                </div>
                             </div>
                         </div>
-                </form>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                <button type="button" class="btn btn-primary" onclick="addAccount()">Добавить</button>
+                <!-- Кнопка добавления будет внутри форм -->
             </div>
         </div>
     </div>
@@ -266,6 +306,111 @@ function deleteAccount(accountId) {
             }
         });
     }
+}
+
+// Переключение между методами добавления
+        document.querySelectorAll('input[name="addMethod"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                document.querySelectorAll('.add-method-form').forEach(form => {
+                    form.style.display = 'none';
+                });
+
+                if (this.id === 'methodPhone') {
+                    document.getElementById('phoneForm').style.display = 'block';
+                } else if (this.id === 'methodTdata') {
+                    document.getElementById('tdataForm').style.display = 'block';
+                }
+            });
+        });
+
+        // Обработчик формы добавления аккаунта по номеру
+        document.getElementById('addAccountForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const phone = document.getElementById('phone').value;
+            const useAutoProxy = document.getElementById('useAutoProxy').checked;
+
+            const formData = new FormData();
+            formData.append('phone', phone);
+            formData.append('use_auto_proxy', useAutoProxy);
+
+            try {
+                const response = await fetch('/accounts/add', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    alert('Аккаунт успешно добавлен!');
+                    location.reload();
+                } else if (result.status === 'code_required') {
+                    showCodeModal(phone, result.phone_code_hash, result.session_name, useAutoProxy ? 'auto' : '');
+                } else {
+                    alert('Ошибка: ' + result.message);
+                }
+            } catch (error) {
+                alert('Ошибка при добавлении аккаунта: ' + error.message);
+            }
+        });
+
+        // Обработчик формы импорта TDATA
+        document.getElementById('addTdataForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const tdataFiles = document.getElementById('tdataFiles').files;
+            const useAutoProxy = document.getElementById('useAutoProxyTdata').checked;
+
+            if (tdataFiles.length === 0) {
+                alert('Выберите файлы TDATA');
+                return;
+            }
+
+            const formData = new FormData();
+            for (let file of tdataFiles) {
+                formData.append('tdata_files', file);
+            }
+            formData.append('use_auto_proxy', useAutoProxy);
+
+            // Показываем прогресс
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const originalText = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Импорт...';
+
+            try {
+                const response = await fetch('/accounts/add_tdata', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    alert(`Аккаунт успешно импортирован!\nИмя: ${result.name}\nТелефон: ${result.phone}`);
+                    location.reload();
+                } else {
+                    alert('Ошибка импорта: ' + result.message);
+                }
+            } catch (error) {
+                alert('Ошибка при импорте TDATA: ' + error.message);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
+            }
+        });
+
+// Вспомогательная функция для показа модального окна ввода кода
+function showCodeModal(phone, phoneCodeHash, sessionName, proxy) {
+    const codeForm = document.getElementById('codeForm');
+    codeForm.querySelector('input[name="phone"]').value = phone;
+    codeForm.querySelector('input[name="phone_code_hash"]').value = phoneCodeHash;
+    codeForm.querySelector('input[name="session_name"]').value = sessionName;
+    codeForm.querySelector('input[name="proxy"]').value = proxy;
+
+    new bootstrap.Modal(document.getElementById('codeModal')).show();
+    bootstrap.Modal.getInstance(document.getElementById('addAccountModal')).hide();
 }
 </script>
 {% endblock %}

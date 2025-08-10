@@ -14,7 +14,7 @@ from app.proxy_manager import proxy_manager
 from app.settings_manager import settings_manager
 from app.config import UPLOADS_DIR
 from app.auth import (
-    get_current_user, get_current_admin, authenticate_user, 
+    get_current_user, get_current_admin, authenticate_user,
     create_session_token, invalidate_session, create_admin_user_if_not_exists
 )
 
@@ -60,8 +60,8 @@ async def login(request: Request, username: str = Form(...), password: str = For
     # Перенаправляем на главную страницу с установкой cookie
     response = RedirectResponse(url="/", status_code=303)
     response.set_cookie(
-        key="session_token", 
-        value=token, 
+        key="session_token",
+        value=token,
         max_age=30*24*60*60,  # 30 дней
         httponly=True,
         secure=False  # Для development
@@ -217,7 +217,7 @@ async def accounts_page(request: Request, db: Session = Depends(get_db), current
 
 @app.post("/accounts/add")
 async def add_account(
-    phone: str = Form(...), 
+    phone: str = Form(...),
     use_auto_proxy: bool = Form(False),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -288,12 +288,69 @@ async def verify_password(
     phone: str = Form(...),
     password: str = Form(...),
     session_name: str = Form(...),
-    proxy: Optional[str] = Form(None),
+    proxy: str = Form(default=""),
     current_user: User = Depends(get_current_user)
 ):
     """Подтверждение пароля 2FA"""
     result = await telegram_manager.verify_password(phone, password, session_name, proxy, current_user.id)
     return JSONResponse(result)
+
+@app.post("/accounts/add_tdata")
+async def add_account_from_tdata(
+    tdata_files: List[UploadFile] = File(...),
+    use_auto_proxy: bool = Form(False),
+    current_user: User = Depends(get_current_user)
+):
+    """Добавление аккаунта из TDATA файлов"""
+    try:
+        import tempfile
+        import shutil
+
+        if not tdata_files:
+            return JSONResponse({"status": "error", "message": "Файлы TDATA не загружены"})
+
+        # Создаем временную папку для TDATA
+        tdata_temp_dir = tempfile.mkdtemp(prefix="tdata_import_")
+
+        try:
+            # Сохраняем загруженные файлы
+            for file in tdata_files:
+                if file.filename:
+                    file_path = os.path.join(tdata_temp_dir, file.filename)
+                    with open(file_path, "wb") as buffer:
+                        content = await file.read()
+                        buffer.write(content)
+
+            print(f"🔄 Файлы TDATA сохранены в: {tdata_temp_dir}")
+            print(f"📁 Загружено файлов: {[f.filename for f in tdata_files]}")
+
+            # Получаем прокси если нужно
+            proxy = None
+            if use_auto_proxy:
+                proxy = proxy_manager.get_proxy_for_phone("tdata_import")
+                if not proxy:
+                    return JSONResponse({"status": "error", "message": "Нет доступных прокси"})
+
+            # Импортируем аккаунт
+            result = await telegram_manager.add_account_from_tdata(
+                tdata_temp_dir,
+                proxy,
+                current_user.id
+            )
+
+            return JSONResponse(result)
+
+        finally:
+            # Очистка временной папки
+            try:
+                shutil.rmtree(tdata_temp_dir)
+            except:
+                pass
+
+    except Exception as e:
+        print(f"❌ Ошибка обработки TDATA: {str(e)}")
+        return JSONResponse({"status": "error", "message": f"Ошибка обработки TDATA: {str(e)}"})
+
 
 @app.post("/accounts/{account_id}/toggle")
 async def toggle_account(account_id: int, db: Session = Depends(get_db)):

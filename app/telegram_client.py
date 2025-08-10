@@ -257,6 +257,106 @@ class TelegramManager:
                 del self.pending_clients[session_name]
             return {"status": "error", "message": str(e)}
 
+    async def add_account_from_tdata(self, 
+                                   tdata_path: str,
+                                   proxy: Optional[str] = None,
+                                   current_user_id: Optional[int] = None) -> Dict:
+        """Добавление аккаунта из TDATA папки"""
+        try:
+            import shutil
+            from pathlib import Path
+            
+            print(f"🔄 Импорт аккаунта из TDATA: {tdata_path}")
+            
+            if not os.path.exists(tdata_path):
+                return {"status": "error", "message": "TDATA папка не найдена"}
+            
+            # Проверяем наличие необходимых файлов
+            required_files = ["key_datas", "D877F783D5D3EF8C"]  # Основные файлы Telegram Desktop
+            tdata_files = os.listdir(tdata_path)
+            
+            if not any(f in tdata_files for f in required_files):
+                return {"status": "error", "message": "Неверная структура TDATA папки"}
+            
+            # Создаем временную сессию для конвертации
+            temp_session_name = f"temp_tdata_{int(datetime.now().timestamp())}"
+            temp_session_path = os.path.join(SESSIONS_DIR, temp_session_name)
+            
+            try:
+                # Создаем клиент с TDATA
+                client = Client(
+                    temp_session_path,
+                    api_id=API_ID,
+                    api_hash=API_HASH,
+                    workdir=tdata_path,  # Указываем путь к TDATA
+                    proxy=self._parse_proxy(proxy) if proxy else None,
+                    no_updates=True
+                )
+                
+                await client.connect()
+                
+                # Получаем информацию о пользователе
+                me = await client.get_me()
+                
+                if not me:
+                    await client.disconnect()
+                    return {"status": "error", "message": "Не удалось получить информацию о пользователе"}
+                
+                # Создаем постоянную сессию
+                phone_clean = me.phone_number.replace('+', '') if me.phone_number else str(me.id)
+                session_name = f"session_{phone_clean}"
+                session_path = os.path.join(SESSIONS_DIR, session_name)
+                
+                # Экспортируем сессию
+                await client.export_session_string()
+                await client.disconnect()
+                
+                # Копируем временную сессию в постоянную
+                temp_session_file = f"{temp_session_path}.session"
+                permanent_session_file = f"{session_path}.session"
+                
+                if os.path.exists(temp_session_file):
+                    shutil.copy2(temp_session_file, permanent_session_file)
+                    os.remove(temp_session_file)  # Удаляем временный файл
+                
+                # Сохраняем аккаунт в базу данных
+                phone = me.phone_number if me.phone_number else f"tdata_{me.id}"
+                name = f"{me.first_name or ''} {me.last_name or ''}".strip() or f"User {me.id}"
+                
+                await self._save_account(phone, session_path, name, proxy, me.id, None, current_user_id)
+                
+                print(f"✅ Аккаунт из TDATA успешно импортирован: {name} ({phone})")
+                
+                return {
+                    "status": "success", 
+                    "name": name,
+                    "phone": phone,
+                    "message": "Аккаунт успешно импортирован из TDATA"
+                }
+                
+            except Exception as import_error:
+                # Очистка временных файлов при ошибке
+                temp_files = [f"{temp_session_path}.session"]
+                for temp_file in temp_files:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                
+                error_msg = str(import_error)
+                print(f"❌ Ошибка импорта TDATA: {error_msg}")
+                
+                if "AUTH_KEY_UNREGISTERED" in error_msg:
+                    return {"status": "error", "message": "TDATA содержит недействительную сессию"}
+                elif "SESSION_REVOKED" in error_msg:
+                    return {"status": "error", "message": "Сессия была отозвана"}
+                elif "USER_DEACTIVATED" in error_msg:
+                    return {"status": "error", "message": "Аккаунт деактивирован"}
+                else:
+                    return {"status": "error", "message": f"Ошибка импорта: {error_msg}"}
+                    
+        except Exception as e:
+            print(f"❌ Общая ошибка импорта TDATA: {str(e)}")
+            return {"status": "error", "message": f"Ошибка импорта TDATA: {str(e)}"}
+
     async def _save_account(self, phone: str, session_path: str, name: str,
                             proxy: Optional[str], user_id: int, session_data: Optional[str], current_user_id: Optional[int]): # Добавлены user_id и current_user_id
         """Сохранение аккаунта в базу данных"""
