@@ -408,9 +408,11 @@ async def add_account_from_tdata(
         except:
             pass
         
+        # Убеждаемся что всегда возвращаем JSON, а не HTML
         return JSONResponse(
-            {"status": "error", "message": f"Ошибка импорта TDATA: {error_msg}"},
-            status_code=500
+            {"status": "error", "message": f"Внутренняя ошибка сервера: {error_msg}"},
+            status_code=200,  # Возвращаем 200 чтобы фронтенд мог обработать JSON
+            headers={"Content-Type": "application/json"}
         )
         
     finally:
