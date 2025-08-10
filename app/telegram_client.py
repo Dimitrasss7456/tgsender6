@@ -167,7 +167,6 @@ class TelegramManager:
                 await client.sign_in(phone, phone_code_hash, clean_code)
 
             me = await client.get_me()
-
             session_path = os.path.join(SESSIONS_DIR, session_name)
             await self._save_account(phone, session_path, me.first_name, proxy, me.id) # Передаем user_id
 
@@ -1127,7 +1126,7 @@ from app.database import Account
 class TelegramManager:
     def __init__(self):
         self.clients: Dict[int, TelegramClient] = {}
-    
+
     async def get_client(self, account: Account) -> Optional[TelegramClient]:
         """Получение клиента для аккаунта"""
         if account.id not in self.clients:
@@ -1144,7 +1143,7 @@ class TelegramManager:
                 print(f"Error creating client for {account.phone}: {e}")
                 return None
         return self.clients[account.id]
-    
+
     async def disconnect_all(self):
         """Отключение всех клиентов"""
         for client in self.clients.values():

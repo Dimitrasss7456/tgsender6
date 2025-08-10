@@ -238,7 +238,8 @@ async def verify_code(
     code: str = Form(...),
     phone_code_hash: str = Form(...),
     session_name: str = Form(...),
-    proxy: Optional[str] = Form(None)
+    proxy: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user)
 ):
     """Подтверждение кода"""
     try:
@@ -254,7 +255,7 @@ async def verify_code(
 
         print(f"Проверяем код: '{clean_code}' для номера {phone}")
 
-        result = await telegram_manager.verify_code(phone, clean_code, phone_code_hash, session_name, proxy)
+        result = await telegram_manager.verify_code(phone, clean_code, phone_code_hash, session_name, proxy, current_user.id)
 
         # Проверяем, что result не None
         if result is None:
@@ -283,10 +284,11 @@ async def verify_password(
     phone: str = Form(...),
     password: str = Form(...),
     session_name: str = Form(...),
-    proxy: Optional[str] = Form(None)
+    proxy: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user)
 ):
     """Подтверждение пароля 2FA"""
-    result = await telegram_manager.verify_password(phone, password, session_name, proxy)
+    result = await telegram_manager.verify_password(phone, password, session_name, proxy, current_user.id)
     return JSONResponse(result)
 
 @app.post("/accounts/{account_id}/toggle")
@@ -405,9 +407,9 @@ async def proxies_page(request: Request):
     """Страница управления прокси"""
     return templates.TemplateResponse("proxies.html", {
         "request": request,
-        "proxies_count": proxy_manager.get_available_proxies_count(),
-        "used_count": proxy_manager.get_used_proxies_count(),
-        "proxies": proxy_manager.get_all_proxies()
+        "proxies_count": getattr(proxy_manager, 'get_available_proxies_count', lambda: 0)(),
+        "used_count": getattr(proxy_manager, 'get_used_proxies_count', lambda: 0)(),
+        "proxies": getattr(proxy_manager, 'get_all_proxies', lambda: [])()
     })
 
 @app.post("/proxies/upload")
@@ -417,7 +419,7 @@ async def upload_proxies(proxies_text: str = Form(...)):
         proxy_manager.save_proxies(proxies_text)
         return JSONResponse({
             "status": "success",
-            "message": f"Загружено {proxy_manager.get_available_proxies_count()} прокси"
+            "message": f"Загружено {getattr(proxy_manager, 'get_available_proxies_count', lambda: 0)()} прокси"
         })
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)})
@@ -539,8 +541,8 @@ async def get_stats(db: Session = Depends(get_db)):
             SendLog.sent_at >= datetime.utcnow().date()
         ).count(),
         "proxies": {
-            "total": proxy_manager.get_available_proxies_count(),
-            "used": proxy_manager.get_used_proxies_count()
+            "total": getattr(proxy_manager, 'get_available_proxies_count', lambda: 0)(),
+            "used": getattr(proxy_manager, 'get_used_proxies_count', lambda: 0)()
         }
     })
 
