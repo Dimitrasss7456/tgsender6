@@ -229,7 +229,7 @@ async def add_account(
         if not proxy:
             return JSONResponse({"status": "error", "message": "Нет доступных прокси. Загрузите список прокси."})
 
-    result = await telegram_manager.add_account(phone, proxy, current_user.id)
+    result = await telegram_manager.add_account(phone, proxy)
     return JSONResponse(result)
 
 @app.post("/accounts/verify_code")
@@ -255,7 +255,7 @@ async def verify_code(
 
         print(f"Проверяем код: '{clean_code}' для номера {phone}")
 
-        result = await telegram_manager.verify_code(phone, clean_code, phone_code_hash, session_name, proxy, current_user.id)
+        result = await telegram_manager.verify_code(phone, clean_code, phone_code_hash, session_name, proxy)
 
         # Проверяем, что result не None
         if result is None:
@@ -288,7 +288,7 @@ async def verify_password(
     current_user: User = Depends(get_current_user)
 ):
     """Подтверждение пароля 2FA"""
-    result = await telegram_manager.verify_password(phone, password, session_name, proxy, current_user.id)
+    result = await telegram_manager.verify_password(phone, password, session_name, proxy)
     return JSONResponse(result)
 
 @app.post("/accounts/{account_id}/toggle")

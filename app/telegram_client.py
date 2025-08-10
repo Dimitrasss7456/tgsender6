@@ -90,7 +90,7 @@ class TelegramManager:
             try:
                 me = await client.get_me()
                 await self._save_account(phone, session_path, me.first_name,
-                                         proxy, me.id) # Передаем user_id
+                                         proxy, me.id, None) # Передаем user_id
                 await client.disconnect()
                 return {"status": "success", "name": me.first_name}
             except:
@@ -168,7 +168,7 @@ class TelegramManager:
 
             me = await client.get_me()
             session_path = os.path.join(SESSIONS_DIR, session_name)
-            await self._save_account(phone, session_path, me.first_name, proxy, me.id) # Передаем user_id
+            await self._save_account(phone, session_path, me.first_name, proxy, me.id, None) # Передаем user_id
 
             await client.disconnect()
 
@@ -241,7 +241,7 @@ class TelegramManager:
             await client.check_password(password)
             me = await client.get_me()
             session_path = os.path.join(SESSIONS_DIR, session_name)
-            await self._save_account(phone, session_path, me.first_name, proxy, me.id) # Передаем user_id
+            await self._save_account(phone, session_path, me.first_name, proxy, me.id, None) # Передаем user_id
             await client.disconnect()
 
             if session_name in self.pending_clients:
@@ -255,7 +255,7 @@ class TelegramManager:
             return {"status": "error", "message": str(e)}
 
     async def _save_account(self, phone: str, session_path: str, name: str,
-                            proxy: Optional[str], user_id: int): # Добавлен user_id
+                            proxy: Optional[str], user_id: int, session_data: Optional[str]): # Добавлен user_id и session_data
         """Сохранение аккаунта в базу данных"""
         db = next(get_db())
         try:
@@ -264,11 +264,12 @@ class TelegramManager:
             if not os.path.exists(session_file_path):
                 raise Exception(f"Session file not found: {session_file_path}")
 
-            with open(session_file_path, "rb") as f:
-                session_data = f.read()
+            if session_data is None: # Если session_data не переданы, читаем из файла
+                with open(session_file_path, "rb") as f:
+                    session_data = f.read()
 
             try:
-                encrypted_session = self.cipher.encrypt(session_data).decode()
+                encrypted_session = self.cipher.encrypt(session_data.encode()).decode()
             except Exception:
                 import base64
                 encrypted_session = base64.b64encode(session_data).decode()
