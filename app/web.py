@@ -223,14 +223,18 @@ async def add_account(
     db: Session = Depends(get_db)
 ):
     """Добавление нового аккаунта"""
-    proxy = None
-    if use_auto_proxy:
-        proxy = proxy_manager.get_proxy_for_phone(phone)
-        if not proxy:
-            return JSONResponse({"status": "error", "message": "Нет доступных прокси. Загрузите список прокси."})
+    try:
+        proxy = None
+        if use_auto_proxy:
+            proxy = proxy_manager.get_proxy_for_phone(phone)
+            if not proxy:
+                return JSONResponse({"status": "error", "message": "Нет доступных прокси. Загрузите список прокси."})
 
-    result = await telegram_manager.add_account(phone, proxy)
-    return JSONResponse(result)
+        result = await telegram_manager.add_account(phone, proxy)
+        return JSONResponse(result)
+    except Exception as e:
+        print(f"Error in add_account: {str(e)}")
+        return JSONResponse({"status": "error", "message": f"Ошибка при добавлении аккаунта: {str(e)}"})
 
 @app.post("/accounts/verify_code")
 async def verify_code(
