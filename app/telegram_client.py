@@ -261,9 +261,11 @@ class TelegramManager:
                                    tdata_path: str,
                                    proxy: Optional[str] = None,
                                    current_user_id: Optional[int] = None) -> Dict:
-        """Добавление аккаунта из TDATA папки (упрощенный метод)"""
+        """Добавление аккаунта из TDATA папки используя Telethon подход"""
         import shutil
         import traceback
+        import struct
+        import base64
         
         try:
             print(f"🔄 Импорт аккаунта из TDATA: {tdata_path}")
@@ -284,8 +286,6 @@ class TelegramManager:
             try:
                 tdata_files = os.listdir(tdata_path)
                 print(f"📁 Файлы в TDATA папке: {tdata_files}")
-            except PermissionError:
-                return {"status": "error", "message": "Нет доступа к TDATA папке"}
             except Exception as list_error:
                 return {"status": "error", "message": f"Ошибка чтения папки: {str(list_error)}"}
             
@@ -294,26 +294,103 @@ class TelegramManager:
             
             # Ищем ключевые файлы TDATA
             key_files = []
+            auth_files = []
+            map_files = []
+            
             for file_name in tdata_files:
-                if any(pattern in file_name.lower() for pattern in ["key_data", "d877f783d5d3ef8c", "settings"]):
+                file_lower = file_name.lower()
+                if "key_data" in file_lower or "d877f783d5d3ef8c" in file_lower:
                     key_files.append(file_name)
+                elif file_name.startswith("map"):
+                    map_files.append(file_name)
+                elif "auth" in file_lower:
+                    auth_files.append(file_name)
             
-            if not key_files:
-                return {
-                    "status": "error", 
-                    "message": f"Не найдены ключевые файлы TDATA. Найденные файлы: {', '.join(tdata_files[:5])}"
-                }
+            print(f"🔍 Key files: {key_files}")
+            print(f"🔍 Map files: {map_files[:3]}...")  # Показываем только первые 3
+            print(f"🔍 Auth files: {auth_files}")
             
-            print(f"🔍 Найденные ключевые файлы: {key_files}")
-            
-            # Вместо использования workdir, попробуем извлечь данные вручную
-            # Это упрощенная реализация, которая работает с некоторыми типами TDATA
-            
-            # Пока что возвращаем информативную ошибку
-            return {
-                "status": "error",
-                "message": "Импорт TDATA временно недоступен. Используйте добавление аккаунта по номеру телефона."
-            }
+            # Попробуем создать клиент напрямую из TDATA
+            try:
+                # Создаем временную папку для конвертированной сессии
+                import tempfile
+                import uuid
+                
+                temp_session_name = f"tdata_import_{uuid.uuid4().hex[:8]}"
+                temp_session_path = os.path.join(SESSIONS_DIR, temp_session_name)
+                
+                print(f"📝 Создаем временную сессию: {temp_session_path}")
+                
+                # Пытаемся создать клиент с workdir указывающим на TDATA
+                client = Client(
+                    name=temp_session_name,
+                    api_id=API_ID,
+                    api_hash=API_HASH,
+                    workdir=tdata_path,  # Указываем TDATA как рабочую папку
+                    proxy=self._parse_proxy(proxy) if proxy else None,
+                    no_updates=True
+                )
+                
+                # Пробуем подключиться
+                await client.connect()
+                
+                # Проверяем авторизацию
+                try:
+                    me = await client.get_me()
+                    if me:
+                        print(f"✅ Успешная авторизация через TDATA: {me.first_name} ({me.phone_number})")
+                        
+                        # Теперь экспортируем сессию в наш формат
+                        await client.disconnect()
+                        
+                        # Копируем файл сессии
+                        source_session = f"{temp_session_path}.session"
+                        if os.path.exists(source_session):
+                            # Создаем финальное имя сессии
+                            phone_clean = me.phone_number.replace('+', '').replace(' ', '').replace('(', '').replace(')', '').replace('-', '')
+                            final_session_name = f"session_{phone_clean}"
+                            final_session_path = os.path.join(SESSIONS_DIR, final_session_name)
+                            
+                            # Копируем файл сессии
+                            shutil.copy2(source_session, f"{final_session_path}.session")
+                            
+                            # Сохраняем аккаунт в базу данных
+                            await self._save_account(
+                                phone=me.phone_number,
+                                session_path=final_session_path,
+                                name=me.first_name or "TDATA User",
+                                proxy=proxy,
+                                user_id=me.id,
+                                session_data=None,  # Будет считан из файла
+                                current_user_id=current_user_id
+                            )
+                            
+                            # Очищаем временную сессию
+                            try:
+                                os.remove(source_session)
+                            except:
+                                pass
+                            
+                            return {
+                                "status": "success",
+                                "name": me.first_name or "TDATA User",
+                                "phone": me.phone_number
+                            }
+                        else:
+                            await client.disconnect()
+                            return {"status": "error", "message": "Не удалось создать файл сессии"}
+                    else:
+                        await client.disconnect()
+                        return {"status": "error", "message": "Не удалось получить информацию о пользователе"}
+                        
+                except Exception as auth_error:
+                    await client.disconnect()
+                    print(f"❌ Ошибка авторизации через TDATA: {auth_error}")
+                    return {"status": "error", "message": f"Не удалось авторизоваться через TDATA: {str(auth_error)}"}
+                    
+            except Exception as client_error:
+                print(f"❌ Ошибка создания клиента: {client_error}")
+                return {"status": "error", "message": f"Ошибка создания клиента из TDATA: {str(client_error)}"}
                 
         except Exception as e:
             error_msg = str(e)

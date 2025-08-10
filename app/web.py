@@ -385,10 +385,15 @@ async def add_account_from_tdata(
             print(f"❌ Некорректный результат импорта: {result}")
             return JSONResponse(
                 {"status": "error", "message": "Внутренняя ошибка сервера"},
-                status_code=500
+                status_code=200,  # Всегда возвращаем 200 для корректной обработки JSON
+                headers={"Content-Type": "application/json"}
             )
 
-        return JSONResponse(result)
+        return JSONResponse(
+            result,
+            status_code=200,
+            headers={"Content-Type": "application/json"}
+        )
 
     except Exception as e:
         error_msg = str(e)
@@ -410,7 +415,7 @@ async def add_account_from_tdata(
         
         # Убеждаемся что всегда возвращаем JSON, а не HTML
         return JSONResponse(
-            {"status": "error", "message": f"Внутренняя ошибка сервера: {error_msg}"},
+            {"status": "error", "message": f"Ошибка импорта TDATA: {error_msg}"},
             status_code=200,  # Возвращаем 200 чтобы фронтенд мог обработать JSON
             headers={"Content-Type": "application/json"}
         )
