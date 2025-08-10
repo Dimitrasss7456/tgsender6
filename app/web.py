@@ -302,54 +302,125 @@ async def add_account_from_tdata(
     current_user: User = Depends(get_current_user)
 ):
     """Добавление аккаунта из TDATA файлов"""
+    import tempfile
+    import shutil
+    import traceback
+    
+    tdata_temp_dir = None
+    
     try:
-        import tempfile
-        import shutil
-
-        if not tdata_files:
-            return JSONResponse({"status": "error", "message": "Файлы TDATA не загружены"})
+        print(f"🔄 Начинаем импорт TDATA для пользователя {current_user.username}")
+        
+        if not tdata_files or len(tdata_files) == 0:
+            print("❌ Файлы TDATA не загружены")
+            return JSONResponse(
+                {"status": "error", "message": "Файлы TDATA не загружены"},
+                status_code=400
+            )
 
         # Создаем временную папку для TDATA
         tdata_temp_dir = tempfile.mkdtemp(prefix="tdata_import_")
+        print(f"📁 Создана временная папка: {tdata_temp_dir}")
 
-        try:
-            # Сохраняем загруженные файлы
-            for file in tdata_files:
-                if file.filename:
+        # Сохраняем загруженные файлы
+        saved_files = []
+        for file in tdata_files:
+            if file.filename:
+                try:
                     file_path = os.path.join(tdata_temp_dir, file.filename)
+                    content = await file.read()
+                    
+                    if len(content) == 0:
+                        print(f"⚠️ Файл {file.filename} пустой, пропускаем")
+                        continue
+                    
                     with open(file_path, "wb") as buffer:
-                        content = await file.read()
                         buffer.write(content)
+                    
+                    saved_files.append(file.filename)
+                    print(f"✅ Сохранен файл: {file.filename} ({len(content)} байт)")
+                    
+                except Exception as file_error:
+                    print(f"❌ Ошибка сохранения файла {file.filename}: {str(file_error)}")
+                    continue
 
-            print(f"🔄 Файлы TDATA сохранены в: {tdata_temp_dir}")
-            print(f"📁 Загружено файлов: {[f.filename for f in tdata_files]}")
-
-            # Получаем прокси если нужно
-            proxy = None
-            if use_auto_proxy:
-                proxy = proxy_manager.get_proxy_for_phone("tdata_import")
-                if not proxy:
-                    return JSONResponse({"status": "error", "message": "Нет доступных прокси"})
-
-            # Импортируем аккаунт
-            result = await telegram_manager.add_account_from_tdata(
-                tdata_temp_dir,
-                proxy,
-                current_user.id
+        if not saved_files:
+            print("❌ Не удалось сохранить ни одного файла")
+            return JSONResponse(
+                {"status": "error", "message": "Не удалось сохранить загруженные файлы"},
+                status_code=400
             )
 
-            return JSONResponse(result)
+        print(f"📁 Сохранено файлов: {saved_files}")
 
-        finally:
-            # Очистка временной папки
+        # Получаем прокси если нужно
+        proxy = None
+        if use_auto_proxy:
             try:
-                shutil.rmtree(tdata_temp_dir)
-            except:
-                pass
+                proxy = proxy_manager.get_proxy_for_phone("tdata_import")
+                if not proxy:
+                    print("⚠️ Нет доступных прокси")
+                    return JSONResponse(
+                        {"status": "error", "message": "Нет доступных прокси"},
+                        status_code=400
+                    )
+                print(f"🔗 Используем прокси: {proxy}")
+            except Exception as proxy_error:
+                print(f"❌ Ошибка получения прокси: {str(proxy_error)}")
+                # Продолжаем без прокси
+                proxy = None
+
+        # Импортируем аккаунт
+        print("🔄 Начинаем импорт аккаунта...")
+        result = await telegram_manager.add_account_from_tdata(
+            tdata_temp_dir,
+            proxy,
+            current_user.id
+        )
+
+        print(f"✅ Результат импорта: {result}")
+        
+        # Проверяем что результат валидный
+        if not isinstance(result, dict) or 'status' not in result:
+            print(f"❌ Некорректный результат импорта: {result}")
+            return JSONResponse(
+                {"status": "error", "message": "Внутренняя ошибка сервера"},
+                status_code=500
+            )
+
+        return JSONResponse(result)
 
     except Exception as e:
-        print(f"❌ Ошибка обработки TDATA: {str(e)}")
-        return JSONResponse({"status": "error", "message": f"Ошибка обработки TDATA: {str(e)}"})
+        error_msg = str(e)
+        error_trace = traceback.format_exc()
+        
+        print(f"❌ Критическая ошибка обработки TDATA: {error_msg}")
+        print(f"🔍 Стек ошибки: {error_trace}")
+        
+        # Логируем в файл для отладки
+        try:
+            with open("tdata_import_errors.log", "a", encoding="utf-8") as log_file:
+                log_file.write(f"\n=== TDATA Import Error {datetime.utcnow()} ===\n")
+                log_file.write(f"User: {current_user.username if current_user else 'Unknown'}\n")
+                log_file.write(f"Error: {error_msg}\n")
+                log_file.write(f"Traceback: {error_trace}\n")
+                log_file.write("=" * 50 + "\n")
+        except:
+            pass
+        
+        return JSONResponse(
+            {"status": "error", "message": f"Ошибка импорта TDATA: {error_msg}"},
+            status_code=500
+        )
+        
+    finally:
+        # Очистка временной папки
+        if tdata_temp_dir and os.path.exists(tdata_temp_dir):
+            try:
+                shutil.rmtree(tdata_temp_dir)
+                print(f"🧹 Временная папка очищена: {tdata_temp_dir}")
+            except Exception as cleanup_error:
+                print(f"⚠️ Ошибка очистки временной папки: {str(cleanup_error)}")
 
 
 @app.post("/accounts/{account_id}/toggle")
