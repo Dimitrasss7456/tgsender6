@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Telegram Mass Sender{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --cyber-bg: #0a0a0f;
+            --cyber-bg-secondary: #0f0f1a;
+            --cyber-bg-card: #1a1a2e;
+            --cyber-primary: #00ff9f;
+            --cyber-secondary: #ff0080;
+            --cyber-accent: #0080ff;
+            --cyber-warning: #ffaa00;
+            --cyber-danger: #ff3366;
+            --cyber-text: #e0e0ff;
+            --cyber-text-muted: #8080b0;
+            --cyber-border: #333366;
+            --cyber-glow: 0 0 20px;
+            --cyber-glow-strong: 0 0 30px;
+            --cyber-shadow: 0 8px 32px rgba(0, 255, 159, 0.15);
+            --cyber-shadow-strong: 0 12px 48px rgba(0, 255, 159, 0.25);
+        }
+
+        * {
+            font-family: 'Rajdhani', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--cyber-bg) 0%, var(--cyber-bg-secondary) 100%);
+            color: var(--cyber-text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Static background - no animations for stability */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(0, 255, 159, 0.02) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 0, 128, 0.02) 0%, transparent 50%),
+                radial-gradient(circle at 40% 80%, rgba(0, 128, 255, 0.02) 0%, transparent 50%);
+            z-index: -2;
+        }
+
+        /* Static grid overlay - no animation */
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(0, 255, 159, 0.01) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 159, 0.01) 1px, transparent 1px);
+            background-size: 50px 50px;
+            z-index: -1;
+        }
+
+        .sidebar {
+            min-height: 100vh;
+            background: linear-gradient(180deg, var(--cyber-bg-card) 0%, var(--cyber-bg-secondary) 100%);
+            border: 1px solid var(--cyber-border);
+            border-radius: 0 15px 15px 0;
+            box-shadow: var(--cyber-shadow);
+            position: relative;
+            backdrop-filter: blur(10px);
+        }
+
+        .sidebar::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                45deg,
+                transparent 30%,
+                rgba(0, 255, 159, 0.05) 50%,
+                transparent 70%
+            );
+            border-radius: 0 15px 15px 0;
+        }
+
+        /* Sidebar scan animation removed for stability */
+
+        .sidebar .nav-link {
+            color: var(--cyber-text-muted);
+            padding: 15px 20px;
+            margin: 5px 10px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            font-size: 16px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .sidebar .nav-link::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 255, 159, 0.2), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .sidebar .nav-link:hover {
+            color: var(--cyber-primary);
+            border-color: var(--cyber-primary);
+            box-shadow: var(--cyber-glow) var(--cyber-primary);
+            transform: translateX(10px);
+        }
+
+        .sidebar .nav-link:hover::before {
+            left: 100%;
+        }
+
+        .sidebar .nav-link.active {
+            color: var(--cyber-primary);
+            border-color: var(--cyber-primary);
+            background: linear-gradient(90deg, rgba(0, 255, 159, 0.1), rgba(0, 255, 159, 0.05));
+            box-shadow: var(--cyber-glow-strong) var(--cyber-primary);
+        }
+
+        .sidebar .nav-link i {
+            margin-right: 12px;
+            width: 20px;
+            text-align: center;
+            font-size: 18px;
+        }
+
+        .sidebar h4 {
+            font-family: 'Orbitron', monospace;
+            font-weight: 900;
+            color: var(--cyber-primary);
+            text-shadow: var(--cyber-glow) var(--cyber-primary);
+            letter-spacing: 2px;
+        }
+
+        .card {
+            background: var(--cyber-bg-card);
+            border: 1px solid var(--cyber-border);
+            border-radius: 15px;
+            box-shadow: var(--cyber-shadow);
+            transition: all 0.3s ease;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--cyber-primary), var(--cyber-secondary), var(--cyber-accent));
+            opacity: 0.7;
+        }
+
+        /* Border glow animation removed for stability */
+
+        .card:hover {
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: var(--cyber-shadow-strong);
+            border-color: var(--cyber-primary);
+        }
+
+        .card-header {
+            background: linear-gradient(45deg, var(--cyber-primary), var(--cyber-accent));
+            color: var(--cyber-bg);
+            border: none;
+            font-weight: 700;
+            font-family: 'Orbitron', monospace;
+            padding: 20px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn {
+            border-radius: 10px;
+            font-weight: 600;
+            padding: 12px 24px;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, var(--cyber-primary), var(--cyber-accent));
+            color: var(--cyber-bg);
+            border-color: var(--cyber-primary);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--cyber-glow-strong) var(--cyber-primary);
+            border-color: var(--cyber-primary);
+        }
+
+        .btn-success {
+            background: linear-gradient(45deg, var(--cyber-primary), #00cc7a);
+            color: var(--cyber-bg);
+            border-color: var(--cyber-primary);
+        }
+
+        .btn-warning {
+            background: linear-gradient(45deg, var(--cyber-warning), #ff6600);
+            color: var(--cyber-bg);
+            border-color: var(--cyber-warning);
+        }
+
+        .btn-danger {
+            background: linear-gradient(45deg, var(--cyber-danger), var(--cyber-secondary));
+            color: var(--cyber-text);
+            border-color: var(--cyber-danger);
+        }
+
+        .form-control, .form-select {
+            background: var(--cyber-bg-secondary);
+            border: 2px solid var(--cyber-border);
+            border-radius: 10px;
+            color: var(--cyber-text);
+            padding: 15px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .form-control:focus, .form-select:focus {
+            background: var(--cyber-bg-card);
+            border-color: var(--cyber-primary);
+            box-shadow: var(--cyber-glow) var(--cyber-primary);
+            color: var(--cyber-text);
+        }
+
+        .form-control::placeholder {
+            color: var(--cyber-text-muted);
+        }
+
+        .form-label {
+            color: var(--cyber-text);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 14px;
+        }
+
+        .alert {
+            border-radius: 15px;
+            border: 1px solid;
+            padding: 20px;
+            font-weight: 500;
+        }
+
+        .alert-success {
+            background: linear-gradient(135deg, rgba(0, 255, 159, 0.1), rgba(0, 255, 159, 0.05));
+            border-color: var(--cyber-primary);
+            color: var(--cyber-primary);
+        }
+
+        .alert-danger {
+            background: linear-gradient(135deg, rgba(255, 51, 102, 0.1), rgba(255, 51, 102, 0.05));
+            border-color: var(--cyber-danger);
+            color: var(--cyber-danger);
+        }
+
+        .alert-info {
+            background: linear-gradient(135deg, rgba(0, 128, 255, 0.1), rgba(0, 128, 255, 0.05));
+            border-color: var(--cyber-accent);
+            color: var(--cyber-accent);
+        }
+
+        .alert-warning {
+            background: linear-gradient(135deg, rgba(255, 170, 0, 0.1), rgba(255, 170, 0, 0.05));
+            border-color: var(--cyber-warning);
+            color: var(--cyber-warning);
+        }
+
+        .table {
+            background: var(--cyber-bg-card);
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: var(--cyber-shadow);
+            color: var(--cyber-text);
+        }
+
+        .table thead th {
+            background: linear-gradient(45deg, var(--cyber-bg-secondary), var(--cyber-bg-card));
+            color: var(--cyber-primary);
+            border: none;
+            font-weight: 700;
+            padding: 20px 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-family: 'Orbitron', monospace;
+        }
+
+        .table tbody tr {
+            border-bottom: 1px solid var(--cyber-border);
+            transition: all 0.3s ease;
+        }
+
+        .table tbody tr:hover {
+            background: rgba(0, 255, 159, 0.05);
+            box-shadow: inset 0 0 10px rgba(0, 255, 159, 0.1);
+        }
+
+        .table tbody td {
+            padding: 15px;
+            border-top: none;
+        }
+
+        .status-online { 
+            color: var(--cyber-primary);
+            text-shadow: var(--cyber-glow) var(--cyber-primary);
+            font-weight: 700;
+        }
+
+        .status-offline { 
+            color: var(--cyber-text-muted);
+        }
+
+        .status-error { 
+            color: var(--cyber-danger);
+            text-shadow: var(--cyber-glow) var(--cyber-danger);
+            font-weight: 700;
+        }
+
+        .status-blocked { 
+            color: var(--cyber-warning);
+            text-shadow: var(--cyber-glow) var(--cyber-warning);
+            font-weight: 700;
+        }
+
+        .modal-content {
+            background: var(--cyber-bg-card);
+            border: 2px solid var(--cyber-border);
+            border-radius: 20px;
+            box-shadow: var(--cyber-shadow-strong);
+        }
+
+        .modal-header {
+            background: linear-gradient(45deg, var(--cyber-primary), var(--cyber-accent));
+            color: var(--cyber-bg);
+            border: none;
+            border-radius: 18px 18px 0 0;
+            font-family: 'Orbitron', monospace;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .modal-body {
+            color: var(--cyber-text);
+        }
+
+        .border-bottom {
+            border-bottom: 2px solid var(--cyber-border) !important;
+            position: relative;
+        }
+
+        .border-bottom::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--cyber-primary), var(--cyber-secondary), var(--cyber-accent));
+            opacity: 0.7;
+        }
+
+        /* Border pulse animation removed for stability */
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Orbitron', monospace;
+            font-weight: 700;
+            color: var(--cyber-text);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .page-title {
+            background: linear-gradient(45deg, var(--cyber-primary), var(--cyber-accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: none;
+        }
+
+        .stats-card {
+            background: var(--cyber-bg-card);
+            border: 1px solid var(--cyber-border);
+            border-radius: 15px;
+            box-shadow: var(--cyber-shadow);
+            transition: all 0.3s ease;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .stats-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--cyber-primary), var(--cyber-secondary));
+            opacity: 0.7;
+        }
+
+        /* Stats glow animation removed for stability */
+
+        .stats-card:hover {
+            transform: translateY(-8px) scale(1.03);
+            box-shadow: var(--cyber-shadow-strong);
+            border-color: var(--cyber-primary);
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(0, 255, 159, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--cyber-primary);
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { 
+                opacity: 0; 
+                transform: translateY(30px) scale(0.95); 
+            }
+            to { 
+                opacity: 1; 
+                transform: translateY(0) scale(1); 
+            }
+        }
+
+        /* Glitch effect for titles */
+        .glitch {
+            position: relative;
+        }
+
+        .glitch::before,
+        .glitch::after {
+            content: attr(data-text);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .glitch::before {
+            animation: glitch1 0.5s infinite;
+            color: var(--cyber-secondary);
+            z-index: -1;
+        }
+
+        .glitch::after {
+            animation: glitch2 0.5s infinite;
+            color: var(--cyber-accent);
+            z-index: -2;
+        }
+
+        @keyframes glitch1 {
+            0%, 100% { transform: translate(0); }
+            20% { transform: translate(-2px, 2px); }
+            40% { transform: translate(-2px, -2px); }
+            60% { transform: translate(2px, 2px); }
+            80% { transform: translate(2px, -2px); }
+        }
+
+        @keyframes glitch2 {
+            0%, 100% { transform: translate(0); }
+            20% { transform: translate(2px, 2px); }
+            40% { transform: translate(2px, -2px); }
+            60% { transform: translate(-2px, 2px); }
+            80% { transform: translate(-2px, -2px); }
+        }
+
+        /* Scrollbar styling - completely stable */
+        ::-webkit-scrollbar {
+            width: 12px;
+            background: var(--cyber-bg-secondary);
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--cyber-bg-secondary);
+            border-radius: 0;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--cyber-primary);
+            border-radius: 6px;
+            border: none;
+            transition: none !important;
+            animation: none !important;
+            transform: none !important;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--cyber-primary);
+            transition: none !important;
+            animation: none !important;
+            transform: none !important;
+        }
+
+        ::-webkit-scrollbar-thumb:active {
+            background: var(--cyber-primary);
+            transition: none !important;
+            animation: none !important;
+            transform: none !important;
+        }
+
+        ::-webkit-scrollbar-corner {
+            background: var(--cyber-bg-secondary);
+        }
+
+        /* Убираем все возможные анимации для скроллбара */
+        html, body {
+            scroll-behavior: auto !important;
+        }
+
+        * {
+            scroll-behavior: auto !important;
+        }
+
+        /* Badge styling */
+        .badge {
+            font-weight: 600;
+            padding: 8px 12px;
+            border-radius: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border: 1px solid;
+        }
+
+        .bg-success {
+            background: linear-gradient(45deg, var(--cyber-primary), #00cc7a) !important;
+            border-color: var(--cyber-primary) !important;
+            color: var(--cyber-bg) !important;
+        }
+
+        .bg-danger {
+            background: linear-gradient(45deg, var(--cyber-danger), var(--cyber-secondary)) !important;
+            border-color: var(--cyber-danger) !important;
+            color: var(--cyber-text) !important;
+        }
+
+        .bg-warning {
+            background: linear-gradient(45d
+, var(--cyber-warning), #ff6600) !important;
+            border-color: var(--cyber-warning) !important;
+            color: var(--cyber-bg) !important;
+        }
+
+        .bg-secondary {
+            background: var(--cyber-bg-secondary) !important;
+            border-color: var(--cyber-border) !important;
+            color: var(--cyber-text-muted) !important;
+        }
+
+        .bg-primary {
+            background: linear-gradient(45deg, var(--cyber-primary), var(--cyber-accent)) !important;
+            border-color: var(--cyber-primary) !important;
+            color: var(--cyber-bg) !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <nav class="col-md-2 d-md-block sidebar collapse">
+                <div class="position-sticky pt-4">
+                    <div class="text-center mb-4">
+                        <h4 class="text-white fw-bold cyber-glow-text" style="animation: none;">
+                            <i class="fab fa-telegram-plane me-2"></i>
+                            TG SENDER
+                        </h4>
+                    </div>
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link" href="/">
+                                <i class="fas fa-tachometer-alt"></i> Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/accounts">
+                                <i class="fas fa-users"></i> Аккаунты
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/campaigns">
+                                <i class="fas fa-bullhorn"></i> Кампании
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/contacts-campaign">
+                                <i class="fas fa-address-book"></i> Рассылка по контактам
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/proxies">
+                                <i class="fas fa-shield-alt"></i> Прокси
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/settings">
+                                <i class="fas fa-cogs"></i>
+                                Настройки
+                            </a>
+                        </li>
+                        {% if current_user and current_user.is_admin %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="/admin">
+                                <i class="fas fa-crown"></i>
+                                Админ-панель
+                            </a>
+                        </li>
+                        {% endif %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="/logout">
+                                <i class="fas fa-sign-out-alt"></i>
+                                Выход
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+
+            <!-- Main content -->
+            <main class="col-md-10 ms-sm-auto px-md-4 py-4">
+                <div class="fade-in">
+                    {% block content %}{% endblock %}
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        // Добавляем киберпанк эффекты и интерактивность
+        document.addEventListener('DOMContentLoaded', function() {
+            // Активная ссылка в сайдбаре
+            const currentPath = window.location.pathname;
+            const sidebarLinks = document.querySelectorAll('.sidebar .nav-link');
+
+            sidebarLinks.forEach(link => {
+                if (link.getAttribute('href') === currentPath) {
+                    link.classList.add('active');
+                }
+            });
+
+            // Анимация для кнопок с киберпанк эффектом
+            const buttons = document.querySelectorAll('.btn');
+            buttons.forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    const ripple = document.createElement('span');
+                    const rect = this.getBoundingClientRect();
+                    const size = Math.max(rect.width, rect.height);
+                    const x = e.clientX - rect.left - size / 2;
+                    const y = e.clientY - rect.top - size / 2;
+
+                    ripple.style.width = ripple.style.height = size + 'px';
+                    ripple.style.left = x + 'px';
+                    ripple.style.top = y + 'px';
+                    ripple.classList.add('cyber-ripple');
+
+                    this.appendChild(ripple);
+
+                    setTimeout(() => {
+                        ripple.remove();
+                    }, 800);
+                });
+            });
+
+            // Добавляем глитч эффект к заголовкам при наведении
+            const titles = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+            titles.forEach(title => {
+                title.addEventListener('mouseenter', function() {
+                    this.style.animation = 'glitch1 0.3s ease-in-out';
+                });
+                title.addEventListener('mouseleave', function() {
+                    this.style.animation = '';
+                });
+            });
+
+            // Случайные глитч эффекты - отключены для стабильности
+
+            // Плавная прокрутка
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const target = document.querySelector(this.getAttribute('href'));
+                    if (target) {
+                        target.scrollIntoView({
+                            behavior: 'smooth'
+                        });
+                    }
+                });
+            });
+
+            // Параллакс эффект для карточек - убран для стабильности скролла
+        });
+    </script>
+    <style>
+        .cyber-ripple {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(0, 255, 159, 0.8) 0%, rgba(0, 255, 159, 0.3) 50%, transparent 100%);
+            transform: scale(0);
+            animation: cyber-ripple-animation 0.8s ease-out;
+            pointer-events: none;
+        }
+
+        @keyframes cyber-ripple-animation {
+            0% {
+                transform: scale(0);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+
+        /* Дополнительные киберпанк эффекты */
+        .cyber-glow-text {
+            text-shadow: 
+                0 0 5px var(--cyber-primary),
+                0 0 10px var(--cyber-primary),
+                0 0 15px var(--cyber-primary);
+        }
+
+        .cyber-border {
+            border: 1px solid var(--cyber-primary);
+            box-shadow: 
+                inset 0 0 10px rgba(0, 255, 159, 0.1),
+                0 0 10px rgba(0, 255, 159, 0.1);
+        }
+    </style>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

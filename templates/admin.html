@@ -1,0 +1,229 @@
+
+{% extends "base.html" %}
+
+{% block title %}Панель администратора{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2 cyber-glow-text">
+        <i class="fas fa-crown me-2"></i>
+        ПАНЕЛЬ АДМИНИСТРАТОРА
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+            <i class="fas fa-user-plus"></i> Создать пользователя
+        </button>
+    </div>
+</div>
+
+<!-- Статистика пользователей -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card stats-card cyber-border">
+            <div class="card-body text-center">
+                <i class="fas fa-users cyber-glow-text" style="font-size: 2.5rem; color: var(--cyber-primary);"></i>
+                <h6 class="card-title mt-3" style="color: var(--cyber-text-muted);">ВСЕГО ПОЛЬЗОВАТЕЛЕЙ</h6>
+                <h2 class="cyber-glow-text" style="color: var(--cyber-primary);">{{ users|length }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card cyber-border">
+            <div class="card-body text-center">
+                <i class="fas fa-user-shield cyber-glow-text" style="font-size: 2.5rem; color: var(--cyber-secondary);"></i>
+                <h6 class="card-title mt-3" style="color: var(--cyber-text-muted);">АДМИНИСТРАТОРОВ</h6>
+                <h2 class="cyber-glow-text" style="color: var(--cyber-secondary);">{{ users|selectattr("is_admin")|list|length }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card cyber-border">
+            <div class="card-body text-center">
+                <i class="fas fa-user-check cyber-glow-text" style="font-size: 2.5rem; color: var(--cyber-accent);"></i>
+                <h6 class="card-title mt-3" style="color: var(--cyber-text-muted);">АКТИВНЫХ</h6>
+                <h2 class="cyber-glow-text" style="color: var(--cyber-accent);">{{ users|selectattr("is_active")|list|length }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card cyber-border">
+            <div class="card-body text-center">
+                <i class="fas fa-user-times cyber-glow-text" style="font-size: 2.5rem; color: var(--cyber-warning);"></i>
+                <h6 class="card-title mt-3" style="color: var(--cyber-text-muted);">ЗАБЛОКИРОВАННЫХ</h6>
+                <h2 class="cyber-glow-text" style="color: var(--cyber-warning);">{{ users|rejectattr("is_active")|list|length }}</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Таблица пользователей -->
+<div class="card cyber-border">
+    <div class="card-header">
+        <i class="fas fa-list me-2"></i>УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-dark table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Логин</th>
+                        <th>Роль</th>
+                        <th>Статус</th>
+                        <th>Дата создания</th>
+                        <th>Последний вход</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>{{ user.id }}</td>
+                        <td>
+                            <strong>{{ user.username }}</strong>
+                            {% if user.id == current_user.id %}
+                            <span class="badge bg-info ms-2">Вы</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.is_admin %}
+                            <span class="badge bg-warning">
+                                <i class="fas fa-crown"></i> Администратор
+                            </span>
+                            {% else %}
+                            <span class="badge bg-secondary">
+                                <i class="fas fa-user"></i> Пользователь
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.is_active %}
+                            <span class="badge bg-success">
+                                <i class="fas fa-check"></i> Активен
+                            </span>
+                            {% else %}
+                            <span class="badge bg-danger">
+                                <i class="fas fa-ban"></i> Заблокирован
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td>{{ user.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                        <td>{{ user.last_login.strftime('%d.%m.%Y %H:%M') if user.last_login else 'Никогда' }}</td>
+                        <td>
+                            {% if user.id != current_user.id %}
+                            <button class="btn btn-sm btn-{% if user.is_active %}warning{% else %}success{% endif %}" 
+                                    onclick="toggleUser({{ user.id }})">
+                                {% if user.is_active %}
+                                <i class="fas fa-ban"></i> Заблокировать
+                                {% else %}
+                                <i class="fas fa-check"></i> Активировать
+                                {% endif %}
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteUser({{ user.id }})">
+                                <i class="fas fa-trash"></i> Удалить
+                            </button>
+                            {% else %}
+                            <span class="text-muted">Текущий пользователь</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно создания пользователя -->
+<div class="modal fade" id="addUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-user-plus"></i> Создать пользователя
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addUserForm">
+                    <div class="mb-3">
+                        <label class="form-label">Логин</label>
+                        <input type="text" class="form-control" name="username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Пароль</label>
+                        <input type="password" class="form-control" name="password" required>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_admin" id="isAdmin">
+                            <label class="form-check-label" for="isAdmin">
+                                Администратор
+                            </label>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="createUser()">Создать</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function createUser() {
+    const form = document.getElementById('addUserForm');
+    const formData = new FormData(form);
+    
+    fetch('/admin/users', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert('Ошибка: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Ошибка: ' + error);
+    });
+}
+
+function toggleUser(userId) {
+    if (confirm('Изменить статус пользователя?')) {
+        fetch(`/admin/users/${userId}/toggle`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert('Ошибка: ' + data.message);
+            }
+        });
+    }
+}
+
+function deleteUser(userId) {
+    if (confirm('Вы уверены, что хотите удалить пользователя? Все его данные будут удалены безвозвратно!')) {
+        fetch(`/admin/users/${userId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert('Ошибка: ' + data.message);
+            }
+        });
+    }
+}
+</script>
+{% endblock %}

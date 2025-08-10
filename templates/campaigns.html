@@ -1,0 +1,100 @@
+
+{% extends "base.html" %}
+
+{% block title %}Кампании - Telegram Mass Sender{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Кампании рассылки</h1>
+    <a href="/campaigns/new" class="btn btn-primary">
+        <i class="fas fa-plus"></i> Новая кампания
+    </a>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Название</th>
+                <th>Статус</th>
+                <th>Создана</th>
+                <th>Задержка (сек)</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for campaign in campaigns %}
+            <tr>
+                <td>{{ campaign.id }}</td>
+                <td>{{ campaign.name }}</td>
+                <td>
+                    <span class="badge bg-{% if campaign.status == 'running' %}primary{% elif campaign.status == 'completed' %}success{% elif campaign.status == 'paused' %}warning{% else %}secondary{% endif %}">
+                        {{ campaign.status }}
+                    </span>
+                </td>
+                <td>{{ campaign.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                <td>{{ campaign.delay_seconds }}</td>
+                <td>
+                    {% if campaign.status == 'draft' or campaign.status == 'paused' %}
+                    <button class="btn btn-sm btn-success" onclick="startCampaign({{ campaign.id }})">
+                        Запустить
+                    </button>
+                    {% elif campaign.status == 'running' %}
+                    <button class="btn btn-sm btn-warning" onclick="stopCampaign({{ campaign.id }})">
+                        Остановить
+                    </button>
+                    {% endif %}
+                    <button class="btn btn-sm btn-info" onclick="viewCampaign({{ campaign.id }})">
+                        Просмотр
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function startCampaign(campaignId) {
+    if (confirm('Запустить кампанию рассылки?')) {
+        fetch(`/campaigns/${campaignId}/start`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert('Кампания запущена!');
+                location.reload();
+            } else {
+                alert('Ошибка: ' + data.message);
+            }
+        });
+    }
+}
+
+function stopCampaign(campaignId) {
+    if (confirm('Остановить кампанию рассылки?')) {
+        fetch(`/campaigns/${campaignId}/stop`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert('Кампания остановлена!');
+                location.reload();
+            } else {
+                alert('Ошибка: ' + data.message);
+            }
+        });
+    }
+}
+
+function viewCampaign(campaignId) {
+    // Здесь можно добавить просмотр деталей кампании
+    alert('Функция просмотра кампании будет добавлена позже');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+
+{% block title %}Аккаунты - Telegram Mass Sender{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Управление аккаунтами</h1>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAccountModal">
+        <i class="fas fa-plus"></i> Добавить аккаунт
+    </button>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Телефон</th>
+                <th>Имя</th>
+                <th>Статус</th>
+                <th>Прокси</th>
+                <th>Сообщений сегодня</th>
+                <th>Последняя активность</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for account in accounts %}
+            <tr>
+                <td>{{ account.id }}</td>
+                <td>{{ account.phone }}</td>
+                <td>{{ account.name or '-' }}</td>
+                <td>
+                    <span class="badge bg-{% if account.status == 'online' %}success{% elif account.status == 'offline' %}secondary{% elif account.status == 'error' %}danger{% else %}warning{% endif %}">
+                        {{ account.status }}
+                    </span>
+                </td>
+                <td>{{ account.proxy or '-' }}</td>
+                <td>{{ account.messages_sent_today }}</td>
+                <td>{{ account.last_activity.strftime('%d.%m.%Y %H:%M') if account.last_activity else '-' }}</td>
+                <td>
+                    <button class="btn btn-sm btn-{% if account.is_active %}warning{% else %}success{% endif %}"
+                            onclick="toggleAccount({{ account.id }})">
+                        {% if account.is_active %}Отключить{% else %}Включить{% endif %}
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteAccount({{ account.id }})">
+                        Удалить
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Модальное окно добавления аккаунта -->
+<div class="modal fade" id="addAccountModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить аккаунт</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addAccountForm">
+                    <div class="mb-3">
+                        <label class="form-label">Номер телефона</label>
+                        <input type="text" class="form-control" name="phone" placeholder="+7xxxxxxxxxx" required>
+                    </div>
+                    <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="useAutoProxy" name="use_auto_proxy" value="true">
+                                <label class="form-check-label" for="useAutoProxy">
+                                    Использовать автоматический прокси из загруженного списка
+                                </label>
+                            </div>
+                            <div class="form-text">
+                                <a href="/proxies" target="_blank">Управление прокси</a> -
+                                автоматически назначит прокси из загруженного списка
+                            </div>
+                        </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="addAccount()">Добавить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно подтверждения кода -->
+<div class="modal fade" id="codeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Введите код подтверждения</h5>
+            </div>
+            <div class="modal-body">
+                <form id="codeForm">
+                    <input type="hidden" name="phone">
+                    <input type="hidden" name="phone_code_hash">
+                    <input type="hidden" name="session_name">
+                    <input type="hidden" name="proxy">
+                    <div class="mb-3">
+                        <label class="form-label">Код из Telegram</label>
+                        <input type="text" class="form-control" name="code" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" onclick="verifyCode()">Подтвердить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно ввода пароля 2FA -->
+<div class="modal fade" id="passwordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Двухфакторная аутентификация</h5>
+            </div>
+            <div class="modal-body">
+                <form id="passwordForm">
+                    <input type="hidden" name="phone">
+                    <input type="hidden" name="session_name">
+                    <input type="hidden" name="proxy">
+                    <div class="mb-3">
+                        <label class="form-label">Пароль 2FA</label>
+                        <input type="password" class="form-control" name="password" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" onclick="verifyPassword()">Подтвердить</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function addAccount() {
+    const form = document.getElementById('addAccountForm');
+    const formData = new FormData(form);
+
+    // Если чекбокс "Использовать автоматический прокси" не отмечен, удаляем его из formData
+    if (!formData.get('use_auto_proxy')) {
+        formData.delete('use_auto_proxy');
+    }
+
+
+    fetch('/accounts/add', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'code_required') {
+            // Заполняем скрытые поля для подтверждения кода
+            const codeForm = document.getElementById('codeForm');
+            codeForm.phone.value = formData.get('phone');
+            codeForm.phone_code_hash.value = data.phone_code_hash;
+            codeForm.session_name.value = data.session_name;
+            // Передаем значение use_auto_proxy, если оно есть
+            codeForm.proxy.value = formData.get('use_auto_proxy') ? 'auto' : formData.get('proxy') || '';
+
+
+            // Показываем модальное окно ввода кода
+            new bootstrap.Modal(document.getElementById('codeModal')).show();
+            bootstrap.Modal.getInstance(document.getElementById('addAccountModal')).hide();
+        } else if (data.status === 'success') {
+            alert('Аккаунт успешно добавлен!');
+            location.reload();
+        } else {
+            alert('Ошибка: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Ошибка: ' + error);
+    });
+}
+
+function verifyCode() {
+    const form = document.getElementById('codeForm');
+    const formData = new FormData(form);
+
+    fetch('/accounts/verify_code', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'password_required') {
+            // Заполняем скрытые поля для ввода пароля
+            const passwordForm = document.getElementById('passwordForm');
+            passwordForm.phone.value = formData.get('phone');
+            passwordForm.session_name.value = data.session_name;
+            passwordForm.proxy.value = formData.get('proxy') || ''; // Сохраняем proxy, если оно было указано вручную
+
+            // Показываем модальное окно ввода пароля
+            new bootstrap.Modal(document.getElementById('passwordModal')).show();
+            bootstrap.Modal.getInstance(document.getElementById('codeModal')).hide();
+        } else if (data.status === 'success') {
+            alert('Аккаунт успешно добавлен!');
+            location.reload();
+        } else {
+            alert('Ошибка: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Ошибка: ' + error);
+    });
+}
+
+function verifyPassword() {
+    const form = document.getElementById('passwordForm');
+    const formData = new FormData(form);
+
+    fetch('/accounts/verify_password', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('Аккаунт успешно добавлен!');
+            location.reload();
+        } else {
+            alert('Ошибка: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Ошибка: ' + error);
+    });
+}
+
+function toggleAccount(accountId) {
+    fetch(`/accounts/${accountId}/toggle`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert('Ошибка: ' + data.message);
+        }
+    });
+}
+
+function deleteAccount(accountId) {
+    if (confirm('Вы уверены, что хотите удалить этот аккаунт?')) {
+        fetch(`/accounts/${accountId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert('Ошибка: ' + data.message);
+            }
+        });
+    }
+}
+</script>
+{% endblock %}

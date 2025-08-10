@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Telegram Mass Sender{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2 cyber-glow-text">CYBER DASHBOARD</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary">Share</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary">Export</button>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle">
+            <span data-feather="calendar"></span>
+            This week
+        </button>
+    </div>
+</div>
+
+<!-- Статистика -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card stats-card cyber-border">
+            <div class="card-body text-center">
+                <i class="fas fa-users cyber-glow-text" style="font-size: 2.5rem; color: var(--cyber-primary);"></i>
+                <h6 class="card-title mt-3" style="color: var(--cyber-text-muted);">ВСЕГО АККАУНТОВ</h6>
+                <h2 class="cyber-glow-text" style="color: var(--cyber-primary);">{{ stats.total_accounts }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card cyber-border">
+            <div class="card-body text-center">
+                <i class="fas fa-power-off cyber-glow-text" style="font-size: 2.5rem; color: var(--cyber-primary);"></i>
+                <h6 class="card-title mt-3" style="color: var(--cyber-text-muted);">АКТИВНЫХ</h6>
+                <h2 class="cyber-glow-text" style="color: var(--cyber-primary);">{{ stats.active_accounts }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card cyber-border">
+            <div class="card-body text-center">
+                <i class="fas fa-bullhorn cyber-glow-text" style="font-size: 2.5rem; color: var(--cyber-secondary);"></i>
+                <h6 class="card-title mt-3" style="color: var(--cyber-text-muted);">КАМПАНИЙ</h6>
+                <h2 class="cyber-glow-text" style="color: var(--cyber-secondary);">{{ stats.total_campaigns }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card cyber-border">
+            <div class="card-body text-center">
+                <i class="fas fa-paper-plane cyber-glow-text" style="font-size: 2.5rem; color: var(--cyber-accent);"></i>
+                <h6 class="card-title mt-3" style="color: var(--cyber-text-muted);">СООБЩЕНИЙ СЕГОДНЯ</h6>
+                <h2 class="cyber-glow-text" style="color: var(--cyber-accent);">{{ stats.messages_sent_today }}</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card stats-card cyber-border">
+            <div class="card-body text-center">
+                <i class="fas fa-shield-alt cyber-glow-text" style="font-size: 2.5rem; color: var(--cyber-warning);"></i>
+                <h6 class="card-title mt-3" style="color: var(--cyber-text-muted);">ПРОКСИ</h6>
+                <h2 id="proxies-count" class="cyber-glow-text" style="color: var(--cyber-warning);">-</h2>
+                <small id="proxies-used" style="color: var(--cyber-text-muted);">Используется: -</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stats-card cyber-border">
+            <div class="card-body text-center">
+                <i class="fas fa-clock cyber-glow-text" style="font-size: 2.5rem; color: var(--cyber-primary);"></i>
+                <h6 class="card-title mt-3" style="color: var(--cyber-text-muted);">ВРЕМЯ РАБОТЫ</h6>
+                <h2 id="uptime" class="cyber-glow-text" style="color: var(--cyber-primary);">00:00:00</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stats-card cyber-border">
+            <div class="card-body text-center">
+                <i class="fas fa-server cyber-glow-text" style="font-size: 2.5rem; color: var(--cyber-accent);"></i>
+                <h6 class="card-title mt-3" style="color: var(--cyber-text-muted);">СТАТУС СИСТЕМЫ</h6>
+                <h2 class="cyber-glow-text" style="color: var(--cyber-primary);">ONLINE</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Аккаунты -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card cyber-border">
+            <div class="card-header">
+                <i class="fas fa-users me-2"></i>АКТИВНЫЕ АККАУНТЫ
+            </div>
+            <div class="card-body">
+                {% for account in accounts[:5] %}
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <strong style="color: white;">{{ account.name or account.phone }}</strong><br>
+                        <small style="color: white;">{{ account.phone }}</small>
+                    </div>
+                    <span class="badge bg-{% if account.status == 'online' %}success{% elif account.status == 'offline' %}secondary{% elif account.status == 'error' %}danger{% else %}warning{% endif %}">
+                        {{ account.status }}
+                    </span>
+                </div>
+                {% endfor %}
+                <a href="/accounts" class="btn btn-sm btn-outline-primary">Все аккаунты</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Последние кампании -->
+    <div class="col-md-6">
+        <div class="card cyber-border">
+            <div class="card-header">
+                <i class="fas fa-bullhorn me-2"></i>ПОСЛЕДНИЕ КАМПАНИИ
+            </div>
+            <div class="card-body">
+                {% for campaign in campaigns[:5] %}
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <strong style="color: white;">{{ campaign.name }}</strong><br>
+                        <small style="color: white;">{{ campaign.created_at.strftime('%d.%m.%Y %H:%M') }}</small>
+                    </div>
+                    <span class="badge bg-{% if campaign.status == 'running' %}primary{% elif campaign.status == 'completed' %}success{% elif campaign.status == 'paused' %}warning{% else %}secondary{% endif %}">
+                        {{ campaign.status }}
+                    </span>
+                </div>
+                {% endfor %}
+                <a href="/campaigns" class="btn btn-sm btn-outline-primary">Все кампании</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card cyber-border">
+            <div class="card-header">
+                <i class="fas fa-chart-line me-2"></i>СТАТИСТИКА В РЕАЛЬНОМ ВРЕМЕНИ
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-around text-center">
+                    <div>
+                        <i class="fas fa-paper-plane cyber-glow-text mb-2" style="font-size: 2rem; color: var(--cyber-primary);"></i>
+                        <h6 style="color: var(--cyber-text-muted);">СООБЩЕНИЙ СЕГОДНЯ</h6>
+                        <h2 id="messages-count" class="cyber-glow-text" style="color: var(--cyber-primary);">-</h2>
+                    </div>
+                    <div>
+                        <i class="fas fa-users cyber-glow-text mb-2" style="font-size: 2rem; color: var(--cyber-primary);"></i>
+                        <h6 style="color: var(--cyber-text-muted);">АКТИВНЫХ АККАУНТОВ</h6>
+                        <h2 class="cyber-glow-text" style="color: var(--cyber-primary);">-</h2>
+                    </div>
+                    <div>
+                        <i class="fas fa-check-circle cyber-glow-text mb-2" style="font-size: 2rem; color: var(--cyber-accent);"></i>
+                        <h6 style="color: var(--cyber-text-muted);">ЗАВЕРШЕННЫХ КАМПАНИЙ</h6>
+                        <h2 class="cyber-glow-text" style="color: var(--cyber-accent);">-</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Убираем глитч эффекты для заголовков для стабильности
+            // Оставляем только базовые эффекты наведения
+
+        fetch('/api/stats')
+            .then(response => response.json())
+            .then(data => {
+                // Безопасное обновление элементов с проверкой существования
+                try {
+                    const messagesCount = document.getElementById('messages-count');
+                    if (messagesCount && data && typeof data.messages_today !== 'undefined') {
+                        messagesCount.textContent = data.messages_today || '0';
+                    }
+                    
+                    const proxiesCount = document.getElementById('proxies-count');
+                    if (proxiesCount && data && data.proxies && typeof data.proxies.total !== 'undefined') {
+                        proxiesCount.textContent = data.proxies.total || '0';
+                    }
+                    
+                    const proxiesUsed = document.getElementById('proxies-used');
+                    if (proxiesUsed && data && data.proxies && typeof data.proxies.used !== 'undefined') {
+                        proxiesUsed.textContent = `Используется: ${data.proxies.used || '0'}`;
+                    }
+                } catch (updateError) {
+                    console.log('Error updating stats elements:', updateError);
+                }
+            })
+            .catch(error => console.log('Stats fetch error:', error));
+    });
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Обновляем время каждую секунду
+function updateTime() {
+    const currentTimeElement = document.getElementById('currentTime');
+    const uptimeElement = document.getElementById('uptime');
+    
+    if (currentTimeElement) {
+        const now = new Date();
+        const timeString = now.toLocaleString('ru-RU', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        });
+        currentTimeElement.textContent = timeString;
+    }
+    
+    // Обновляем uptime если элемент существует
+    if (uptimeElement) {
+        const startTime = new Date(Date.now() - performance.now());
+        const uptime = new Date(Date.now() - startTime.getTime());
+        const uptimeString = uptime.toISOString().substr(11, 8);
+        uptimeElement.textContent = uptimeString;
+    }
+}
+
+// Запускаем обновление времени
+updateTime();
+setInterval(updateTime, 1000);
+
+// Анимация счетчиков при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    const counters = document.querySelectorAll('.stats-card h2');
+
+    counters.forEach(counter => {
+        const targetText = counter.textContent;
+        if (targetText && !isNaN(targetText)) {
+            const target = parseInt(targetText);
+            if (target > 0) {
+                let current = 0;
+                const increment = Math.max(1, target / 50);
+
+                const timer = setInterval(() => {
+                    current += increment;
+                    if (current >= target) {
+                        counter.textContent = target;
+                        clearInterval(timer);
+                    } else {
+                        counter.textContent = Math.floor(current);
+                    }
+                }, 20);
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

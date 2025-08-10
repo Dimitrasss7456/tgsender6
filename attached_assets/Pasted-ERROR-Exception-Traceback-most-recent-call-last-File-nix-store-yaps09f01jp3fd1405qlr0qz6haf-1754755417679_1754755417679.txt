@@ -1,0 +1,61 @@
+ERROR: Exception:
+Traceback (most recent call last):
+  File "/nix/store/yaps09f01jp3fd1405qlr0qz6haf6z03-python3.11-pip-25.0.1/lib/python3.11/site-packages/pip/_vendor/packaging/requirements.py", line 36, in __init__
+    parsed = _parse_requirement(requirement_string)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/yaps09f01jp3fd1405qlr0qz6haf6z03-python3.11-pip-25.0.1/lib/python3.11/site-packages/pip/_vendor/packaging/_parser.py", line 62, in parse_requirement
+    return _parse_requirement(Tokenizer(source, rules=DEFAULT_RULES))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/yaps09f01jp3fd1405qlr0qz6haf6z03-python3.11-pip-25.0.1/lib/python3.11/site-packages/pip/_vendor/packaging/_parser.py", line 77, in _parse_requirement
+    extras = _parse_extras(tokenizer)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/yaps09f01jp3fd1405qlr0qz6haf6z03-python3.11-pip-25.0.1/lib/python3.11/site-packages/pip/_vendor/packaging/_parser.py", line 164, in _parse_extras
+    with tokenizer.enclosing_tokens(
+  File "/nix/store/blmbwskhrdv9y3vibxbwhw7602aikfww-python3-3.11.13/lib/python3.11/contextlib.py", line 144, in __exit__
+    next(self.gen)
+  File "/nix/store/yaps09f01jp3fd1405qlr0qz6haf6z03-python3.11-pip-25.0.1/lib/python3.11/site-packages/pip/_vendor/packaging/_tokenizer.py", line 189, in enclosing_tokens
+    self.raise_syntax_error(
+  File "/nix/store/yaps09f01jp3fd1405qlr0qz6haf6z03-python3.11-pip-25.0.1/lib/python3.11/site-packages/pip/_vendor/packaging/_tokenizer.py", line 167, in raise_syntax_error
+    raise ParserSyntaxError(
+pip._vendor.packaging._tokenizer.ParserSyntaxError: Expected matching RIGHT_BRACKET for LEFT_BRACKET, after extras
+    placeholder["your name <you@example.com>"]
+               ~^
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/nix/store/yaps09f01jp3fd1405qlr0qz6haf6z03-python3.11-pip-25.0.1/lib/python3.11/site-packages/pip/_internal/cli/base_command.py", line 106, in _run_wrapper
+    status = _inner_run()
+             ^^^^^^^^^^^^
+  File "/nix/store/yaps09f01jp3fd1405qlr0qz6haf6z03-python3.11-pip-25.0.1/lib/python3.11/site-packages/pip/_internal/cli/base_command.py", line 97, in _inner_run
+    return self.run(options, args)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/yaps09f01jp3fd1405qlr0qz6haf6z03-python3.11-pip-25.0.1/lib/python3.11/site-packages/pip/_internal/cli/req_command.py", line 67, in wrapper
+    return func(self, options, args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/yaps09f01jp3fd1405qlr0qz6haf6z03-python3.11-pip-25.0.1/lib/python3.11/site-packages/pip/_internal/commands/install.py", line 350, in run
+    reqs = self.get_requirements(args, options, finder, session)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/yaps09f01jp3fd1405qlr0qz6haf6z03-python3.11-pip-25.0.1/lib/python3.11/site-packages/pip/_internal/cli/req_command.py", line 258, in get_requirements
+    req_to_add = install_req_from_parsed_requirement(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/yaps09f01jp3fd1405qlr0qz6haf6z03-python3.11-pip-25.0.1/lib/python3.11/site-packages/pip/_internal/req/constructors.py", line 480, in install_req_from_parsed_requirement
+    req = install_req_from_line(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/yaps09f01jp3fd1405qlr0qz6haf6z03-python3.11-pip-25.0.1/lib/python3.11/site-packages/pip/_internal/req/constructors.py", line 405, in install_req_from_line
+    parts = parse_req_from_line(name, line_source)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/yaps09f01jp3fd1405qlr0qz6haf6z03-python3.11-pip-25.0.1/lib/python3.11/site-packages/pip/_internal/req/constructors.py", line 353, in parse_req_from_line
+    extras = convert_extras(extras_as_string)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/yaps09f01jp3fd1405qlr0qz6haf6z03-python3.11-pip-25.0.1/lib/python3.11/site-packages/pip/_internal/req/constructors.py", line 59, in convert_extras
+    return get_requirement("placeholder" + extras.lower()).extras
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/yaps09f01jp3fd1405qlr0qz6haf6z03-python3.11-pip-25.0.1/lib/python3.11/site-packages/pip/_internal/utils/packaging.py", line 46, in get_requirement
+    return Requirement(req_string)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/yaps09f01jp3fd1405qlr0qz6haf6z03-python3.11-pip-25.0.1/lib/python3.11/site-packages/pip/_vendor/packaging/requirements.py", line 38, in __init__
+    raise InvalidRequirement(str(e)) from e
+pip._vendor.packaging.requirements.InvalidRequirement: Expected matching RIGHT_BRACKET for LEFT_BRACKET, after extras
+    placeholder["your name <you@example.com>"]
+               ~^

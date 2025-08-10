@@ -1,0 +1,53 @@
+
+{% extends "base.html" %}
+
+{% block title %}Логи - Telegram Mass Sender{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Логи отправки</h1>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-sm">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Кампания</th>
+                <th>Аккаунт</th>
+                <th>Получатель</th>
+                <th>Тип</th>
+                <th>Статус</th>
+                <th>Время</th>
+                <th>Ошибка</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td>{{ log.id }}</td>
+                <td>{{ log.campaign_id }}</td>
+                <td>{{ log.account_id }}</td>
+                <td>{{ log.recipient }}</td>
+                <td>
+                    <span class="badge bg-secondary">{{ log.recipient_type }}</span>
+                </td>
+                <td>
+                    <span class="badge bg-{% if log.status == 'sent' %}success{% elif log.status == 'failed' %}danger{% else %}warning{% endif %}">
+                        {{ log.status }}
+                    </span>
+                </td>
+                <td>{{ log.sent_at.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+                <td>
+                    {% if log.error_message %}
+                    <small class="text-danger">{{ log.error_message[:50] }}{% if log.error_message|length > 50 %}...{% endif %}</small>
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

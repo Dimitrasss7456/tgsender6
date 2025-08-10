@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+
+{% block title %}Рассылка по контактам - Telegram Mass Sender{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Рассылка по контактам</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-address-book"></i> Создать рассылку по контактам</h5>
+            </div>
+            <div class="card-body">
+                <form id="contactsCampaignForm">
+                    <div class="mb-3">
+                        <label for="accountSelect" class="form-label">Выберите аккаунт</label>
+                        <select class="form-select" id="accountSelect" required>
+                            <option value="">Загрузка аккаунтов...</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="message" class="form-label">Сообщение для рассылки</label>
+                        <textarea class="form-control" id="message" rows="4" required
+                                  placeholder="Введите текст сообщения для отправки всем контактам"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="fileUpload" class="form-label">Прикрепить файл (необязательно)</label>
+                        <input type="file" class="form-control" id="fileUpload" accept="*/*">
+                        <div class="form-text">
+                            Поддерживаются любые файлы включая APK. Максимальный размер: 50 МБ
+                        </div>
+                        <div id="fileInfo" class="mt-2 text-muted" style="display: none;"></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="delaySeconds" class="form-label">Задержка между сообщениями (секунды)</label>
+                        <input type="number" class="form-control" id="delaySeconds" value="5" min="1" max="3600" required>
+                        <small class="form-text text-muted">Рекомендуется 3-10 секунд для избежания блокировок</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="startInMinutes" class="form-label">Запустить через (минут)</label>
+                        <input type="number" class="form-control" id="startInMinutes" min="0" max="1440" 
+                               placeholder="Оставьте пустым для немедленного запуска">
+                        <div class="form-text">
+                            Необязательно. Если указано, рассылка запустится с задержкой
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary" id="submitBtn">
+                            <i class="fas fa-paper-plane"></i> Запустить рассылку
+                        </button>
+                    </div>
+                </form>
+
+                <div id="result" class="mt-3" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle"></i> Информация</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <h6><i class="fas fa-lightbulb"></i> Как это работает:</h6>
+                    <ul class="mb-0">
+                        <li>Выберите аккаунт для рассылки</li>
+                        <li>Напишите текст сообщения</li>
+                        <li>При необходимости прикрепите файл</li>
+                        <li>Установите задержку между отправками</li>
+                        <li>Система автоматически получит все контакты выбранного аккаунта</li>
+                        <li>Рассылка будет выполнена по всем контактам из адресной книги</li>
+                    </ul>
+                </div>
+
+                <div class="alert alert-warning">
+                    <h6><i class="fas fa-exclamation-triangle"></i> Важно:</h6>
+                    <ul class="mb-0">
+                        <li>APK файлы отправляются без ограничений</li>
+                        <li>Изображения и видео оптимизируются автоматически</li>
+                        <li>Максимальный размер файла: 50 МБ</li>
+                        <li>Используйте разумные задержки для избежания блокировок</li>
+                        <li>Не отправляйте спам - это может привести к блокировке аккаунта</li>
+                    </ul>
+                </div>
+
+                <div id="campaignStatus" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const accountSelect = document.getElementById('accountSelect');
+    const form = document.getElementById('contactsCampaignForm');
+    const resultDiv = document.getElementById('result');
+    const submitBtn = document.getElementById('submitBtn');
+    const fileUpload = document.getElementById('fileUpload');
+    const fileInfo = document.getElementById('fileInfo');
+    let uploadedFilePath = null;
+
+    // Загружаем список аккаунтов
+    loadAccounts();
+
+    // Обработчик загрузки файла
+    fileUpload.addEventListener('change', async function(e) {
+        const file = e.target.files[0];
+        if (!file) {
+            fileInfo.style.display = 'none';
+            uploadedFilePath = null;
+            return;
+        }
+
+        // Проверяем размер файла
+        if (file.size > 50 * 1024 * 1024) {
+            showResult('error', 'Файл слишком большой. Максимальный размер: 50 МБ');
+            fileUpload.value = '';
+            return;
+        }
+
+        // Показываем информацию о файле
+        const fileSize = (file.size / (1024 * 1024)).toFixed(2);
+        fileInfo.innerHTML = `
+            <i class="fas fa-file"></i> ${file.name} (${fileSize} МБ)
+            <span class="text-primary">Загрузка...</span>
+        `;
+        fileInfo.style.display = 'block';
+
+        // Загружаем файл на сервер
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch('/api/upload-file', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                uploadedFilePath = result.path;
+                fileInfo.innerHTML = `
+                    <i class="fas fa-check-circle text-success"></i> 
+                    ${file.name} (${fileSize} МБ) - Загружен успешно
+                `;
+            } else {
+                throw new Error(result.message || 'Ошибка загрузки файла');
+            }
+        } catch (error) {
+            showResult('error', `Ошибка загрузки файла: ${error.message}`);
+            fileUpload.value = '';
+            fileInfo.style.display = 'none';
+            uploadedFilePath = null;
+        }
+    });
+
+    // Обработчик отправки формы
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const accountId = accountSelect.value;
+        const message = document.getElementById('message').value;
+        const delaySeconds = parseInt(document.getElementById('delaySeconds').value);
+        const startInMinutes = document.getElementById('startInMinutes').value;
+
+        if (!accountId) {
+            showResult('error', 'Выберите аккаунт');
+            return;
+        }
+
+        if (!message.trim()) {
+            showResult('error', 'Введите сообщение');
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Запуск...';
+
+        try {
+            const formData = new FormData();
+            formData.append('account_id', accountId);
+            formData.append('message', message);
+            formData.append('delay_seconds', delaySeconds);
+            if (startInMinutes) {
+                formData.append('start_in_minutes', startInMinutes);
+            }
+            if (uploadedFilePath) {
+                formData.append('attachment_path', uploadedFilePath);
+            }
+
+            const response = await fetch('/api/contacts-campaign/start', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                showResult('success', result.message);
+                form.reset();
+                uploadedFilePath = null;
+                fileInfo.style.display = 'none';
+            } else {
+                showResult('error', result.message);
+            }
+        } catch (error) {
+            showResult('error', 'Ошибка создания кампании: ' + error.message);
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Запустить рассылку';
+        }
+    });
+
+    async function loadAccounts() {
+        try {
+            const response = await fetch('/api/accounts');
+            const accounts = await response.json();
+
+            accountSelect.innerHTML = '<option value="">Выберите аккаунт</option>';
+
+            accounts.forEach(account => {
+                if (account.is_active && account.status === 'online') {
+                    const option = document.createElement('option');
+                    option.value = account.id;
+                    option.textContent = `${account.name} (${account.phone})`;
+                    accountSelect.appendChild(option);
+                }
+            });
+
+            if (accountSelect.children.length === 1) {
+                accountSelect.innerHTML = '<option value="">Нет активных аккаунтов</option>';
+            }
+        } catch (error) {
+            console.error('Error loading accounts:', error);
+            accountSelect.innerHTML = '<option value="">Ошибка загрузки аккаунтов</option>';
+        }
+    }
+
+    function showResult(type, message) {
+        resultDiv.className = `alert alert-${type === 'success' ? 'success' : 'danger'}`;
+        resultDiv.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i> ${message}`;
+        resultDiv.style.display = 'block';
+    }
+
+    // Обновляем статус кампаний каждые 5 секунд
+    setInterval(updateCampaignStatus, 5000);
+    updateCampaignStatus();
+
+    async function updateCampaignStatus() {
+        try {
+            const response = await fetch('/api/scheduled-campaigns');
+            const data = await response.json();
+
+            const statusDiv = document.getElementById('campaignStatus');
+            if (data.scheduled_campaigns && data.scheduled_campaigns.length > 0) {
+                statusDiv.innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="fas fa-clock"></i> 
+                        Запланированных кампаний: ${data.scheduled_campaigns.length}
+                    </div>
+                `;
+            } else {
+                statusDiv.innerHTML = '';
+            }
+        } catch (error) {
+            console.error('Error updating campaign status:', error);
+        }
+    }
+});
+</script>
+{% endblock %}

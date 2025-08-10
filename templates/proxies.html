@@ -1,0 +1,122 @@
+
+{% extends "base.html" %}
+
+{% block title %}Управление прокси{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>Управление прокси</h2>
+                <div class="d-flex gap-2">
+                    <span class="badge bg-primary fs-6">Всего: {{ proxies_count }}</span>
+                    <span class="badge bg-success fs-6">Используется: {{ used_count }}</span>
+                </div>
+            </div>
+
+            <!-- Форма загрузки прокси -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Загрузка прокси</h5>
+                </div>
+                <div class="card-body">
+                    <form id="proxiesForm">
+                        <div class="mb-3">
+                            <label for="proxiesText" class="form-label">Список прокси (по одному в строке)</label>
+                            <textarea class="form-control" id="proxiesText" name="proxies_text" rows="10" 
+                                placeholder="http://user:pass@ip:port&#10;https://user:pass@ip:port&#10;socks5://user:pass@ip:port"></textarea>
+                            <div class="form-text">
+                                Поддерживаемые форматы:
+                                <ul class="mb-0 mt-1">
+                                    <li>http://user:pass@ip:port</li>
+                                    <li>https://user:pass@ip:port</li>
+                                    <li>socks5://user:pass@ip:port</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-upload"></i> Загрузить прокси
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Список текущих прокси -->
+            {% if proxies %}
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Текущие прокси ({{ proxies_count }})</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% for proxy in proxies %}
+                        <div class="col-md-6 col-lg-4 mb-2">
+                            <div class="border rounded p-2 bg-light">
+                                <small class="font-monospace">{{ proxy }}</small>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i>
+                Прокси не загружены. Загрузите список прокси выше.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('proxiesForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Загружаем...';
+    
+    try {
+        const response = await fetch('/proxies/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            showAlert('success', result.message);
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            showAlert('danger', result.message);
+        }
+    } catch (error) {
+        showAlert('danger', 'Ошибка загрузки прокси: ' + error.message);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    }
+});
+
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.container').firstChild);
+    
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+</script>
+{% endblock %}

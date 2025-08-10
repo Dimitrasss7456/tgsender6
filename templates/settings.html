@@ -1,0 +1,537 @@
+
+{% extends "base.html" %}
+
+{% block title %}Настройки{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-md-12">
+            <h2>Настройки антиспам-системы</h2>
+            
+            <!-- Навигация по разделам настроек -->
+            <ul class="nav nav-tabs" id="settingsTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="delays-tab" data-bs-toggle="tab" data-bs-target="#delays" type="button" role="tab">Задержки и частота</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="accounts-tab" data-bs-toggle="tab" data-bs-target="#accounts" type="button" role="tab">Ротация аккаунтов</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="content-tab" data-bs-toggle="tab" data-bs-target="#content" type="button" role="tab">Рандомизация</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="limits-tab" data-bs-toggle="tab" data-bs-target="#limits" type="button" role="tab">Лимиты</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="behavior-tab" data-bs-toggle="tab" data-bs-target="#behavior" type="button" role="tab">Поведение</button>
+                </li>
+            </ul>
+
+            <div class="tab-content mt-3" id="settingsTabContent">
+                <!-- Настройки задержек и частоты -->
+                <div class="tab-pane fade show active" id="delays" role="tabpanel">
+                    <form id="delaySettings">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5>Задержки между отправками</h5>
+                                <div class="mb-3">
+                                    <label class="form-label">Минимальная задержка (сек)</label>
+                                    <input type="number" class="form-control" name="min_delay" value="3" min="1">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Максимальная задержка (сек)</label>
+                                    <input type="number" class="form-control" name="max_delay" value="7" min="1">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Пауза после серии сообщений (мин)</label>
+                                    <input type="number" class="form-control" name="series_pause" value="10" min="1">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Количество сообщений в серии</label>
+                                    <input type="number" class="form-control" name="messages_per_series" value="50" min="1">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <h5>Разные интервалы по типам</h5>
+                                <div class="mb-3">
+                                    <label class="form-label">Задержка для ЛС (сек)</label>
+                                    <input type="number" class="form-control" name="pm_delay" value="10" min="1">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Задержка для групп (сек)</label>
+                                    <input type="number" class="form-control" name="group_delay" value="5" min="1">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Задержка для каналов (сек)</label>
+                                    <input type="number" class="form-control" name="channel_delay" value="3" min="1">
+                                </div>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Сохранить настройки задержек</button>
+                    </form>
+                </div>
+
+                <!-- Ротация аккаунтов -->
+                <div class="tab-pane fade" id="accounts" role="tabpanel">
+                    <form id="accountSettings">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5>Автосмена аккаунтов</h5>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="enable_rotation" id="enableRotation" checked>
+                                        <label class="form-check-label" for="enableRotation">
+                                            Включить ротацию аккаунтов
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Смена аккаунта после N сообщений</label>
+                                    <input type="number" class="form-control" name="switch_after_messages" value="100" min="1">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Пауза между аккаунтами (мин)</label>
+                                    <input type="number" class="form-control" name="account_pause" value="5" min="1">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <h5>Параллельная отправка</h5>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="enable_parallel" id="enableParallel">
+                                        <label class="form-check-label" for="enableParallel">
+                                            Параллельная отправка с разных аккаунтов
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Максимум аккаунтов одновременно</label>
+                                    <input type="number" class="form-control" name="max_parallel_accounts" value="3" min="1" max="10">
+                                </div>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Сохранить настройки ротации</button>
+                    </form>
+                </div>
+
+                <!-- Рандомизация контента -->
+                <div class="tab-pane fade" id="content" role="tabpanel">
+                    <form id="contentSettings">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5>Рандомизация текста</h5>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="enable_synonyms" id="enableSynonyms">
+                                        <label class="form-check-label" for="enableSynonyms">
+                                            Синонимизация слов
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="shuffle_sentences" id="shuffleSentences">
+                                        <label class="form-check-label" for="shuffleSentences">
+                                            Перестановка предложений
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="random_emoji" id="randomEmoji">
+                                        <label class="form-check-label" for="randomEmoji">
+                                            Рандомизация эмодзи
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="invisible_chars" id="invisibleChars">
+                                        <label class="form-check-label" for="invisibleChars">
+                                            Невидимые символы для уникальности
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <h5>Рандомизация медиа</h5>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="modify_images" id="modifyImages">
+                                        <label class="form-check-label" for="modifyImages">
+                                            Изменение метаданных изображений
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="resize_images" id="resizeImages">
+                                        <label class="form-check-label" for="resizeImages">
+                                            Лёгкое изменение размера
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Процент изменения размера (%)</label>
+                                    <input type="number" class="form-control" name="resize_percent" value="2" min="1" max="10">
+                                </div>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Сохранить настройки контента</button>
+                    </form>
+                </div>
+
+                <!-- Лимиты -->
+                <div class="tab-pane fade" id="limits" role="tabpanel">
+                    <form id="limitSettings">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <h5>Личные сообщения</h5>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="allow_pm" id="allowPm" checked>
+                                        <label class="form-check-label" for="allowPm">
+                                            Разрешить отправку в ЛС
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">ЛС в час</label>
+                                    <input type="number" class="form-control" name="pm_per_hour" value="10" min="1">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">ЛС в день</label>
+                                    <input type="number" class="form-control" name="pm_per_day" value="50" min="1">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <h5>Группы/чаты</h5>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="allow_groups" id="allowGroups" checked>
+                                        <label class="form-check-label" for="allowGroups">
+                                            Разрешить отправку в группы
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Сообщений в час</label>
+                                    <input type="number" class="form-control" name="groups_per_hour" value="30" min="1">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Сообщений в день</label>
+                                    <input type="number" class="form-control" name="groups_per_day" value="200" min="1">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <h5>Каналы</h5>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="allow_channels" id="allowChannels" checked>
+                                        <label class="form-check-label" for="allowChannels">
+                                            Разрешить отправку в каналы
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Постов в час</label>
+                                    <input type="number" class="form-control" name="channels_per_hour" value="20" min="1">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Постов в день</label>
+                                    <input type="number" class="form-control" name="channels_per_day" value="100" min="1">
+                                </div>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Сохранить лимиты</button>
+                    </form>
+                </div>
+
+                <!-- Имитация поведения -->
+                <div class="tab-pane fade" id="behavior" role="tabpanel">
+                    <form id="behaviorSettings">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5>Разогрев аккаунтов</h5>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="enable_warmup" id="enableWarmup">
+                                        <label class="form-check-label" for="enableWarmup">
+                                            Включить разогрев аккаунтов
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="auto_subscribe" id="autoSubscribe">
+                                        <label class="form-check-label" for="autoSubscribe">
+                                            Автоподписка на каналы
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="auto_like" id="autoLike">
+                                        <label class="form-check-label" for="autoLike">
+                                            Автолайки постов
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="chat_with_bots" id="chatWithBots">
+                                        <label class="form-check-label" for="chatWithBots">
+                                            Общение с ботами
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Действий разогрева в день</label>
+                                    <input type="number" class="form-control" name="warmup_actions_per_day" value="20" min="1">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <h5>Имитация живого поведения</h5>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="typing_effect" id="typingEffect" checked>
+                                        <label class="form-check-label" for="typingEffect">
+                                            Эффект "печатает..."
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Время печатания (сек)</label>
+                                    <input type="number" class="form-control" name="typing_duration" value="3" min="1" max="10">
+                                </div>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="random_interactions" id="randomInteractions">
+                                        <label class="form-check-label" for="randomInteractions">
+                                            Случайные взаимодействия между отправками
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="soft_mode" id="softMode" checked>
+                                        <label class="form-check-label" for="softMode">
+                                            Мягкий режим (постепенное увеличение лимитов)
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="reply_mode" id="replyMode">
+                                        <label class="form-check-label" for="replyMode">
+                                            Отправка в ответ на существующие сообщения
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="old_chats_only" id="oldChatsOnly">
+                                        <label class="form-check-label" for="oldChatsOnly">
+                                            Только старые диалоги (без новых чатов)
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Сохранить настройки поведения</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Контроль ошибок -->
+            <div class="mt-4">
+                <h5>Контроль ошибок и FLOOD_WAIT</h5>
+                <form id="errorSettings">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="auto_flood_handling" id="autoFloodHandling" checked>
+                                    <label class="form-check-label" for="autoFloodHandling">
+                                        Автообработка FLOOD_WAIT
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="auto_account_switch" id="autoAccountSwitch" checked>
+                                    <label class="form-check-label" for="autoAccountSwitch">
+                                        Автосмена аккаунта при блоке
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Множитель времени ожидания</label>
+                                <input type="number" class="form-control" name="flood_wait_multiplier" value="1.2" step="0.1" min="1">
+                                <small class="form-text text-muted">Множитель для времени FLOOD_WAIT (рекомендуется 1.2)</small>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Сохранить настройки ошибок</button>
+                </form>
+            </div>
+
+            <div class="mt-4">
+                <button class="btn btn-success btn-lg" onclick="saveAllSettings()">Сохранить все настройки</button>
+                <button class="btn btn-warning btn-lg" onclick="resetToDefaults()">Сбросить к умолчаниям</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function saveAllSettings() {
+    const allSettings = {
+        delays: getFormData('delaySettings'),
+        accounts: getFormData('accountSettings'),
+        content: getFormData('contentSettings'),
+        limits: getFormData('limitSettings'),
+        behavior: getFormData('behaviorSettings'),
+        errors: getFormData('errorSettings')
+    };
+    
+    fetch('/api/settings', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(allSettings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('Все настройки сохранены!', 'success');
+        } else {
+            showAlert('Ошибка при сохранении: ' + data.message, 'danger');
+        }
+    })
+    .catch(error => {
+        showAlert('Ошибка: ' + error.message, 'danger');
+    });
+}
+
+function getFormData(formId) {
+    const form = document.getElementById(formId);
+    const formData = new FormData(form);
+    const data = {};
+    
+    for (let [key, value] of formData.entries()) {
+        if (form.querySelector(`[name="${key}"]`).type === 'checkbox') {
+            data[key] = form.querySelector(`[name="${key}"]`).checked;
+        } else if (form.querySelector(`[name="${key}"]`).type === 'number') {
+            data[key] = parseFloat(value);
+        } else {
+            data[key] = value;
+        }
+    }
+    
+    return data;
+}
+
+function resetToDefaults() {
+    if (confirm('Вы уверены, что хотите сбросить все настройки к значениям по умолчанию?')) {
+        fetch('/api/settings/reset', {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('Настройки сброшены к умолчаниям!', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showAlert('Ошибка при сбросе: ' + data.message, 'danger');
+            }
+        });
+    }
+}
+
+// Загрузка существующих настроек при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    fetch('/api/settings')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                loadSettingsToForms(data.settings);
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка загрузки настроек:', error);
+        });
+});
+
+function loadSettingsToForms(settings) {
+    for (const [section, sectionData] of Object.entries(settings)) {
+        for (const [key, value] of Object.entries(sectionData)) {
+            const input = document.querySelector(`[name="${key}"]`);
+            if (input) {
+                if (input.type === 'checkbox') {
+                    input.checked = value;
+                } else {
+                    input.value = value;
+                }
+            }
+        }
+    }
+}
+
+// Обработчики отдельных форм
+document.getElementById('delaySettings').addEventListener('submit', function(e) {
+    e.preventDefault();
+    saveSettingsSection('delays', getFormData('delaySettings'));
+});
+
+document.getElementById('accountSettings').addEventListener('submit', function(e) {
+    e.preventDefault();
+    saveSettingsSection('accounts', getFormData('accountSettings'));
+});
+
+document.getElementById('contentSettings').addEventListener('submit', function(e) {
+    e.preventDefault();
+    saveSettingsSection('content', getFormData('contentSettings'));
+});
+
+document.getElementById('limitSettings').addEventListener('submit', function(e) {
+    e.preventDefault();
+    saveSettingsSection('limits', getFormData('limitSettings'));
+});
+
+document.getElementById('behaviorSettings').addEventListener('submit', function(e) {
+    e.preventDefault();
+    saveSettingsSection('behavior', getFormData('behaviorSettings'));
+});
+
+document.getElementById('errorSettings').addEventListener('submit', function(e) {
+    e.preventDefault();
+    saveSettingsSection('errors', getFormData('errorSettings'));
+});
+
+function saveSettingsSection(section, data) {
+    fetch(`/api/settings/${section}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert(`Настройки раздела "${section}" сохранены!`, 'success');
+        } else {
+            showAlert('Ошибка при сохранении: ' + data.message, 'danger');
+        }
+    })
+    .catch(error => {
+        showAlert('Ошибка: ' + error.message, 'danger');
+    });
+}
+</script>
+{% endblock %}

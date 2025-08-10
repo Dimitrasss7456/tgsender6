@@ -1,0 +1,65 @@
+. Модифицированный метод отправки файлов
+Добавьте в ваш TelegramManager этот улучшенный метод:
+
+python
+async def send_file(
+    self,
+    account_id: int,
+    chat_id: str,
+    file_path: str,
+    caption: str = "",
+    chunk_size: int = 10 * 1024 * 1024  # 10MB chunks
+) -> Dict:
+    """Отправка файлов с обработкой больших размеров"""
+    try:
+        if not os.path.exists(file_path):
+            return {"status": "error", "message": "Файл не найден"}
+
+        client = await self.get_simple_client(account_id)
+        if not client:
+            return {"status": "error", "message": "Не удалось подключиться к аккаунту"}
+
+        file_size = os.path.getsize(file_path)
+        file_name = os.path.basename(file_path)
+
+        # Для файлов > 2GB используем специальный метод
+        if file_size > 2 * 1024 * 1024 * 1024:
+            return await self._send_large_file(client, chat_id, file_path, caption, chunk_size)
+
+        # Стандартная отправка для файлов < 2GB
+        try:
+            progress = Progress(file_name, file_size)
+            
+            sent_msg = await client.send_document(
+                chat_id=chat_id,
+                document=file_path,
+                caption=caption,
+                progress=progress.update,
+                force_document=True  # Обязательно для APK и других запрещенных типов
+            )
+            
+            return {
+                "status": "success",
+                "message_id": sent_msg.id,
+                "file_name": file_name,
+                "file_size": file_size
+            }
+            
+        except Exception as e:
+            return {"status": "error", "message": f"Ошибка отправки: {str(e)}"}
+
+    except Exception as e:
+        return {"status": "error", "message": f"Общая ошибка: {str(e)}"}
+2. Вспомогательный класс для прогресса
+python
+class Progress:
+    def __init__(self, filename, total_size):
+        self.filename = filename
+        self.total_size = total_size
+        self.last_print = 0
+        
+    async def update(self, current, total):
+        percent = (current / self.total_size) * 100
+        if percent - self.last_print >= 5 or current == total:
+            print(f"[{self.filename}] Отправлено: {current}/{self.total_size} bytes ({percent:.1f}%)")
+            self.last_print = percent

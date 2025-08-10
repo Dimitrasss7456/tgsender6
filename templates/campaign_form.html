@@ -1,0 +1,95 @@
+
+{% extends "base.html" %}
+
+{% block title %}{% if campaign %}Редактировать{% else %}Новая{% endif %} кампания - Telegram Mass Sender{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">{% if campaign %}Редактировать кампанию{% else %}Новая кампания{% endif %}</h1>
+    <a href="/campaigns" class="btn btn-secondary">Назад</a>
+</div>
+
+<form method="POST" enctype="multipart/form-data">
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>Основные настройки</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Название кампании</label>
+                        <input type="text" class="form-control" name="name" value="{{ campaign.name if campaign else '' }}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Задержка между сообщениями (секунды)</label>
+                        <input type="number" class="form-control" name="delay_seconds" value="{{ campaign.delay_seconds if campaign else 3 }}" min="1" max="60">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Прикрепить файл (опционально)</label>
+                        <input type="file" class="form-control" name="attachment" accept="image/*,video/*,.pdf,.doc,.docx">
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>Тексты сообщений</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Сообщение для каналов</label>
+                        <textarea class="form-control" name="channel_message" rows="4" placeholder="Текст для отправки в каналы">{{ campaign.channel_message if campaign else '' }}</textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Сообщение для групп</label>
+                        <textarea class="form-control" name="group_message" rows="4" placeholder="Текст для отправки в группы">{{ campaign.group_message if campaign else '' }}</textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Сообщение для личных чатов</label>
+                        <textarea class="form-control" name="private_message" rows="4" placeholder="Текст для отправки в личные чаты">{{ campaign.private_message if campaign else '' }}</textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>Списки получателей</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Каналы</label>
+                        <textarea class="form-control" name="channels_list" rows="6" placeholder="@channel1&#10;@channel2&#10;https://t.me/channel3">{{ campaign.channels_list if campaign else '' }}</textarea>
+                        <small class="form-text text-muted">По одному каналу на строку</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Группы</label>
+                        <textarea class="form-control" name="groups_list" rows="6" placeholder="@group1&#10;@group2&#10;https://t.me/group3">{{ campaign.groups_list if campaign else '' }}</textarea>
+                        <small class="form-text text-muted">По одной группе на строку</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Личные чаты</label>
+                        <textarea class="form-control" name="private_list" rows="6" placeholder="@username1&#10;@username2&#10;+7xxxxxxxxxx">{{ campaign.private_list if campaign else '' }}</textarea>
+                        <small class="form-text text-muted">По одному контакту на строку</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <button type="submit" class="btn btn-success">
+            {% if campaign %}Сохранить изменения{% else %}Создать кампанию{% endif %}
+        </button>
+        <a href="/campaigns" class="btn btn-secondary">Отмена</a>
+    </div>
+</form>
+{% endblock %}
