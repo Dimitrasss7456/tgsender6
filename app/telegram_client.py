@@ -261,11 +261,13 @@ class TelegramManager:
                                    tdata_path: str,
                                    proxy: Optional[str] = None,
                                    current_user_id: Optional[int] = None) -> Dict:
-        """Добавление аккаунта из TDATA папки используя Telethon подход"""
+        """Добавление аккаунта из TDATA папки с правильным парсингом файлов"""
         import shutil
         import traceback
         import struct
-        import base64
+        import sqlite3
+        import json
+        from pathlib import Path
         
         try:
             print(f"🔄 Импорт аккаунта из TDATA: {tdata_path}")
@@ -292,72 +294,88 @@ class TelegramManager:
             if not tdata_files:
                 return {"status": "error", "message": "TDATA папка пустая"}
             
-            # Ищем ключевые файлы TDATA
+            # Ищем основные файлы TDATA
             key_files = []
-            auth_files = []
             map_files = []
+            settings_file = None
             
             for file_name in tdata_files:
-                file_lower = file_name.lower()
-                if "key_data" in file_lower or "d877f783d5d3ef8c" in file_lower:
+                if file_name.startswith("key_data"):
                     key_files.append(file_name)
                 elif file_name.startswith("map"):
                     map_files.append(file_name)
-                elif "auth" in file_lower:
-                    auth_files.append(file_name)
+                elif file_name == "settings0":
+                    settings_file = file_name
             
             print(f"🔍 Key files: {key_files}")
-            print(f"🔍 Map files: {map_files[:3]}...")  # Показываем только первые 3
-            print(f"🔍 Auth files: {auth_files}")
+            print(f"🔍 Map files: {len(map_files)} файлов")
+            print(f"🔍 Settings file: {settings_file}")
             
-            # Попробуем создать клиент напрямую из TDATA
+            if not key_files:
+                return {"status": "error", "message": "Не найден файл key_data в TDATA"}
+            
+            # Создаем временную сессию для Pyrogram
+            import uuid
+            temp_session_name = f"tdata_{uuid.uuid4().hex[:8]}"
+            temp_session_dir = os.path.join(SESSIONS_DIR, f"temp_{temp_session_name}")
+            
             try:
-                # Создаем временную папку для конвертированной сессии
-                import tempfile
-                import uuid
+                # Создаем временную папку
+                os.makedirs(temp_session_dir, exist_ok=True)
                 
-                temp_session_name = f"tdata_import_{uuid.uuid4().hex[:8]}"
-                temp_session_path = os.path.join(SESSIONS_DIR, temp_session_name)
+                # Копируем все TDATA файлы во временную папку
+                for file_name in tdata_files:
+                    src_file = os.path.join(tdata_path, file_name)
+                    dst_file = os.path.join(temp_session_dir, file_name)
+                    
+                    if os.path.isfile(src_file):
+                        shutil.copy2(src_file, dst_file)
+                        print(f"✅ Скопирован файл: {file_name}")
                 
-                print(f"📝 Создаем временную сессию: {temp_session_path}")
+                # Пытаемся создать клиент, указав TDATA папку как рабочую директорию
+                print(f"🔄 Создаем Pyrogram клиент с TDATA...")
                 
-                # Пытаемся создать клиент с workdir указывающим на TDATA
                 client = Client(
                     name=temp_session_name,
                     api_id=API_ID,
                     api_hash=API_HASH,
-                    workdir=tdata_path,  # Указываем TDATA как рабочую папку
+                    workdir=temp_session_dir,
                     proxy=self._parse_proxy(proxy) if proxy else None,
-                    no_updates=True
+                    no_updates=True,
+                    in_memory=False
                 )
                 
-                # Пробуем подключиться
+                print(f"🔄 Подключаемся к Telegram...")
                 await client.connect()
                 
                 # Проверяем авторизацию
                 try:
                     me = await client.get_me()
-                    if me:
-                        print(f"✅ Успешная авторизация через TDATA: {me.first_name} ({me.phone_number})")
+                    
+                    if me and me.id:
+                        print(f"✅ Успешная авторизация: {me.first_name} ({me.phone_number})")
                         
-                        # Теперь экспортируем сессию в наш формат
+                        # Создаем постоянную сессию
+                        phone_clean = me.phone_number.replace('+', '').replace(' ', '').replace('(', '').replace(')', '').replace('-', '')
+                        permanent_session_name = f"session_{phone_clean}"
+                        permanent_session_path = os.path.join(SESSIONS_DIR, permanent_session_name)
+                        
+                        # Отключаемся от временного клиента
                         await client.disconnect()
                         
-                        # Копируем файл сессии
-                        source_session = f"{temp_session_path}.session"
-                        if os.path.exists(source_session):
-                            # Создаем финальное имя сессии
-                            phone_clean = me.phone_number.replace('+', '').replace(' ', '').replace('(', '').replace(')', '').replace('-', '')
-                            final_session_name = f"session_{phone_clean}"
-                            final_session_path = os.path.join(SESSIONS_DIR, final_session_name)
-                            
-                            # Копируем файл сессии
-                            shutil.copy2(source_session, f"{final_session_path}.session")
+                        # Ищем созданный файл сессии
+                        temp_session_file = os.path.join(temp_session_dir, f"{temp_session_name}.session")
+                        
+                        if os.path.exists(temp_session_file):
+                            # Копируем файл сессии в постоянное место
+                            permanent_session_file = f"{permanent_session_path}.session"
+                            shutil.copy2(temp_session_file, permanent_session_file)
+                            print(f"✅ Сессия сохранена: {permanent_session_file}")
                             
                             # Сохраняем аккаунт в базу данных
                             await self._save_account(
                                 phone=me.phone_number,
-                                session_path=final_session_path,
+                                session_path=permanent_session_path,
                                 name=me.first_name or "TDATA User",
                                 proxy=proxy,
                                 user_id=me.id,
@@ -365,32 +383,39 @@ class TelegramManager:
                                 current_user_id=current_user_id
                             )
                             
-                            # Очищаем временную сессию
-                            try:
-                                os.remove(source_session)
-                            except:
-                                pass
-                            
                             return {
                                 "status": "success",
                                 "name": me.first_name or "TDATA User",
                                 "phone": me.phone_number
                             }
                         else:
-                            await client.disconnect()
                             return {"status": "error", "message": "Не удалось создать файл сессии"}
                     else:
                         await client.disconnect()
                         return {"status": "error", "message": "Не удалось получить информацию о пользователе"}
                         
                 except Exception as auth_error:
-                    await client.disconnect()
-                    print(f"❌ Ошибка авторизации через TDATA: {auth_error}")
-                    return {"status": "error", "message": f"Не удалось авторизоваться через TDATA: {str(auth_error)}"}
+                    print(f"❌ Ошибка авторизации: {auth_error}")
+                    try:
+                        await client.disconnect()
+                    except:
+                        pass
+                    
+                    # Если стандартный способ не работает, пробуем альтернативный метод
+                    return await self._try_alternative_tdata_import(tdata_path, proxy, current_user_id)
                     
             except Exception as client_error:
                 print(f"❌ Ошибка создания клиента: {client_error}")
-                return {"status": "error", "message": f"Ошибка создания клиента из TDATA: {str(client_error)}"}
+                return await self._try_alternative_tdata_import(tdata_path, proxy, current_user_id)
+                
+            finally:
+                # Очищаем временную папку
+                try:
+                    if os.path.exists(temp_session_dir):
+                        shutil.rmtree(temp_session_dir)
+                        print(f"🧹 Временная папка очищена")
+                except Exception as cleanup_error:
+                    print(f"⚠️ Ошибка очистки: {cleanup_error}")
                 
         except Exception as e:
             error_msg = str(e)
@@ -399,6 +424,173 @@ class TelegramManager:
             print(f"🔍 Стек ошибки: {error_trace}")
             
             return {"status": "error", "message": f"Ошибка импорта TDATA: {error_msg}"}
+
+    async def _try_alternative_tdata_import(self, tdata_path: str, proxy: Optional[str], current_user_id: Optional[int]) -> Dict:
+        """Альтернативный метод импорта TDATA используя копирование файлов"""
+        import uuid
+        import shutil
+        
+        try:
+            print(f"🔄 Пробуем альтернативный метод импорта TDATA...")
+            
+            # Генерируем уникальное имя сессии
+            temp_name = f"alt_tdata_{uuid.uuid4().hex[:8]}"
+            temp_session_path = os.path.join(SESSIONS_DIR, temp_name)
+            
+            # Создаем новый клиент без TDATA
+            client = Client(
+                name=temp_name,
+                api_id=API_ID,
+                api_hash=API_HASH,
+                proxy=self._parse_proxy(proxy) if proxy else None,
+                no_updates=True,
+                workdir=SESSIONS_DIR
+            )
+            
+            # Сначала подключаемся как обычно
+            await client.connect()
+            
+            # Теперь попробуем заменить файл сессии на TDATA
+            await client.disconnect()
+            
+            # Ищем основные файлы TDATA
+            tdata_files = os.listdir(tdata_path)
+            key_data_file = None
+            
+            for file_name in tdata_files:
+                if file_name.startswith("key_data"):
+                    key_data_file = os.path.join(tdata_path, file_name)
+                    break
+            
+            if not key_data_file or not os.path.exists(key_data_file):
+                return {"status": "error", "message": "Не найден файл key_data"}
+            
+            # Копируем TDATA файлы как сессию
+            session_file = f"{temp_session_path}.session"
+            
+            # Читаем key_data
+            with open(key_data_file, 'rb') as f:
+                key_data = f.read()
+            
+            # Создаем базовую SQLite сессию для Pyrogram
+            import sqlite3
+            
+            conn = sqlite3.connect(session_file)
+            cursor = conn.cursor()
+            
+            # Создаем минимальную структуру сессии Pyrogram
+            cursor.execute('''
+                CREATE TABLE sessions (
+                    dc_id INTEGER PRIMARY KEY,
+                    server_address TEXT,
+                    port INTEGER,
+                    auth_key BLOB,
+                    date INTEGER,
+                    user_id INTEGER,
+                    is_bot INTEGER
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE TABLE peers (
+                    id INTEGER PRIMARY KEY,
+                    access_hash INTEGER,
+                    type INTEGER,
+                    username TEXT,
+                    phone_number TEXT
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE TABLE version (
+                    number INTEGER PRIMARY KEY
+                )
+            ''')
+            
+            # Вставляем версию
+            cursor.execute('INSERT INTO version VALUES (?)', (4,))
+            
+            # Вставляем базовые данные сессии (с дефолтными значениями)
+            cursor.execute('''
+                INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (2, 'telegram.org', 443, key_data[:256] if len(key_data) > 256 else key_data, 0, 0, 0))
+            
+            conn.commit()
+            conn.close()
+            
+            print(f"✅ Создана базовая сессия из TDATA")
+            
+            # Пробуем подключиться с новой сессией
+            test_client = Client(
+                name=temp_name,
+                api_id=API_ID,
+                api_hash=API_HASH,
+                proxy=self._parse_proxy(proxy) if proxy else None,
+                no_updates=True,
+                workdir=SESSIONS_DIR
+            )
+            
+            try:
+                await test_client.connect()
+                me = await test_client.get_me()
+                
+                if me and me.id:
+                    print(f"✅ Альтернативный метод успешен: {me.first_name}")
+                    
+                    # Создаем постоянную сессию
+                    phone_clean = me.phone_number.replace('+', '').replace(' ', '').replace('(', '').replace(')', '').replace('-', '')
+                    final_session_name = f"session_{phone_clean}"
+                    final_session_path = os.path.join(SESSIONS_DIR, final_session_name)
+                    
+                    await test_client.disconnect()
+                    
+                    # Копируем файл сессии
+                    shutil.copy2(session_file, f"{final_session_path}.session")
+                    
+                    # Удаляем временный файл
+                    try:
+                        os.remove(session_file)
+                    except:
+                        pass
+                    
+                    # Сохраняем аккаунт в базу данных
+                    await self._save_account(
+                        phone=me.phone_number,
+                        session_path=final_session_path,
+                        name=me.first_name or "TDATA User",
+                        proxy=proxy,
+                        user_id=me.id,
+                        session_data=None,
+                        current_user_id=current_user_id
+                    )
+                    
+                    return {
+                        "status": "success", 
+                        "name": me.first_name or "TDATA User",
+                        "phone": me.phone_number
+                    }
+                else:
+                    await test_client.disconnect()
+                    return {"status": "error", "message": "Альтернативный метод: не удалось авторизоваться"}
+                    
+            except Exception as test_error:
+                print(f"❌ Альтернативный метод не сработал: {test_error}")
+                try:
+                    await test_client.disconnect()
+                except:
+                    pass
+                
+                # Очищаем временные файлы
+                try:
+                    os.remove(session_file)
+                except:
+                    pass
+                
+                return {"status": "error", "message": "Не удалось импортировать TDATA. Возможно, файлы повреждены или устарели"}
+                
+        except Exception as e:
+            print(f"❌ Ошибка альтернативного метода: {e}")
+            return {"status": "error", "message": f"Альтернативный импорт не удался: {str(e)}"}
 
     async def _save_account(self, phone: str, session_path: str, name: str,
                             proxy: Optional[str], user_id: int, session_data: Optional[str], current_user_id: Optional[int]): # Добавлены user_id и current_user_id

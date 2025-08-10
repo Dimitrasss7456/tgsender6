@@ -313,62 +313,78 @@ async def add_account_from_tdata(
         
         if not tdata_files or len(tdata_files) == 0:
             print("❌ Файлы TDATA не загружены")
-            return JSONResponse(
-                {"status": "error", "message": "Файлы TDATA не загружены"},
-                status_code=400
-            )
+            return JSONResponse({
+                "status": "error", 
+                "message": "Выберите файлы TDATA для импорта"
+            })
 
         # Создаем временную папку для TDATA
         tdata_temp_dir = tempfile.mkdtemp(prefix="tdata_import_")
         print(f"📁 Создана временная папка: {tdata_temp_dir}")
 
-        # Сохраняем загруженные файлы
+        # Валидация и сохранение файлов
         saved_files = []
+        required_files = []
+        
         for file in tdata_files:
-            if file.filename:
-                try:
-                    file_path = os.path.join(tdata_temp_dir, file.filename)
-                    content = await file.read()
-                    
-                    if len(content) == 0:
-                        print(f"⚠️ Файл {file.filename} пустой, пропускаем")
-                        continue
-                    
-                    with open(file_path, "wb") as buffer:
-                        buffer.write(content)
-                    
-                    saved_files.append(file.filename)
-                    print(f"✅ Сохранен файл: {file.filename} ({len(content)} байт)")
-                    
-                except Exception as file_error:
-                    print(f"❌ Ошибка сохранения файла {file.filename}: {str(file_error)}")
+            if not file.filename:
+                continue
+                
+            try:
+                file_path = os.path.join(tdata_temp_dir, file.filename)
+                content = await file.read()
+                
+                if len(content) == 0:
+                    print(f"⚠️ Файл {file.filename} пустой, пропускаем")
                     continue
+                
+                # Проверяем размер файла (ограничение 100MB на файл)
+                if len(content) > 100 * 1024 * 1024:
+                    print(f"⚠️ Файл {file.filename} слишком большой ({len(content)} байт)")
+                    continue
+                
+                with open(file_path, "wb") as buffer:
+                    buffer.write(content)
+                
+                saved_files.append(file.filename)
+                
+                # Отмечаем важные файлы
+                if file.filename.startswith("key_data") or file.filename.startswith("map") or file.filename == "settings0":
+                    required_files.append(file.filename)
+                
+                print(f"✅ Сохранен файл: {file.filename} ({len(content)} байт)")
+                
+            except Exception as file_error:
+                print(f"❌ Ошибка сохранения файла {file.filename}: {str(file_error)}")
+                continue
 
         if not saved_files:
-            print("❌ Не удалось сохранить ни одного файла")
-            return JSONResponse(
-                {"status": "error", "message": "Не удалось сохранить загруженные файлы"},
-                status_code=400
-            )
+            return JSONResponse({
+                "status": "error", 
+                "message": "Не удалось сохранить файлы. Проверьте формат загружаемых файлов"
+            })
 
-        print(f"📁 Сохранено файлов: {saved_files}")
+        # Проверяем наличие ключевых файлов
+        has_key_data = any(f.startswith("key_data") for f in saved_files)
+        if not has_key_data:
+            return JSONResponse({
+                "status": "error", 
+                "message": "В загруженных файлах не найден key_data. Убедитесь что загружаете правильные файлы из папки tdata"
+            })
+
+        print(f"📁 Сохранено файлов: {len(saved_files)}, ключевых: {len(required_files)}")
 
         # Получаем прокси если нужно
         proxy = None
         if use_auto_proxy:
             try:
                 proxy = proxy_manager.get_proxy_for_phone("tdata_import")
-                if not proxy:
-                    print("⚠️ Нет доступных прокси")
-                    return JSONResponse(
-                        {"status": "error", "message": "Нет доступных прокси"},
-                        status_code=400
-                    )
-                print(f"🔗 Используем прокси: {proxy}")
+                if proxy:
+                    print(f"🔗 Используем прокси: {proxy}")
+                else:
+                    print("⚠️ Прокси не назначен, продолжаем без прокси")
             except Exception as proxy_error:
                 print(f"❌ Ошибка получения прокси: {str(proxy_error)}")
-                # Продолжаем без прокси
-                proxy = None
 
         # Импортируем аккаунт
         print("🔄 Начинаем импорт аккаунта...")
@@ -380,20 +396,22 @@ async def add_account_from_tdata(
 
         print(f"✅ Результат импорта: {result}")
         
-        # Проверяем что результат валидный
-        if not isinstance(result, dict) or 'status' not in result:
-            print(f"❌ Некорректный результат импорта: {result}")
-            return JSONResponse(
-                {"status": "error", "message": "Внутренняя ошибка сервера"},
-                status_code=200,  # Всегда возвращаем 200 для корректной обработки JSON
-                headers={"Content-Type": "application/json"}
-            )
+        # Валидация результата
+        if not isinstance(result, dict):
+            result = {"status": "error", "message": "Внутренняя ошибка сервера"}
+        
+        if 'status' not in result:
+            result['status'] = 'error'
+        
+        if result.get('status') == 'error' and 'message' not in result:
+            result['message'] = 'Неизвестная ошибка импорта'
 
-        return JSONResponse(
-            result,
-            status_code=200,
-            headers={"Content-Type": "application/json"}
-        )
+        # Добавляем дополнительную информацию для успешного импорта
+        if result.get('status') == 'success':
+            result['files_processed'] = len(saved_files)
+            result['message'] = f"Аккаунт успешно импортирован. Обработано файлов: {len(saved_files)}"
+
+        return JSONResponse(result)
 
     except Exception as e:
         error_msg = str(e)
@@ -413,12 +431,10 @@ async def add_account_from_tdata(
         except:
             pass
         
-        # Убеждаемся что всегда возвращаем JSON, а не HTML
-        return JSONResponse(
-            {"status": "error", "message": f"Ошибка импорта TDATA: {error_msg}"},
-            status_code=200,  # Возвращаем 200 чтобы фронтенд мог обработать JSON
-            headers={"Content-Type": "application/json"}
-        )
+        return JSONResponse({
+            "status": "error", 
+            "message": f"Критическая ошибка импорта: {error_msg}"
+        })
         
     finally:
         # Очистка временной папки

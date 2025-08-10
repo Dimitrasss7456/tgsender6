@@ -389,101 +389,112 @@ function deleteAccount(accountId) {
     }
 }
 
-// Вкладки уже обрабатываются Bootstrap, удаляем старый код переключения
+// Обработчик формы добавления аккаунта по номеру
+document.getElementById('addAccountForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
 
-        // Обработчик формы добавления аккаунта по номеру
-        document.getElementById('addAccountForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
+    const phone = document.getElementById('phone').value;
+    const useAutoProxy = document.getElementById('useAutoProxy').checked;
 
-            const phone = document.getElementById('phone').value;
-            const useAutoProxy = document.getElementById('useAutoProxy').checked;
+    const formData = new FormData();
+    formData.append('phone', phone);
+    formData.append('use_auto_proxy', useAutoProxy);
 
-            const formData = new FormData();
-            formData.append('phone', phone);
-            formData.append('use_auto_proxy', useAutoProxy);
-
-            try {
-                const response = await fetch('/accounts/add', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const result = await response.json();
-
-                if (result.status === 'success') {
-                    alert('Аккаунт успешно добавлен!');
-                    location.reload();
-                } else if (result.status === 'code_required') {
-                    showCodeModal(phone, result.phone_code_hash, result.session_name, useAutoProxy ? 'auto' : '');
-                } else {
-                    alert('Ошибка: ' + result.message);
-                }
-            } catch (error) {
-                alert('Ошибка при добавлении аккаунта: ' + error.message);
-            }
+    try {
+        const response = await fetch('/accounts/add', {
+            method: 'POST',
+            body: formData
         });
 
-        // Обработчик формы импорта TDATA
-        document.getElementById('addTdataForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
+        const result = await response.json();
 
-            const tdataFiles = document.getElementById('tdataFiles').files;
-            const useAutoProxy = document.getElementById('useAutoProxyTdata').checked;
+        if (result.status === 'success') {
+            alert('Аккаунт успешно добавлен!');
+            location.reload();
+        } else if (result.status === 'code_required') {
+            showCodeModal(phone, result.phone_code_hash, result.session_name, useAutoProxy ? 'auto' : '');
+        } else {
+            alert('Ошибка: ' + result.message);
+        }
+    } catch (error) {
+        alert('Ошибка при добавлении аккаунта: ' + error.message);
+    }
+});
 
-            if (tdataFiles.length === 0) {
-                alert('Выберите файлы TDATA');
-                return;
-            }
+// Обработчик формы импорта TDATA
+document.getElementById('addTdataForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
 
-            const formData = new FormData();
-            for (let file of tdataFiles) {
-                formData.append('tdata_files', file);
-            }
-            formData.append('use_auto_proxy', useAutoProxy);
+    const tdataFiles = document.getElementById('tdataFiles').files;
+    const useAutoProxy = document.getElementById('useAutoProxyTdata').checked;
 
-            // Показываем прогресс
-            const submitBtn = this.querySelector('button[type="submit"]');
-            const originalText = submitBtn.textContent;
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Импорт...';
+    if (tdataFiles.length === 0) {
+        alert('Выберите файлы TDATA');
+        return;
+    }
 
-            try {
-                const response = await fetch('/accounts/add_tdata', {
-                    method: 'POST',
-                    body: formData
-                });
+    const formData = new FormData();
+    for (let file of tdataFiles) {
+        formData.append('tdata_files', file);
+    }
+    formData.append('use_auto_proxy', useAutoProxy);
 
-                // Проверяем статус ответа
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
+    // Показываем прогресс
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Импорт...';
 
-                let result;
-                const contentType = response.headers.get('content-type');
-
-                if (contentType && contentType.includes('application/json')) {
-                    result = await response.json();
-                } else {
-                    // Если получен не JSON, читаем как текст и выводим ошибку
-                    const text = await response.text();
-                    console.error('Получен не JSON ответ:', text);
-                    throw new Error('Сервер вернул некорректный ответ');
-                }
-
-                if (result.status === 'success') {
-                    alert('TDATA аккаунт успешно импортирован: ' + result.name);
-                    location.reload();
-                } else {
-                    alert('Ошибка при импорте TDATA: ' + result.message);
-                }
-            } catch (error) {
-                console.error('TDATA import error:', error);
-                alert('Ошибка при импорте TDATA: ' + error.message);
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.textContent = originalText;
-            }
+    try {
+        const response = await fetch('/accounts/add_tdata', {
+            method: 'POST',
+            body: formData
         });
+
+        // Проверяем статус ответа
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            const text = await response.text();
+            throw new Error('Сервер вернул некорректный ответ: ' + text.substring(0, 100));
+        }
+
+        const result = await response.json();
+
+        if (result.status === 'success') {
+            alert(`TDATA аккаунт успешно импортирован!\nИмя: ${result.name || 'Неизвестно'}\nТелефон: ${result.phone || 'Неизвестно'}`);
+            location.reload();
+        } else {
+            const errorMsg = result.message || 'Неизвестная ошибка импорта';
+            alert('Ошибка при импорте TDATA: ' + errorMsg);
+        }
+    } catch (error) {
+        console.error('TDATA import error:', error);
+        let errorMessage = 'Произошла ошибка при импорте TDATA';
+
+        if (error.message.includes('Failed to fetch')) {
+            errorMessage = 'Ошибка соединения с сервером. Проверьте подключение к интернету.';
+        } else if (error.message.includes('HTTP')) {
+            errorMessage = 'Ошибка сервера: ' + error.message;
+        } else {
+            errorMessage += ': ' + error.message;
+        }
+
+        alert(errorMessage);
+    } finally {
+        // Восстанавливаем кнопку и удаляем прогресс
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+
+        const progressDiv = this.querySelector('.alert-info');
+        if (progressDiv) {
+            progressDiv.remove();
+        }
+    }
+});
 
 // Вспомогательная функция для показа модального окна ввода кода
 function showCodeModal(phone, phoneCodeHash, sessionName, proxy) {
