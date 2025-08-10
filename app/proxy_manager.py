@@ -63,3 +63,20 @@ class ProxyManager:
 
 # Глобальный экземпляр менеджера прокси
 proxy_manager = ProxyManager()
+class ProxyManager:
+    def __init__(self):
+        self.proxies = {}
+    
+    def add_proxy(self, proxy_data: dict):
+        """Добавление прокси"""
+        pass
+    
+    def get_proxy_for_phone(self, phone: str):
+        """Получение прокси для номера"""
+        return None
+    
+    def clear_proxy_for_phone(self, phone: str):
+        """Очистка прокси для номера"""
+        pass
+
+proxy_manager = ProxyManager()

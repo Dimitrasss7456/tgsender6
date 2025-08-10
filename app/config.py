@@ -76,3 +76,26 @@ else:
         # Генерируем новый правильный ключ
         ENCRYPTION_KEY = Fernet.generate_key().decode()
         print("Generated new 32-byte encryption key")
+import os
+from pathlib import Path
+
+# Базовые настройки
+BASE_DIR = Path(__file__).parent.parent
+UPLOADS_DIR = BASE_DIR / "uploads"
+STATIC_DIR = BASE_DIR / "static"
+TEMPLATES_DIR = BASE_DIR / "templates"
+
+# Создаем необходимые директории
+UPLOADS_DIR.mkdir(exist_ok=True)
+STATIC_DIR.mkdir(exist_ok=True)
+
+# Настройки базы данных
+DATABASE_URL = "sqlite:///./telegram_sender.db"
+
+# Настройки безопасности
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-this")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+
+# Telegram API настройки
+TELEGRAM_API_ID = os.getenv("TELEGRAM_API_ID")
+TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")

@@ -201,3 +201,51 @@ class SettingsManager:
 
 # Глобальный экземпляр менеджера настроек
 settings_manager = SettingsManager()
+import json
+import os
+
+class SettingsManager:
+    def __init__(self):
+        self.settings_file = "settings.json"
+        self.default_settings = {
+            "delays": {
+                "min_delay": 5,
+                "max_delay": 10
+            },
+            "limits": {
+                "messages_per_hour": 30,
+                "messages_per_day": 100
+            }
+        }
+    
+    def get_settings(self):
+        """Получение настроек"""
+        if os.path.exists(self.settings_file):
+            try:
+                with open(self.settings_file, 'r') as f:
+                    return json.load(f)
+            except:
+                pass
+        return self.default_settings
+    
+    def update_section(self, section: str, data: dict) -> bool:
+        """Обновление секции настроек"""
+        try:
+            settings = self.get_settings()
+            settings[section] = data
+            with open(self.settings_file, 'w') as f:
+                json.dump(settings, f, indent=2)
+            return True
+        except:
+            return False
+    
+    def reset_to_defaults(self) -> bool:
+        """Сброс к настройкам по умолчанию"""
+        try:
+            with open(self.settings_file, 'w') as f:
+                json.dump(self.default_settings, f, indent=2)
+            return True
+        except:
+            return False
+
+settings_manager = SettingsManager()

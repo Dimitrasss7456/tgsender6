@@ -103,3 +103,76 @@ def get_db():
         yield db
     finally:
         db.close()
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session, relationship
+from datetime import datetime
+from app.config import DATABASE_URL
+
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+class User(Base):
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    password_hash = Column(String)
+    is_admin = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    session_token = Column(String, unique=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime)
+
+class Account(Base):
+    __tablename__ = "accounts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    phone = Column(String, unique=True)
+    api_id = Column(String)
+    api_hash = Column(String)
+    is_active = Column(Boolean, default=True)
+    messages_sent_today = Column(Integer, default=0)
+    messages_sent_hour = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Campaign(Base):
+    __tablename__ = "campaigns"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    message = Column(Text)
+    recipients = Column(Text)  # JSON строка
+    status = Column(String, default="draft")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+
+class SendLog(Base):
+    __tablename__ = "send_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    campaign_id = Column(Integer, ForeignKey("campaigns.id"))
+    account_id = Column(Integer, ForeignKey("accounts.id"))
+    recipient = Column(String)
+    status = Column(String)
+    error_message = Column(Text)
+    sent_at = Column(DateTime, default=datetime.utcnow)
+
+# Создаем таблицы
+Base.metadata.create_all(bind=engine)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

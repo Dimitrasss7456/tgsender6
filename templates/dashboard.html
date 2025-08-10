@@ -258,3 +258,49 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 {% endblock %}
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Telegram Mass Sender{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Dashboard</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">Аккаунты</h5>
+                <p class="card-text display-6">0</p>
+                <a href="/accounts" class="btn btn-primary">Управление</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">Кампании</h5>
+                <p class="card-text display-6">0</p>
+                <a href="/campaigns" class="btn btn-primary">Управление</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">Отправлено</h5>
+                <p class="card-text display-6">0</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">Активные</h5>
+                <p class="card-text display-6">0</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

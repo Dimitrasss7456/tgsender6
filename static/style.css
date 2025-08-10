@@ -1,0 +1,19 @@
+
+/* Basic styles for the application */
+.cyber-glow-text {
+    text-shadow: 0 0 10px #00ff00;
+}
+
+.btn-cyber {
+    background: linear-gradient(45deg, #00ff00, #0080ff);
+    border: none;
+    color: white;
+}
+
+.nav-link {
+    color: #ccc !important;
+}
+
+.nav-link:hover {
+    color: #fff !important;
+}

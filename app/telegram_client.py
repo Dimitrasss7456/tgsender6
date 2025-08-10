@@ -1119,3 +1119,36 @@ class TelegramManager:
 
 # Глобальный экземпляр менеджера
 telegram_manager = TelegramManager()
+import asyncio
+from typing import Dict, Optional
+from telethon import TelegramClient
+from app.database import Account
+
+class TelegramManager:
+    def __init__(self):
+        self.clients: Dict[int, TelegramClient] = {}
+    
+    async def get_client(self, account: Account) -> Optional[TelegramClient]:
+        """Получение клиента для аккаунта"""
+        if account.id not in self.clients:
+            try:
+                client = TelegramClient(
+                    f"session_{account.phone}",
+                    int(account.api_id),
+                    account.api_hash
+                )
+                await client.start(phone=account.phone)
+                self.clients[account.id] = client
+                return client
+            except Exception as e:
+                print(f"Error creating client for {account.phone}: {e}")
+                return None
+        return self.clients[account.id]
+    
+    async def disconnect_all(self):
+        """Отключение всех клиентов"""
+        for client in self.clients.values():
+            await client.disconnect()
+        self.clients.clear()
+
+telegram_manager = TelegramManager()
