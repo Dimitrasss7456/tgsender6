@@ -505,7 +505,8 @@ class MessageSender:
             db.close()
 
     async def create_contacts_campaign(self, account_id: int, message: str, delay_seconds: int = 5, 
-                                     start_in_minutes: Optional[int] = None, attachment_path: Optional[str] = None) -> Dict:
+                                     start_in_minutes: Optional[int] = None, attachment_path: Optional[str] = None,
+                                     auto_delete_account: bool = False, delete_delay_minutes: int = 5) -> Dict:
         """Создание кампании рассылки только по контактам из адресной книги"""
         try:
             # Получаем контакты пользователя из адресной книги
@@ -543,6 +544,8 @@ class MessageSender:
                     private_list="\n".join(targets),
                     attachment_path=attachment_path,
                     account_id=account_id,
+                    auto_delete_accounts=auto_delete_account,
+                    delete_delay_minutes=delete_delay_minutes,
                     status="scheduled" if start_in_minutes else "created"
                 )
 
@@ -579,10 +582,10 @@ class MessageSender:
 
     async def start_contacts_campaign(self, account_id: int, message: str, delay_seconds: int = 5, 
                                     start_in_minutes: Optional[int] = None, attachment_path: Optional[str] = None,
-                                    auto_delete_account: bool = False) -> Dict:
+                                    auto_delete_account: bool = False, delete_delay_minutes: int = 5) -> Dict:
         """Создание и запуск кампании рассылки по контактам"""
         # Создаем кампанию
-        result = await self.create_contacts_campaign(account_id, message, delay_seconds, start_in_minutes, attachment_path)
+        result = await self.create_contacts_campaign(account_id, message, delay_seconds, start_in_minutes, attachment_path, auto_delete_account, delete_delay_minutes)
         if result["status"] != "success":
             return result
 

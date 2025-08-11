@@ -829,6 +829,7 @@ async def start_contacts_campaign(
     start_in_minutes: Optional[int] = Form(None),
     attachment_path: Optional[str] = Form(None),
     auto_delete_account: bool = Form(False),
+    delete_delay_minutes: int = Form(5),
     db: Session = Depends(get_db)
 ):
     """Создание и запуск кампании рассылки по контактам с поддержкой файлов и автоудаления"""
@@ -846,7 +847,8 @@ async def start_contacts_campaign(
             return JSONResponse({"status": "error", "message": "Указанный файл не найден"})
 
         result = await message_sender.start_contacts_campaign(
-            account_id, message, delay_seconds, start_in_minutes, attachment_path, auto_delete_account
+            account_id, message, delay_seconds, start_in_minutes, attachment_path, 
+            auto_delete_account, delete_delay_minutes
         )
 
         return JSONResponse(result)
