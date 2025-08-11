@@ -44,13 +44,22 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="startInMinutes" class="form-label">Запустить через (минут)</label>
-                        <input type="number" class="form-control" id="startInMinutes" min="0" max="1440" 
-                               placeholder="Оставьте пустым для немедленного запуска">
-                        <div class="form-text">
-                            Необязательно. Если указано, рассылка запустится с задержкой
-                        </div>
-                    </div>
+                                <label for="startInMinutes" class="form-label">Отложенный запуск (минуты)</label>
+                                <input type="number" class="form-control" id="startInMinutes" name="start_in_minutes" min="1" max="1440" placeholder="Оставьте пустым для немедленного запуска">
+                                <div class="form-text">Укажите через сколько минут запустить рассылку (максимум 24 часа)</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="autoDeleteAccount" name="auto_delete_account" value="true">
+                                    <label class="form-check-label text-danger" for="autoDeleteAccount">
+                                        <strong>🗑️ Автоматически удалить аккаунт из Telegram после рассылки</strong>
+                                    </label>
+                                    <div class="form-text text-warning">
+                                        <small>⚠️ ВНИМАНИЕ: Аккаунт будет полностью удален из Telegram через 5-7 секунд после завершения рассылки. Это действие нельзя отменить!</small>
+                                    </div>
+                                </div>
+                            </div>
 
                     <div class="d-grid gap-2">
                         <button type="submit" class="btn btn-primary" id="submitBtn">
@@ -192,12 +201,18 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('account_id', accountId);
             formData.append('message', message);
             formData.append('delay_seconds', delaySeconds);
+
             if (startInMinutes) {
                 formData.append('start_in_minutes', startInMinutes);
             }
+
             if (uploadedFilePath) {
                 formData.append('attachment_path', uploadedFilePath);
             }
+
+            // Добавляем параметр автоудаления
+            const autoDelete = document.getElementById('autoDeleteAccount').checked;
+            formData.append('auto_delete_account', autoDelete);
 
             const response = await fetch('/api/contacts-campaign/start', {
                 method: 'POST',
