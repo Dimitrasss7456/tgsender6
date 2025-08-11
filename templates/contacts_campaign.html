@@ -51,7 +51,7 @@
 
                     <div class="mb-3">
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="autoDeleteAccount" name="autoDeleteAccount">
+                            <input class="form-check-input" type="checkbox" id="autoDeleteAccount">
                             <label class="form-check-label text-danger" for="autoDeleteAccount">
                                 <strong>🗑️ Автоматически удалить аккаунт из Telegram после рассылки</strong>
                             </label>
@@ -183,6 +183,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const delaySeconds = parseInt(document.getElementById('delaySeconds').value);
         const startInMinutes = document.getElementById('startInMinutes').value;
         const autoDeleteAccount = document.getElementById('autoDeleteAccount').checked;
+        const deleteDelay = parseInt(document.getElementById('deleteDelay').value);
 
         if (!accountId) {
             showResult('error', 'Выберите аккаунт');
@@ -203,7 +204,7 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('message', message);
             formData.append('delay_seconds', delaySeconds);
             formData.append('auto_delete_account', autoDeleteAccount);
-            formData.append('delete_delay_minutes', 5);
+            formData.append('delete_delay_minutes', deleteDelay); // Теперь это секунды
             if (startInMinutes) {
                 formData.append('start_in_minutes', startInMinutes);
             }

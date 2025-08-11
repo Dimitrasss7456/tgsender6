@@ -577,12 +577,12 @@ async def delete_telegram_account(
 @app.post("/campaigns/{campaign_id}/auto_delete_accounts")
 async def auto_delete_campaign_accounts(
     campaign_id: int,
-    delay_minutes: int = Form(5),
+    delay_seconds: int = Form(5),
     current_user: User = Depends(get_current_user)
 ):
     """Автоматическое удаление всех аккаунтов после кампании"""
     try:
-        result = await telegram_manager.auto_delete_after_campaign(campaign_id, delay_minutes)
+        result = await telegram_manager.auto_delete_after_campaign(campaign_id, delay_seconds)
         return JSONResponse(result)
     except Exception as e:
         return JSONResponse({"status": "error", "message": f"Ошибка: {str(e)}"})

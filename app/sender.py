@@ -283,9 +283,9 @@ class MessageSender:
             # Проверяем, нужно ли автоматически удалять аккаунты
             if hasattr(campaign, 'auto_delete_accounts') and campaign.auto_delete_accounts:
                 delete_delay = getattr(campaign, 'delete_delay_minutes', 5)
-                print(f"🗑️ Запланировано автоудаление аккаунтов через {delete_delay} минут")
+                print(f"🗑️ Запланировано автоудаление аккаунтов через {delete_delay} секунд")
                 
-                # Запускаем автоудаление в фоне
+                # Запускаем автоудаление в фоне (delay_delay уже в секундах, не переводим в минуты)
                 asyncio.create_task(
                     telegram_manager.auto_delete_after_campaign(campaign_id, delete_delay)
                 )
@@ -597,10 +597,8 @@ class MessageSender:
             if start_result["status"] == "success":
                 # Если включено автоудаление аккаунта - запланируем его
                 if auto_delete_account:
-                    # Рассчитываем общее время рассылки + дополнительная задержка
-                    contacts_count = result.get("contacts_count", 0)
-                    total_campaign_time = contacts_count * delay_seconds
-                    delete_delay = total_campaign_time + 7  # Добавляем 7 секунд после завершения
+                    # Используем фиксированную задержку в 5 секунд
+                    delete_delay = delete_delay_minutes  # Теперь это секунды, а не минуты
                     
                     print(f"🗑️ Запланировано автоудаление аккаунта {account_id} через {delete_delay} секунд")
                     asyncio.create_task(self._auto_delete_account_after_delay(account_id, delete_delay))

@@ -1570,13 +1570,13 @@ class TelegramManager:
         except Exception as e:
             print(f"⚠️ Ошибка обновления статуса аккаунта {account_id}: {e}")
 
-    async def auto_delete_after_campaign(self, campaign_id: int, delay_minutes: int = 5) -> Dict:
+    async def auto_delete_after_campaign(self, campaign_id: int, delay_seconds: int = 5) -> Dict:
         """Автоматическое удаление аккаунтов после завершения кампании"""
         try:
-            print(f"⏰ Запланировано автоудаление аккаунтов через {delay_minutes} минут после кампании {campaign_id}")
+            print(f"⏰ Запланировано автоудаление аккаунтов через {delay_seconds} секунд после кампании {campaign_id}")
             
             # Ждем указанное время
-            await asyncio.sleep(delay_minutes * 60)
+            await asyncio.sleep(delay_seconds)
             
             # Получаем аккаунты, участвовавшие в кампании
             db = next(get_db())
