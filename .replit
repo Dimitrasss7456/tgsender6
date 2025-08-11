@@ -2,7 +2,7 @@ modules = ["python-3.11", "web"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["cargo", "libiconv", "libxcrypt", "openssl", "pkg-config", "rustc"]
+packages = ["cargo", "libiconv", "libxcrypt", "openssl", "pkg-config", "rustc", "sqlite"]
 
 [unitTest]
 language = "python3"
