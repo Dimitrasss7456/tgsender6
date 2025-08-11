@@ -43,9 +43,12 @@
                             onclick="toggleAccount({{ account.id }})">
                         {% if account.is_active %}Отключить{% else %}Включить{% endif %}
                     </button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteAccount({{ account.id }})">
-                        Удалить
-                    </button>
+                    <button class="btn btn-warning btn-sm" onclick="deleteTelegramAccount({{ account.id }})" title="Удалить аккаунт из Telegram навсегда">
+                                🗑️ Удалить из TG
+                            </button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteAccount({{ account.id }})">
+                                Удалить
+                            </button>
                 </td>
             </tr>
             {% endfor %}
@@ -375,8 +378,8 @@ function toggleAccount(accountId) {
 
 function deleteAccount(accountId) {
     if (confirm('Вы уверены, что хотите удалить этот аккаунт?')) {
-        fetch(`/accounts/${accountId}`, {
-            method: 'DELETE'
+        fetch(`/accounts/${accountId}/delete`, {
+            method: 'POST'
         })
         .then(response => response.json())
         .then(data => {
@@ -388,6 +391,31 @@ function deleteAccount(accountId) {
         });
     }
 }
+
+function deleteTelegramAccount(accountId) {
+            const reason = prompt('Введите причину удаления аккаунта из Telegram:', 'Больше не нужен');
+            if (reason !== null && confirm('⚠️ ВНИМАНИЕ! Это ПОЛНОСТЬЮ удалит аккаунт из Telegram навсегда!\n\nАккаунт будет безвозвратно потерян. Продолжить?')) {
+                const formData = new FormData();
+                formData.append('reason', reason);
+
+                fetch(`/accounts/${accountId}/delete_telegram`, { 
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('✅ ' + data.message);
+                        location.reload();
+                    } else {
+                        alert('❌ Ошибка: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('Ошибка запроса: ' + error);
+                });
+            }
+        }
 
 // Обработчик формы добавления аккаунта по номеру
 document.getElementById('addAccountForm').addEventListener('submit', async function(e) {

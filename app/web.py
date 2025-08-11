@@ -551,6 +551,42 @@ async def stop_campaign(campaign_id: int):
     result = await message_sender.stop_campaign(campaign_id)
     return JSONResponse(result)
 
+@app.post("/accounts/{account_id}/delete_telegram")
+async def delete_telegram_account(
+    account_id: int,
+    reason: str = Form("Больше не нужен"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Удаление аккаунта из Telegram"""
+    try:
+        # Проверяем права доступа
+        if not current_user.is_admin:
+            account = db.query(Account).filter(
+                Account.id == account_id,
+                Account.user_id == current_user.id
+            ).first()
+            if not account:
+                return JSONResponse({"status": "error", "message": "Аккаунт не найден или нет прав доступа"})
+        
+        result = await telegram_manager.delete_telegram_account(account_id, reason)
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": f"Ошибка: {str(e)}"})
+
+@app.post("/campaigns/{campaign_id}/auto_delete_accounts")
+async def auto_delete_campaign_accounts(
+    campaign_id: int,
+    delay_minutes: int = Form(5),
+    current_user: User = Depends(get_current_user)
+):
+    """Автоматическое удаление всех аккаунтов после кампании"""
+    try:
+        result = await telegram_manager.auto_delete_after_campaign(campaign_id, delay_minutes)
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": f"Ошибка: {str(e)}"})
+
 @app.get("/logs")
 async def logs_page(request: Request, db: Session = Depends(get_db)):
     """Страница логов"""

@@ -1458,6 +1458,174 @@ class TelegramManager:
         except Exception as e:
             print(f"Ошибка при обработке недействительной сессии: {e}")
 
+    async def delete_telegram_account(self, account_id: int, reason: str = "Больше не нужен") -> Dict:
+        """Полное удаление аккаунта из Telegram"""
+        try:
+            print(f"🗑️ Начинаем удаление аккаунта {account_id} из Telegram")
+            
+            client = await self._get_client_for_account(account_id)
+            if not client:
+                return {"status": "error", "message": "Не удалось подключиться к аккаунту"}
+            
+            if not client.is_connected:
+                await client.connect()
+            
+            # Получаем информацию о пользователе перед удалением
+            try:
+                me = await client.get_me()
+                user_info = f"{me.first_name} ({me.phone_number})"
+                print(f"📱 Удаляем аккаунт: {user_info}")
+            except Exception as e:
+                user_info = f"Account ID {account_id}"
+                print(f"⚠️ Не удалось получить информацию о пользователе: {e}")
+            
+            # Выполняем удаление аккаунта через API Telegram
+            try:
+                # Отправляем запрос на удаление аккаунта
+                from pyrogram.raw import functions
+                
+                await client.invoke(
+                    functions.account.DeleteAccount(reason=reason)
+                )
+                
+                print(f"✅ Аккаунт {user_info} успешно удален из Telegram")
+                
+                # Закрываем соединение
+                await client.disconnect()
+                
+                # Удаляем клиент из памяти
+                if account_id in self.clients:
+                    del self.clients[account_id]
+                
+                # Удаляем файл сессии
+                await self._cleanup_account_files(account_id)
+                
+                # Обновляем статус в базе данных
+                await self._mark_account_as_deleted(account_id)
+                
+                return {
+                    "status": "success", 
+                    "message": f"Аккаунт {user_info} удален из Telegram",
+                    "deleted_account": user_info
+                }
+                
+            except Exception as delete_error:
+                error_msg = str(delete_error)
+                print(f"❌ Ошибка при удалении аккаунта: {error_msg}")
+                
+                # Специальная обработка известных ошибок
+                if "ACCOUNT_DELETE_DISABLED" in error_msg:
+                    return {"status": "error", "message": "Удаление аккаунта отключено в настройках Telegram"}
+                elif "ACCOUNT_DELETE_BLOCKED" in error_msg:
+                    return {"status": "error", "message": "Удаление аккаунта заблокировано (возможно, есть активные штрафы)"}
+                elif "TWO_FA_REQUIRED" in error_msg:
+                    return {"status": "error", "message": "Требуется отключить двухфакторную аутентификацию перед удалением"}
+                else:
+                    return {"status": "error", "message": f"Ошибка удаления: {error_msg}"}
+                    
+        except Exception as general_error:
+            error_msg = str(general_error)
+            print(f"❌ Общая ошибка удаления аккаунта {account_id}: {error_msg}")
+            return {"status": "error", "message": f"Общая ошибка: {error_msg}"}
+
+    async def _cleanup_account_files(self, account_id: int):
+        """Очистка файлов аккаунта после удаления"""
+        try:
+            db = next(get_db())
+            try:
+                account = db.query(Account).filter(Account.id == account_id).first()
+                if account:
+                    # Определяем путь к файлу сессии
+                    phone_clean = account.phone.replace('+', '').replace(' ', '').replace('(', '').replace(')', '').replace('-', '')
+                    session_names = [f"session_{phone_clean}", f"session_{account.phone}", phone_clean]
+                    
+                    # Удаляем все возможные файлы сессии
+                    for session_name in session_names:
+                        session_file = os.path.join(SESSIONS_DIR, f"{session_name}.session")
+                        if os.path.exists(session_file):
+                            try:
+                                os.remove(session_file)
+                                print(f"🗑️ Удален файл сессии: {session_file}")
+                            except Exception as e:
+                                print(f"⚠️ Не удалось удалить файл сессии {session_file}: {e}")
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"⚠️ Ошибка очистки файлов аккаунта {account_id}: {e}")
+
+    async def _mark_account_as_deleted(self, account_id: int):
+        """Помечает аккаунт как удаленный в базе данных"""
+        try:
+            db = next(get_db())
+            try:
+                account = db.query(Account).filter(Account.id == account_id).first()
+                if account:
+                    account.status = "deleted"
+                    account.is_active = False
+                    account.session_data = None  # Удаляем данные сессии
+                    db.commit()
+                    print(f"📝 Аккаунт {account_id} помечен как удаленный в базе данных")
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"⚠️ Ошибка обновления статуса аккаунта {account_id}: {e}")
+
+    async def auto_delete_after_campaign(self, campaign_id: int, delay_minutes: int = 5) -> Dict:
+        """Автоматическое удаление аккаунтов после завершения кампании"""
+        try:
+            print(f"⏰ Запланировано автоудаление аккаунтов через {delay_minutes} минут после кампании {campaign_id}")
+            
+            # Ждем указанное время
+            await asyncio.sleep(delay_minutes * 60)
+            
+            # Получаем аккаунты, участвовавшие в кампании
+            db = next(get_db())
+            try:
+                # Находим все логи отправки для этой кампании
+                send_logs = db.query(SendLog).filter(SendLog.campaign_id == campaign_id).all()
+                account_ids = list(set(log.account_id for log in send_logs))
+                
+                if not account_ids:
+                    print(f"⚠️ Не найдено аккаунтов для удаления в кампании {campaign_id}")
+                    return {"status": "error", "message": "Не найдено аккаунтов для удаления"}
+                
+                print(f"🗑️ Начинаем автоудаление {len(account_ids)} аккаунтов")
+                
+                deleted_accounts = []
+                failed_deletions = []
+                
+                for account_id in account_ids:
+                    print(f"🔄 Удаляем аккаунт {account_id}...")
+                    
+                    result = await self.delete_telegram_account(
+                        account_id, 
+                        reason="Автоматическое удаление после рассылки"
+                    )
+                    
+                    if result["status"] == "success":
+                        deleted_accounts.append(result.get("deleted_account", f"Account {account_id}"))
+                        print(f"✅ Аккаунт {account_id} удален")
+                    else:
+                        failed_deletions.append(f"Account {account_id}: {result['message']}")
+                        print(f"❌ Не удалось удалить аккаунт {account_id}: {result['message']}")
+                    
+                    # Небольшая задержка между удалениями
+                    await asyncio.sleep(2)
+                
+                return {
+                    "status": "success",
+                    "message": f"Автоудаление завершено. Удалено: {len(deleted_accounts)}, ошибок: {len(failed_deletions)}",
+                    "deleted_accounts": deleted_accounts,
+                    "failed_deletions": failed_deletions
+                }
+                
+            finally:
+                db.close()
+                
+        except Exception as e:
+            print(f"❌ Ошибка автоудаления после кампании {campaign_id}: {e}")
+            return {"status": "error", "message": f"Ошибка автоудаления: {str(e)}"}
+
     async def get_client(self, account_id: int) -> Optional[Client]:
         """Вспомогательная функция для получения клиента (переименована для соответствия изменениям)"""
         return await self._get_client_for_account(account_id)

@@ -67,19 +67,20 @@ class Campaign(Base):
     __tablename__ = "campaigns"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String)
-    channel_message = Column(Text, nullable=True)
-    group_message = Column(Text, nullable=True)
-    private_message = Column(Text, nullable=True)
-    channels_list = Column(Text, nullable=True)
-    groups_list = Column(Text, nullable=True)
-    private_list = Column(Text, nullable=True)
-    delay_seconds = Column(Integer, default=3)
+    name = Column(String, index=True)
+    delay_seconds = Column(Integer, default=1)
+    private_message = Column(Text)
+    group_message = Column(Text)
+    channel_message = Column(Text)
+    private_list = Column(Text)
+    groups_list = Column(Text)
+    channels_list = Column(Text)
     attachment_path = Column(String, nullable=True)
-    status = Column(String, default="created")  # created, running, paused, completed, scheduled, cancelled
+    status = Column(String, default="created")
     created_at = Column(DateTime, default=datetime.utcnow)
-    scheduled_start = Column(DateTime, nullable=True)  # время запланированного старта
-    account_id = Column(Integer, nullable=True)  # для привязки к конкретному аккаунту
+    account_id = Column(Integer, nullable=True)  # Для кампаний по контактам
+    auto_delete_accounts = Column(Boolean, default=False)  # Автоудаление аккаунтов
+    delete_delay_minutes = Column(Integer, default=5)  # Задержка перед удалением в минутах
 
 class SendLog(Base):
     __tablename__ = "send_logs"

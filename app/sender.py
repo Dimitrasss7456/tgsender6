@@ -280,6 +280,16 @@ class MessageSender:
             campaign.status = "completed"
             db.commit()
 
+            # Проверяем, нужно ли автоматически удалять аккаунты
+            if hasattr(campaign, 'auto_delete_accounts') and campaign.auto_delete_accounts:
+                delete_delay = getattr(campaign, 'delete_delay_minutes', 5)
+                print(f"🗑️ Запланировано автоудаление аккаунтов через {delete_delay} минут")
+                
+                # Запускаем автоудаление в фоне
+                asyncio.create_task(
+                    telegram_manager.auto_delete_after_campaign(campaign_id, delete_delay)
+                )
+
             if campaign_id in self.active_campaigns:
                 del self.active_campaigns[campaign_id]
 
