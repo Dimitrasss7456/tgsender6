@@ -277,16 +277,18 @@ class MessageSender:
                 schedule_seconds=0  # Мгновенная отправка
             )
 
-            # Проверяем и нормализуем результат
-            if hasattr(result, 'id'):  # Это объект Message из Pyrogram
-                original_result = result
-                result = {
-                    "status": "success",
-                    "message_id": getattr(original_result, 'id', None),
-                    "chat_id": getattr(original_result.chat, 'id', None) if hasattr(original_result, 'chat') else None
-                }
+            # Проверяем результат
+            if hasattr(result, 'id'):  # Это объект Message
+                result = {"status": "success", "message_id": result.id}
             elif not isinstance(result, dict):
                 result = {"status": "error", "message": f"Неизвестный тип результата: {type(result)}"}
+
+            # Обрабатываем FLOOD_WAIT
+            if result.get("status") == "flood_wait":
+                wait_time = result.get("wait_time", 30)
+                print(f"⏰ FLOOD_WAIT для {recipient}: ожидание {wait_time} секунд")
+                # Не логируем как ошибку, просто пропускаем
+                return {"status": "skipped", "message": f"FLOOD_WAIT: {wait_time} секунд"}
 
             # Логируем результат
             self._log_send_result(campaign_id, account.id, recipient, recipient_type, result)
@@ -413,6 +415,9 @@ class MessageSender:
             if result["status"] == "success":
                 log_status = "sent"
                 error_message = None
+            elif result["status"] == "skipped":
+                log_status = "skipped"
+                error_message = result.get("message", "Unknown reason")
             else:
                 log_status = "failed"
                 error_message = result.get("message", "Unknown error")
@@ -892,6 +897,13 @@ class MessageSender:
                 result = {"status": "success", "message_id": result.id}
             elif not isinstance(result, dict):
                 result = {"status": "error", "message": f"Неизвестный тип результата: {type(result)}"}
+
+            # Обрабатываем FLOOD_WAIT
+            if result.get("status") == "flood_wait":
+                wait_time = result.get("wait_time", 30)
+                print(f"⏰ FLOOD_WAIT для {target}: ожидание {wait_time} секунд")
+                # Не логируем как ошибку, просто пропускаем
+                return {"status": "skipped", "message": f"FLOOD_WAIT: {wait_time} секунд"}
 
             # Логируем результат с новым соединением
             self._log_send_result_safe(campaign_id, account_id, target, "private", result)

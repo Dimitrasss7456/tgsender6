@@ -684,20 +684,25 @@ class TelegramManager:
         # Проверяем существующий клиент
         if account_id in self.clients:
             client = self.clients[account_id]
-            if hasattr(client, 'is_connected') and client.is_connected:
-                print(
-                    f"✅ Используем существующий подключенный клиент для аккаунта {account_id}"
-                )
-                return client
-            else:
-                print(
-                    f"🔄 Клиент существует, но не подключен. Переподключаем...")
+            try:
+                if hasattr(client, 'is_connected') and client.is_connected:
+                    print(f"✅ Используем существующий подключенный клиент для аккаунта {account_id}")
+                    return client
+                else:
+                    print(f"🔄 Клиент существует, но не подключен. Переподключаем...")
+                    try:
+                        if hasattr(client, 'disconnect'):
+                            await client.disconnect()
+                    except Exception as e:
+                        print(f"⚠️ Ошибка при отключении клиента: {e}")
+                    del self.clients[account_id]
+            except Exception as e:
+                print(f"⚠️ Ошибка проверки клиента {account_id}: {e}")
+                # Удаляем проблемный клиент
                 try:
-                    if hasattr(client, 'disconnect'):
-                        await client.disconnect()
+                    del self.clients[account_id]
                 except:
                     pass
-                del self.clients[account_id]
 
         # Получаем данные аккаунта
         db = next(get_db())
@@ -749,35 +754,49 @@ class TelegramManager:
                             sleep_threshold=30,
                             no_updates=True)
 
-            # Проверяем подключение и авторизацию
-            try:
-                if not client.is_connected:
-                    await client.connect()
-
-                me = await client.get_me()
-                print(
-                    f"✓ Клиент для аккаунта {account_id} успешно подключен: {me.first_name}"
-                )
-
-                # Принудительно устанавливаем client.me для корректной работы Pyrogram
-                client.me = me
-
-                # Обновляем статус в БД
-                account.status = "online"
-                account.last_activity = datetime.utcnow()
-                db.commit()
-
-                self.clients[account_id] = client
-                return client
-
-            except Exception as auth_error:
-                print(f"Ошибка авторизации клиента {account_id}: {auth_error}")
+            # Проверяем подключение и авторизацию с retry
+            max_retries = 3
+            for attempt in range(max_retries):
                 try:
-                    if client.is_connected:
-                        await client.disconnect()
-                except:
-                    pass
-                return None
+                    if not client.is_connected:
+                        await client.connect()
+
+                    # Пробуем получить информацию о пользователе
+                    try:
+                        me = await client.get_me()
+                        print(f"✓ Клиент для аккаунта {account_id} успешно подключен: {me.first_name}")
+                        
+                        # Принудительно устанавливаем client.me для корректной работы Pyrogram
+                        client.me = me
+                        
+                        # Обновляем статус в БД
+                        account.status = "online"
+                        account.last_activity = datetime.utcnow()
+                        db.commit()
+                        
+                        self.clients[account_id] = client
+                        return client
+                        
+                    except FloodWait as fw:
+                        print(f"⏰ FLOOD_WAIT для get_me аккаунта {account_id}: {fw.value} секунд")
+                        # Не ждем FLOOD_WAIT, просто сохраняем клиент без проверки me
+                        self.clients[account_id] = client
+                        return client
+
+                except Exception as auth_error:
+                    print(f"Попытка {attempt + 1}/{max_retries} - Ошибка подключения клиента {account_id}: {auth_error}")
+                    
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                        continue
+                    else:
+                        # Последняя попытка не удалась
+                        try:
+                            if hasattr(client, 'is_connected') and client.is_connected:
+                                await client.disconnect()
+                        except:
+                            pass
+                        return None
 
         except Exception as e:
             print(
@@ -1233,15 +1252,25 @@ class TelegramManager:
                            schedule_seconds: int = 0) -> dict:
         """Отправка сообщения/файла с полным выводом ошибок Telegram"""
         import os, io, traceback, mimetypes, tempfile, shutil
-        from pyrogram.errors import RPCError, AuthKeyUnregistered
+        from pyrogram.errors import RPCError, AuthKeyUnregistered, FloodWait
         try:
             client = await self._get_client_for_account(account_id)
             if not client:
                 return {"status": "error", "message": "Клиент не найден"}
-            if not client.is_connected:
-                await client.connect()
+            
+            # Проверяем подключение с retry механизмом
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    if not client.is_connected:
+                        await client.connect()
+                    break
+                except Exception as connect_error:
+                    if attempt == max_retries - 1:
+                        return {"status": "error", "message": f"Не удалось подключиться: {str(connect_error)}"}
+                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
 
-            # Проверяем авторизацию с обработкой ошибки AUTH_KEY_UNREGISTERED
+            # Проверяем авторизацию с обработкой FLOOD_WAIT
             try:
                 me = await client.get_me()
                 if not me:
@@ -1249,8 +1278,11 @@ class TelegramManager:
                         "status": "error",
                         "message": "Ошибка авторизации аккаунта"
                     }
+            except FloodWait as fw:
+                print(f"⏰ FLOOD_WAIT для get_me: {fw.value} секунд. Пропускаем проверку авторизации")
+                # Не ждем FLOOD_WAIT для get_me, просто пропускаем проверку
+                me = None
             except AuthKeyUnregistered:
-                # Удаляем проблемную сессию и просим пользователя войти заново
                 await self._handle_auth_key_unregistered(account_id)
                 return {
                     "status": "error",
@@ -1351,15 +1383,18 @@ class TelegramManager:
                             "status": "success",
                             "message_id": getattr(sent, "id", None)
                         }
+                    except FloodWait as fw:
+                        print(f"⏰ FLOOD_WAIT при {label}: {fw.value} секунд")
+                        return {
+                            "status": "flood_wait",
+                            "message": f"Требуется ожидание {fw.value} секунд",
+                            "wait_time": fw.value
+                        }
                     except RPCError as rpc_err:
-                        print(
-                            f"❌ RPCError при {label}: {rpc_err} (код: {getattr(rpc_err, 'code', None)})"
-                        )
-                        print(traceback.format_exc())
+                        print(f"❌ RPCError при {label}: {rpc_err}")
                         last_error = f"RPCError: {rpc_err}"
                     except Exception as e:
                         print(f"❌ Ошибка при {label}: {e}")
-                        print(traceback.format_exc())
                         last_error = str(e)
 
                 if tmp_dir:
@@ -1378,18 +1413,21 @@ class TelegramManager:
                         "status": "success",
                         "message_id": getattr(sent, "id", None)
                     }
+                except FloodWait as fw:
+                    print(f"⏰ FLOOD_WAIT при отправке текста: {fw.value} секунд")
+                    return {
+                        "status": "flood_wait",
+                        "message": f"Требуется ожидание {fw.value} секунд",
+                        "wait_time": fw.value
+                    }
                 except RPCError as rpc_err:
-                    print(
-                        f"❌ RPCError при отправке текста: {rpc_err} (код: {getattr(rpc_err, 'code', None)})"
-                    )
-                    print(traceback.format_exc())
+                    print(f"❌ RPCError при отправке текста: {rpc_err}")
                     return {
                         "status": "error",
                         "message": f"RPCError: {rpc_err}"
                     }
                 except Exception as e4:
                     print(f"Ошибка при отправке текста: {e4}")
-                    print(traceback.format_exc())
                     return {"status": "error", "message": str(e4)}
         except AuthKeyUnregistered:
             await self._handle_auth_key_unregistered(account_id)
