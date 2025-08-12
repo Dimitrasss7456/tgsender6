@@ -216,7 +216,7 @@ class MessageSender:
             print(f"🔄 Запускаем {len(send_tasks)} задач с ограничением concurrency")
 
             # Выполняем задачи с ограничением количества одновременных операций
-            results = await self._execute_tasks_with_concurrency_limit(send_tasks, max_concurrent=10)
+            results = await self._execute_tasks_with_concurrency_limit(send_tasks, max_concurrent=3)
 
 
             # Подсчитываем успешные отправки
@@ -258,8 +258,7 @@ class MessageSender:
         finally:
             db.close()
 
-    async def _send_message_task(self, campaign_id: int, account: Account, recipient: str,
-                                message: str, recipient_type: str, attachment_path: str = None) -> Dict:
+    async def _send_message_task(self, campaign_id: int, account: Account, recipient: str, message: str, recipient_type: str, attachment_path: str = None) -> Dict:
         """Задача отправки одного сообщения"""
         try:
             # Проверяем, что кампания все еще активна
@@ -776,7 +775,7 @@ class MessageSender:
             print(f"🔄 Запускаем {len(send_tasks)} задач с ограничением concurrency")
 
             # Выполняем задачи с ограничением количества одновременных операций
-            results = await self._execute_tasks_with_concurrency_limit(send_tasks, max_concurrent=10)
+            results = await self._execute_tasks_with_concurrency_limit(send_tasks, max_concurrent=3)
 
 
             # Подсчитываем результаты

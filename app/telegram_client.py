@@ -681,28 +681,16 @@ class TelegramManager:
         """Получение или создание клиента для аккаунта с улучшенной диагностикой"""
         print(f"🔄 Запрос клиента для аккаунта {account_id}")
 
-        # Проверяем существующий клиент
+        # Всегда создаем новый клиент для избежания проблем с Broken Pipe
         if account_id in self.clients:
-            client = self.clients[account_id]
             try:
-                if hasattr(client, 'is_connected') and client.is_connected:
-                    print(f"✅ Используем существующий подключенный клиент для аккаунта {account_id}")
-                    return client
-                else:
-                    print(f"🔄 Клиент существует, но не подключен. Переподключаем...")
-                    try:
-                        if hasattr(client, 'disconnect'):
-                            await client.disconnect()
-                    except Exception as e:
-                        print(f"⚠️ Ошибка при отключении клиента: {e}")
-                    del self.clients[account_id]
+                old_client = self.clients[account_id]
+                if hasattr(old_client, 'disconnect'):
+                    await old_client.disconnect()
             except Exception as e:
-                print(f"⚠️ Ошибка проверки клиента {account_id}: {e}")
-                # Удаляем проблемный клиент
-                try:
-                    del self.clients[account_id]
-                except:
-                    pass
+                print(f"⚠️ Ошибка при отключении старого клиента: {e}")
+            finally:
+                del self.clients[account_id]
 
         # Получаем данные аккаунта
         db = next(get_db())
@@ -745,25 +733,30 @@ class TelegramManager:
                     print(f"  - {os.path.join(SESSIONS_DIR, name)}.session")
                 return None
 
-            # Создаем клиент
+            # Создаем клиент с улучшенными настройками
             client = Client(session_file,
                             api_id=API_ID,
                             api_hash=API_HASH,
                             proxy=self._parse_proxy(account.proxy)
                             if account.proxy else None,
-                            sleep_threshold=30,
-                            no_updates=True)
+                            sleep_threshold=60,  # Увеличиваем sleep threshold
+                            max_concurrent_transmissions=1,  # Ограничиваем одновременные передачи
+                            no_updates=True,
+                            workers=1)  # Один воркер для стабильности
 
             # Проверяем подключение и авторизацию с retry
-            max_retries = 3
+            max_retries = 2  # Уменьшаем количество попыток
             for attempt in range(max_retries):
                 try:
-                    if not client.is_connected:
-                        await client.connect()
+                    # Подключаемся с таймаутом
+                    await asyncio.wait_for(client.connect(), timeout=30)
+                    
+                    # Даем время на стабилизацию соединения
+                    await asyncio.sleep(1)
 
-                    # Пробуем получить информацию о пользователе
+                    # Пробуем получить информацию о пользователе с таймаутом
                     try:
-                        me = await client.get_me()
+                        me = await asyncio.wait_for(client.get_me(), timeout=15)
                         print(f"✓ Клиент для аккаунта {account_id} успешно подключен: {me.first_name}")
                         
                         # Принудительно устанавливаем client.me для корректной работы Pyrogram
@@ -779,20 +772,49 @@ class TelegramManager:
                         
                     except FloodWait as fw:
                         print(f"⏰ FLOOD_WAIT для get_me аккаунта {account_id}: {fw.value} секунд")
-                        # Не ждем FLOOD_WAIT, просто сохраняем клиент без проверки me
+                        # Сохраняем клиент даже с FLOOD_WAIT
+                        self.clients[account_id] = client
+                        return client
+                    except asyncio.TimeoutError:
+                        print(f"⏰ Таймаут при получении информации о пользователе для аккаунта {account_id}")
+                        # Если get_me не удался из-за таймаута, все равно используем клиент
                         self.clients[account_id] = client
                         return client
 
                 except Exception as auth_error:
+                    error_str = str(auth_error).lower()
                     print(f"Попытка {attempt + 1}/{max_retries} - Ошибка подключения клиента {account_id}: {auth_error}")
                     
+                    # Специальная обработка Broken Pipe
+                    if "broken pipe" in error_str or "errno 32" in error_str:
+                        print(f"🔧 Обнаружена ошибка Broken Pipe для аккаунта {account_id}")
+                        # При Broken Pipe сразу создаем новый клиент
+                        try:
+                            await client.disconnect()
+                        except:
+                            pass
+                        
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(5)  # Больше времени для восстановления
+                            # Создаем новый клиент
+                            client = Client(session_file,
+                                            api_id=API_ID,
+                                            api_hash=API_HASH,
+                                            proxy=self._parse_proxy(account.proxy)
+                                            if account.proxy else None,
+                                            sleep_threshold=60,
+                                            max_concurrent_transmissions=1,
+                                            no_updates=True,
+                                            workers=1)
+                            continue
+                    
                     if attempt < max_retries - 1:
-                        await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                        await asyncio.sleep(3 + attempt * 2)  # Увеличиваем задержку
                         continue
                     else:
                         # Последняя попытка не удалась
                         try:
-                            if hasattr(client, 'is_connected') and client.is_connected:
+                            if hasattr(client, 'disconnect'):
                                 await client.disconnect()
                         except:
                             pass
@@ -1258,17 +1280,24 @@ class TelegramManager:
             if not client:
                 return {"status": "error", "message": "Клиент не найден"}
             
-            # Проверяем подключение с retry механизмом
-            max_retries = 3
+            # Проверяем подключение с улучшенной обработкой ошибок
+            max_retries = 2
             for attempt in range(max_retries):
                 try:
                     if not client.is_connected:
-                        await client.connect()
+                        await asyncio.wait_for(client.connect(), timeout=20)
                     break
                 except Exception as connect_error:
-                    if attempt == max_retries - 1:
+                    error_str = str(connect_error).lower()
+                    if "broken pipe" in error_str or "errno 32" in error_str:
+                        print(f"🔧 Broken pipe при подключении, попытка {attempt + 1}")
+                        # При Broken Pipe получаем новый клиент
+                        client = await self._get_client_for_account(account_id)
+                        if not client:
+                            return {"status": "error", "message": "Не удалось получить стабильный клиент"}
+                    elif attempt == max_retries - 1:
                         return {"status": "error", "message": f"Не удалось подключиться: {str(connect_error)}"}
-                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                    await asyncio.sleep(3 + attempt * 2)
 
             # Проверяем авторизацию с обработкой FLOOD_WAIT
             try:
