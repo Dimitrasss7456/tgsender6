@@ -377,28 +377,28 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // Создаем FormData и добавляем все поля вручную
+        // Создаем FormData для отправки файла и других данных
         const formData = new FormData();
-        formData.set('account_ids', JSON.stringify(selectedAccounts));
-        formData.set('message', message);
-        formData.set('delaySeconds', document.getElementById('delaySeconds').value);
-        formData.set('start_in_minutes', document.getElementById('startInMinutes').value || '');
-        formData.set('autoDeleteAccount', document.getElementById('autoDeleteAccount').checked);
+        formData.append('message', message);
+        formData.append('delay_seconds', delaySeconds);
+        formData.append('auto_delete_account', autoDeleteAccount);
+        formData.append('delete_delay_minutes', deleteDelayMinutes);
 
-        if (uploadedFilePath) {
-            formData.set('attachment_path', uploadedFilePath);
+        // Добавляем выбранные аккаунты
+        selectedAccounts.forEach(accountId => {
+            formData.append(`account_${accountId}`, 'on');
+        });
+
+        // Добавляем файл если выбран
+        const fileInput = document.getElementById('attachment');
+        if (fileInput.files.length > 0) {
+            formData.append('attachment', fileInput.files[0]);
         }
 
-        const startBtn = document.getElementById('submitBtn');
-        const originalText = startBtn.innerHTML;
-
         try {
-            startBtn.disabled = true;
-            startBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Запускаем...';
+            showResult('info', '🚀 Запускаем рассылку...');
 
-            console.log('Sending request to /api/contacts-campaign/start');
-
-            const response = await fetch('/api/contacts-campaign/start', {
+            const response = await fetch('/api/start-contacts-campaign', {
                 method: 'POST',
                 body: formData
             });

@@ -1021,6 +1021,7 @@ async def create_contacts_campaign(request: Request, db: Session = Depends(get_d
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)})
 
+@app.post("/api/contacts-campaign/start")
 @app.post("/api/start-contacts-campaign")
 async def start_contacts_campaign_api(
     request: Request,
