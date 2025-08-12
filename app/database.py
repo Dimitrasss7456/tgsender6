@@ -9,10 +9,12 @@ import secrets
 engine = create_engine(
     DATABASE_URL, 
     connect_args={"check_same_thread": False},
-    pool_size=20,  # Увеличиваем базовый размер пула
-    max_overflow=30,  # Увеличиваем overflow для пиковой нагрузки
-    pool_timeout=60,  # Увеличиваем таймаут ожидания соединения
-    pool_recycle=3600  # Переиспользуем соединения в течение часа
+    pool_size=50,  # Значительно увеличиваем базовый размер пула
+    max_overflow=100,  # Увеличиваем overflow для больших нагрузок
+    pool_timeout=120,  # Увеличиваем таймаут ожидания соединения
+    pool_recycle=1800,  # Переиспользуем соединения в течение 30 минут
+    pool_pre_ping=True,  # Проверяем соединения перед использованием
+    pool_reset_on_return='commit'  # Сбрасываем транзакции при возврате соединения
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()

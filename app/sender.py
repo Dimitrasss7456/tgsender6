@@ -80,7 +80,7 @@ class MessageSender:
                 db.refresh(campaign)
 
                 return {
-                    "status": "success", 
+                    "status": "success",
                     "campaign_id": campaign.id,
                     "recipients_count": sum(len(recipients[t]) for t in recipients),
                     "message": f"Создана автоматическая кампания с {sum(len(recipients[t]) for t in recipients)} получателями"
@@ -151,7 +151,7 @@ class MessageSender:
                     campaign.status = "completed"
                     db.commit()
                     return
-                
+
                 # Сбрасываем счетчики для всех аккаунтов
                 for acc in accounts:
                     acc.messages_sent_today = 0
@@ -179,7 +179,7 @@ class MessageSender:
 
             # Собираем все задачи отправки для параллельного выполнения
             send_tasks = []
-            
+
             for recipient_type, recipient_list in recipients.items():
                 if not self.active_campaigns.get(campaign_id, False):
                     print(f"Campaign {campaign_id} stopped by user")
@@ -207,30 +207,27 @@ class MessageSender:
                     # Создаем задачу отправки
                     task = asyncio.create_task(
                         self._send_message_task(
-                            campaign_id, account, recipient, message, 
+                            campaign_id, account, recipient, message,
                             recipient_type, getattr(campaign, 'attachment_path', None)
                         )
                     )
                     send_tasks.append(task)
 
-            print(f"Starting parallel execution of {len(send_tasks)} send tasks")
+            print(f"🔄 Запускаем {len(send_tasks)} задач с ограничением concurrency")
 
-            # Выполняем все задачи параллельно
-            if send_tasks:
-                results = await asyncio.gather(*send_tasks, return_exceptions=True)
-                
-                # Подсчитываем успешные отправки
-                total_sent = 0
-                for result in results:
-                    if isinstance(result, dict) and result.get("status") == "success":
-                        total_sent += 1
-                    elif isinstance(result, Exception):
-                        print(f"Task exception: {result}")
+            # Выполняем задачи с ограничением количества одновременных операций
+            results = await self._execute_tasks_with_concurrency_limit(send_tasks, max_concurrent=10)
 
-                print(f"Campaign {campaign_id} completed. Total sent: {total_sent}")
-            else:
-                print(f"Campaign {campaign_id} completed. No tasks to execute")
 
+            # Подсчитываем успешные отправки
+            total_sent = 0
+            for result in results:
+                if isinstance(result, dict) and result.get("status") == "success":
+                    total_sent += 1
+                elif isinstance(result, Exception):
+                    print(f"Task exception: {result}")
+
+            print(f"Campaign {campaign_id} completed. Total sent: {total_sent}")
             # Завершаем кампанию
             campaign.status = "completed"
             db.commit()
@@ -261,7 +258,7 @@ class MessageSender:
         finally:
             db.close()
 
-    async def _send_message_task(self, campaign_id: int, account: Account, recipient: str, 
+    async def _send_message_task(self, campaign_id: int, account: Account, recipient: str,
                                 message: str, recipient_type: str, attachment_path: str = None) -> Dict:
         """Задача отправки одного сообщения"""
         try:
@@ -304,13 +301,13 @@ class MessageSender:
         except Exception as send_error:
             print(f"❌ Exception while sending to {recipient}: {str(send_error)}")
             error_result = {"status": "error", "message": str(send_error)}
-            
+
             # Логируем ошибку
             try:
                 self._log_send_result(campaign_id, account.id, recipient, recipient_type, error_result)
             except Exception as log_error:
                 print(f"Failed to log error: {log_error}")
-            
+
             return error_result
 
     def _parse_recipients(self, campaign: Campaign) -> Dict[str, List[str]]:
@@ -364,7 +361,7 @@ class MessageSender:
                             pass
                         elif clean_r.startswith('+'):
                             # Приватная ссылка без t.me
-                            pass  
+                            pass
                         elif clean_r.isdigit() or clean_r.startswith('-'):
                             # Это ID чата
                             pass
@@ -407,7 +404,7 @@ class MessageSender:
 
         # return True
 
-    def _log_send_result(self, campaign_id: int, account_id: int, 
+    def _log_send_result(self, campaign_id: int, account_id: int,
                         recipient: str, recipient_type: str, result: Dict):
         """Логирование результата отправки"""
         db = next(get_db())
@@ -436,7 +433,7 @@ class MessageSender:
         finally:
             db.close()
 
-    async def create_and_start_auto_campaign(self, account_id: int, message: str, 
+    async def create_and_start_auto_campaign(self, account_id: int, message: str,
                                           delay_seconds: int, unique_targets: bool = True) -> Dict:
         """Создание и запуск автоматической кампании"""
         try:
@@ -489,8 +486,8 @@ class MessageSender:
             print(f"Error in create_and_start_auto_campaign: {str(e)}")
             return {"status": "error", "message": str(e)}
 
-    async def create_campaign(self, name: str, message: str, targets: List[str], 
-                              account_id: int, file_path: Optional[str] = None, 
+    async def create_campaign(self, name: str, message: str, targets: List[str],
+                              account_id: int, file_path: Optional[str] = None,
                               delay_seconds: int = 1) -> Dict:
         """Создание кампании рассылки"""
         db = next(get_db())
@@ -511,7 +508,7 @@ class MessageSender:
         finally:
             db.close()
 
-    async def create_contacts_campaign(self, account_ids: List[int], message: str, delay_seconds: int = 0, 
+    async def create_contacts_campaign(self, account_ids: List[int], message: str, delay_seconds: int = 0,
                                      start_in_minutes: Optional[int] = None, attachment_path: Optional[str] = None,
                                      auto_delete_account: bool = False, delete_delay_minutes: int = 5) -> Dict:
         """Создание кампании рассылки только по контактам из адресной книги с использованием всех аккаунтов"""
@@ -591,21 +588,21 @@ class MessageSender:
             print(f"Error creating contacts campaign: {str(e)}")
             return {"status": "error", "message": str(e)}
 
-    async def start_contacts_campaign(self, account_ids: List[int], message: str, delay_seconds: int = 0, 
+    async def start_contacts_campaign(self, account_ids: List[int], message: str, delay_seconds: int = 0,
                                     start_in_minutes: Optional[int] = None, attachment_path: Optional[str] = None,
                                     auto_delete_account: bool = False, delete_delay_minutes: int = 5) -> Dict:
         """Создание и запуск кампании рассылки по контактам с несколькими аккаунтами"""
         try:
             print(f"🚀 Запуск кампании по контактам с аккаунтами: {account_ids}")
-            
+
             # Проверяем что переданы аккаунты
             if not account_ids:
                 return {"status": "error", "message": "Не указаны аккаунты для рассылки"}
-            
+
             # Получаем все контакты из первого аккаунта
             first_account_id = account_ids[0] if isinstance(account_ids, list) else account_ids
             print(f"📱 Получаем контакты из аккаунта {first_account_id}")
-            
+
             contacts_result = await telegram_manager.get_user_contacts(first_account_id)
             if contacts_result["status"] != "success":
                 return {"status": "error", "message": f"Не удалось получить контакты: {contacts_result.get('message', 'Unknown error')}"}
@@ -643,7 +640,7 @@ class MessageSender:
                 db.add(campaign)
                 db.commit()
                 db.refresh(campaign)
-                
+
                 campaign_id = campaign.id
                 print(f"✅ Кампания создана с ID: {campaign_id}")
 
@@ -652,7 +649,7 @@ class MessageSender:
 
             # Запускаем кампанию немедленно с параллельной отправкой
             print(f"🚀 Запускаем кампанию {campaign_id} с {len(account_ids)} аккаунтами")
-            
+
             # Запускаем выполнение кампании в фоне с передачей списка аккаунтов
             self.active_campaigns[campaign_id] = True
             asyncio.create_task(self._run_contacts_campaign_parallel(campaign_id, account_ids, targets, message, attachment_path))
@@ -732,11 +729,11 @@ class MessageSender:
                         Account.is_active == True
                     ).all()
                 ]
-                
+
                 if not active_account_ids:
                     print("❌ Активные аккаунты не найдены")
                     return
-                
+
                 print(f"✅ Найдено {len(active_account_ids)} активных аккаунтов")
 
                 # Обновляем статус кампании
@@ -750,7 +747,7 @@ class MessageSender:
 
             # Создаем задачи для параллельной отправки
             send_tasks = []
-            
+
             for i, target in enumerate(targets):
                 if not self.active_campaigns.get(campaign_id, False):
                     print(f"🛑 Кампания {campaign_id} остановлена пользователем")
@@ -758,7 +755,7 @@ class MessageSender:
 
                 # Распределяем получателей равномерно по аккаунтам
                 account_id = active_account_ids[i % len(active_account_ids)]
-                
+
                 print(f"📤 Планируем отправку {i+1}/{len(targets)}: {target} через аккаунт {account_id}")
 
                 # Создаем задачу отправки с передачей ID аккаунта
@@ -771,15 +768,16 @@ class MessageSender:
                 print("❌ Нет задач для выполнения")
                 return
 
-            print(f"🔄 Запускаем {len(send_tasks)} задач параллельно")
+            print(f"🔄 Запускаем {len(send_tasks)} задач с ограничением concurrency")
 
-            # Выполняем все задачи одновременно
-            results = await asyncio.gather(*send_tasks, return_exceptions=True)
-            
+            # Выполняем задачи с ограничением количества одновременных операций
+            results = await self._execute_tasks_with_concurrency_limit(send_tasks, max_concurrent=10)
+
+
             # Подсчитываем результаты
             success_count = 0
             error_count = 0
-            
+
             for i, result in enumerate(results):
                 if isinstance(result, dict) and result.get("status") == "success":
                     success_count += 1
@@ -807,7 +805,7 @@ class MessageSender:
 
         except Exception as e:
             print(f"❌ Ошибка выполнения параллельной кампании {campaign_id}: {str(e)}")
-            
+
             # Обновляем статус на ошибку
             db = next(get_db())
             try:
@@ -822,7 +820,7 @@ class MessageSender:
         """Отправка одного сообщения"""
         try:
             print(f"📤 Отправляем сообщение на {target} через аккаунт {account.id} ({account.name})")
-            
+
             # Отправляем сообщение мгновенно
             result = await telegram_manager.send_message(
                 account.id,
@@ -851,19 +849,19 @@ class MessageSender:
         except Exception as e:
             print(f"❌ Исключение при отправке на {target}: {str(e)}")
             error_result = {"status": "error", "message": str(e)}
-            
+
             # Логируем ошибку
             try:
                 self._log_send_result(campaign_id, account.id, target, "private", error_result)
             except Exception as log_error:
                 print(f"Ошибка логирования: {log_error}")
-            
+
             return error_result
 
     async def _send_single_message_by_id(self, campaign_id: int, account_id: int, target: str, message: str, attachment_path: Optional[str] = None) -> Dict:
         """Отправка одного сообщения по ID аккаунта"""
         account_name = f"ID:{account_id}"  # Значение по умолчанию
-        
+
         try:
             # Получаем информацию об аккаунте из свежей сессии с правильным управлением контекстом
             db_gen = get_db()
@@ -872,7 +870,7 @@ class MessageSender:
                 account = db.query(Account).filter(Account.id == account_id).first()
                 if not account:
                     return {"status": "error", "message": f"Аккаунт {account_id} не найден"}
-                
+
                 account_name = account.name
             finally:
                 # Правильно закрываем соединение
@@ -882,7 +880,7 @@ class MessageSender:
                     pass
 
             print(f"📤 Отправляем сообщение на {target} через аккаунт {account_id} ({account_name})")
-            
+
             # Отправляем сообщение мгновенно
             result = await telegram_manager.send_message(
                 account_id,
@@ -911,12 +909,12 @@ class MessageSender:
         except Exception as e:
             print(f"❌ Исключение при отправке на {target}: {str(e)}")
             error_result = {"status": "error", "message": str(e)}
-            
+
             # Логируем ошибку с безопасным соединением
             self._log_send_result_safe(campaign_id, account_id, target, "private", error_result)
-            
+
             return error_result
-    
+
     def _log_send_result_safe(self, campaign_id: int, account_id: int, recipient: str, recipient_type: str, result: Dict):
         """Безопасное логирование результата с управлением соединением"""
         try:
@@ -958,7 +956,7 @@ class MessageSender:
             import random
             reasons = [
                 "Больше не использую Telegram",
-                "Перехожу на другой мессенджер", 
+                "Перехожу на другой мессенджер",
                 "Удаляю неактивные аккаунты",
                 "Очистка устройства",
                 "Временно не нужен"
@@ -975,6 +973,19 @@ class MessageSender:
 
         except Exception as e:
             print(f"❌ Критическая ошибка автоудаления аккаунта {account_id}: {str(e)}")
+
+    async def _execute_tasks_with_concurrency_limit(self, tasks: List[asyncio.Task], max_concurrent: int):
+        """Выполняет список задач с ограничением одновременных выполнений."""
+        semaphore = asyncio.Semaphore(max_concurrent)
+        results = []
+
+        async def sem_task(task):
+            async with semaphore:
+                return await task
+
+        sem_tasks = [sem_task(task) for task in tasks]
+        results = await asyncio.gather(*sem_tasks, return_exceptions=True)
+        return results
 
 
 # Глобальный экземпляр отправителя
