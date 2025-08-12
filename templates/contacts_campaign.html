@@ -330,7 +330,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Функция для запуска рассылки по контактам
-    async function startContactsCampaign() {
+    window.startContactsCampaign = async function() {
+        console.log('Starting contacts campaign...');
+        
         const form = document.getElementById('contactsCampaignForm');
         const formData = new FormData(form);
 
@@ -338,34 +340,50 @@ document.addEventListener('DOMContentLoaded', function() {
         const accountSelectElement = document.getElementById('accountSelect');
         const selectedAccounts = Array.from(accountSelectElement.selectedOptions).map(option => option.value).filter(value => value !== '');
 
+        console.log('Selected accounts:', selectedAccounts);
+
         if (selectedAccounts.length === 0) {
-            showResult('warning', 'Выберите хотя бы один аккаунт для рассылки');
+            showResult('error', 'Выберите хотя бы один аккаунт для рассылки');
             return;
         }
 
         const message = document.getElementById('message').value;
+        console.log('Message:', message);
+        
         if (!message || message.trim() === '') {
-            showResult('warning', 'Введите текст сообщения');
+            showResult('error', 'Введите текст сообщения');
             return;
         }
 
         // Добавляем выбранные аккаунты в formData
         formData.set('account_ids', JSON.stringify(selectedAccounts));
-        formData.append('attachment_path', uploadedFilePath || ''); // Ensure attachment_path is set
+        
+        if (uploadedFilePath) {
+            formData.set('attachment_path', uploadedFilePath);
+        }
 
-        const startBtn = document.getElementById('submitBtn'); // Using submitBtn as it's the actual button
+        const startBtn = document.getElementById('submitBtn');
         const originalText = startBtn.innerHTML;
 
         try {
             startBtn.disabled = true;
             startBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Запускаем...';
 
+            console.log('Sending request to /api/contacts-campaign/start');
+
             const response = await fetch('/api/contacts-campaign/start', {
                 method: 'POST',
                 body: formData
             });
 
+            console.log('Response status:', response.status);
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
             const result = await response.json();
+            console.log('Result:', result);
 
             if (result.status === 'success') {
                 showResult('success', `Рассылка успешно запущена! Аккаунтов: ${selectedAccounts.length}, Контактов: ${result.contacts_count || 'неизвестно'}`);
@@ -380,7 +398,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         } catch (error) {
             console.error('Error starting campaign:', error);
-            showResult('error', 'Ошибка соединения с сервером');
+            showResult('error', `Ошибка соединения с сервером: ${error.message}`);
         } finally {
             startBtn.disabled = false;
             startBtn.innerHTML = originalText;

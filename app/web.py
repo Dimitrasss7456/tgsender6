@@ -1028,8 +1028,11 @@ async def start_contacts_campaign(
 ):
     """Создание и запуск кампании рассылки по контактам с поддержкой множественных аккаунтов"""
     try:
+        print("🚀 Запрос на запуск рассылки по контактам получен")
+        
         # Получаем данные из формы
         form_data = await request.form()
+        print(f"📥 Данные формы: {dict(form_data)}")
         
         message = form_data.get("message")
         delay_seconds = int(form_data.get("delay_seconds", 5))
@@ -1038,9 +1041,16 @@ async def start_contacts_campaign(
         auto_delete_account = form_data.get("auto_delete_account") == "true"
         delete_delay_minutes = int(form_data.get("delete_delay_minutes", 5))
         
+        print(f"📝 Сообщение: {message}")
+        print(f"⏱️ Задержка: {delay_seconds} сек")
+        print(f"🗑️ Автоудаление: {auto_delete_account}")
+        
         # Получаем аккаунты - может быть один или несколько
         account_ids_str = form_data.get("account_ids")  # Новое поле для множественных аккаунтов
         account_id_str = form_data.get("account_id")    # Старое поле для совместимости
+        
+        print(f"🔍 account_ids_str: {account_ids_str}")
+        print(f"🔍 account_id_str: {account_id_str}")
         
         account_ids = []
         
@@ -1052,23 +1062,32 @@ async def start_contacts_campaign(
                     account_ids = json.loads(account_ids_str)
                 else:
                     account_ids = [int(x.strip()) for x in account_ids_str.split(',') if x.strip()]
-            except:
+                print(f"✅ Разобранные account_ids: {account_ids}")
+            except Exception as parse_error:
+                print(f"❌ Ошибка разбора account_ids: {parse_error}")
                 return JSONResponse({"status": "error", "message": "Неверный формат списка аккаунтов"})
         elif account_id_str:
             # Совместимость со старым форматом
             try:
                 account_ids = [int(account_id_str)]
+                print(f"✅ Использован старый формат account_id: {account_ids}")
             except:
                 return JSONResponse({"status": "error", "message": "Неверный ID аккаунта"})
         
         if not account_ids or not message:
-            return JSONResponse({"status": "error", "message": "Не указаны аккаунты или сообщение"})
+            error_msg = f"Не указаны аккаунты ({len(account_ids)}) или сообщение ({'есть' if message else 'нет'})"
+            print(f"❌ {error_msg}")
+            return JSONResponse({"status": "error", "message": error_msg})
+
+        print(f"👥 Проверяем аккаунты: {account_ids}")
 
         # Проверяем активность всех аккаунтов
         active_accounts = db.query(Account).filter(
             Account.id.in_(account_ids),
             Account.is_active == True
         ).all()
+        
+        print(f"✅ Найдено активных аккаунтов: {len(active_accounts)}")
         
         if not active_accounts:
             return JSONResponse({"status": "error", "message": "Не найдено активных аккаунтов среди указанных"})
@@ -1080,7 +1099,8 @@ async def start_contacts_campaign(
             print(f"⚠️ Неактивные аккаунты будут пропущены: {inactive_ids}")
 
         # Проверяем существование файла если он указан
-        if attachment_path and not os.path.exists(attachment_path):
+        if attachment_path and attachment_path.strip() and not os.path.exists(attachment_path):
+            print(f"❌ Файл не найден: {attachment_path}")
             return JSONResponse({"status": "error", "message": "Указанный файл не найден"})
 
         # Преобразуем start_in_minutes если указано
@@ -1088,19 +1108,31 @@ async def start_contacts_campaign(
         if start_in_minutes and start_in_minutes.strip():
             try:
                 start_minutes = int(start_in_minutes)
+                print(f"⏰ Отложенный запуск через: {start_minutes} минут")
             except:
                 pass
+
+        print(f"🚀 Запускаем рассылку с параметрами:")
+        print(f"   - Аккаунты: {active_account_ids}")
+        print(f"   - Сообщение: {message[:50]}...")
+        print(f"   - Задержка: {delay_seconds} сек")
+        print(f"   - Файл: {attachment_path or 'нет'}")
 
         result = await message_sender.start_contacts_campaign(
             active_account_ids, message, delay_seconds, start_minutes, attachment_path, 
             auto_delete_account, delete_delay_minutes
         )
 
+        print(f"📊 Результат запуска: {result}")
         return JSONResponse(result)
 
     except Exception as e:
-        print(f"Error in start_contacts_campaign: {str(e)}")
-        return JSONResponse({"status": "error", "message": str(e)})
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"❌ Критическая ошибка в start_contacts_campaign:")
+        print(f"   Ошибка: {str(e)}")
+        print(f"   Трассировка: {error_trace}")
+        return JSONResponse({"status": "error", "message": f"Ошибка сервера: {str(e)}"})
 
 @app.post("/api/campaigns/{campaign_id}/cancel")
 async def cancel_scheduled_campaign(campaign_id: int):
