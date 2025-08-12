@@ -723,19 +723,21 @@ class MessageSender:
             print(f"📱 Аккаунты: {account_ids}")
             print(f"🎯 Получатели: {len(targets)}")
 
-            # Получаем аккаунты из базы данных
+            # Проверяем что аккаунты активны
             db = next(get_db())
             try:
-                accounts = db.query(Account).filter(
-                    Account.id.in_(account_ids),
-                    Account.is_active == True
-                ).all()
+                active_account_ids = [
+                    account.id for account in db.query(Account).filter(
+                        Account.id.in_(account_ids),
+                        Account.is_active == True
+                    ).all()
+                ]
                 
-                if not accounts:
+                if not active_account_ids:
                     print("❌ Активные аккаунты не найдены")
                     return
                 
-                print(f"✅ Найдено {len(accounts)} активных аккаунтов")
+                print(f"✅ Найдено {len(active_account_ids)} активных аккаунтов")
 
                 # Обновляем статус кампании
                 campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
@@ -755,13 +757,13 @@ class MessageSender:
                     break
 
                 # Распределяем получателей равномерно по аккаунтам
-                account = accounts[i % len(accounts)]
+                account_id = active_account_ids[i % len(active_account_ids)]
                 
-                print(f"📤 Планируем отправку {i+1}/{len(targets)}: {target} через аккаунт {account.id} ({account.name})")
+                print(f"📤 Планируем отправку {i+1}/{len(targets)}: {target} через аккаунт {account_id}")
 
-                # Создаем задачу отправки
+                # Создаем задачу отправки с передачей ID аккаунта
                 task = asyncio.create_task(
-                    self._send_single_message(campaign_id, account, target, message, attachment_path)
+                    self._send_single_message_by_id(campaign_id, account_id, target, message, attachment_path)
                 )
                 send_tasks.append(task)
 
@@ -853,6 +855,59 @@ class MessageSender:
             # Логируем ошибку
             try:
                 self._log_send_result(campaign_id, account.id, target, "private", error_result)
+            except Exception as log_error:
+                print(f"Ошибка логирования: {log_error}")
+            
+            return error_result
+
+    async def _send_single_message_by_id(self, campaign_id: int, account_id: int, target: str, message: str, attachment_path: Optional[str] = None) -> Dict:
+        """Отправка одного сообщения по ID аккаунта"""
+        try:
+            # Получаем информацию об аккаунте из свежей сессии
+            db = next(get_db())
+            try:
+                account = db.query(Account).filter(Account.id == account_id).first()
+                if not account:
+                    return {"status": "error", "message": f"Аккаунт {account_id} не найден"}
+                
+                account_name = account.name
+            finally:
+                db.close()
+
+            print(f"📤 Отправляем сообщение на {target} через аккаунт {account_id} ({account_name})")
+            
+            # Отправляем сообщение мгновенно
+            result = await telegram_manager.send_message(
+                account_id,
+                target,
+                message,
+                attachment_path,
+                schedule_seconds=0  # Мгновенная отправка
+            )
+
+            # Проверяем результат
+            if hasattr(result, 'id'):  # Это объект Message
+                result = {"status": "success", "message_id": result.id}
+            elif not isinstance(result, dict):
+                result = {"status": "error", "message": f"Неизвестный тип результата: {type(result)}"}
+
+            # Логируем результат
+            self._log_send_result(campaign_id, account_id, target, "private", result)
+
+            if result.get("status") == "success":
+                print(f"✅ Сообщение отправлено на {target}")
+            else:
+                print(f"❌ Ошибка отправки на {target}: {result.get('message', 'Unknown error')}")
+
+            return result
+
+        except Exception as e:
+            print(f"❌ Исключение при отправке на {target}: {str(e)}")
+            error_result = {"status": "error", "message": str(e)}
+            
+            # Логируем ошибку
+            try:
+                self._log_send_result(campaign_id, account_id, target, "private", error_result)
             except Exception as log_error:
                 print(f"Ошибка логирования: {log_error}")
             
