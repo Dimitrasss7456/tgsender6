@@ -148,19 +148,19 @@ class MessageSender:
                     Account.id == campaign.account_id,
                     Account.is_active == True
                 ).first()
-                
+
                 if not account:
                     print(f"Account {campaign.account_id} not found or inactive")
                     campaign.status = "completed"
                     db.commit()
                     return
-                
+
                 # Сбрасываем счетчики сообщений для нового запуска
                 account.messages_sent_today = 0
                 account.messages_sent_hour = 0
                 db.commit()
                 print(f"Reset message counters for account {account.id}")
-                
+
                 accounts = [account]
                 print(f"Using specific account {account.id} ({account.name}) for contacts campaign")
             else:
@@ -284,7 +284,7 @@ class MessageSender:
             if hasattr(campaign, 'auto_delete_accounts') and campaign.auto_delete_accounts:
                 delete_delay = getattr(campaign, 'delete_delay_minutes', 5)
                 print(f"🗑️ Запланировано автоудаление аккаунтов через {delete_delay} секунд")
-                
+
                 # Запускаем автоудаление в фоне (delay_delay уже в секундах, не переводим в минуты)
                 asyncio.create_task(
                     telegram_manager.auto_delete_after_campaign(campaign_id, delete_delay)
@@ -385,10 +385,10 @@ class MessageSender:
     def _check_account_limits(self, account: Account) -> bool:
         """Проверка лимитов аккаунта"""
         from app.config import MAX_MESSAGES_PER_HOUR, MAX_MESSAGES_PER_DAY
-        
+
         # Временно отключаем лимиты для тестирования
         return True
-        
+
         # Раскомментируйте строки ниже если нужно включить лимиты обратно
         # if account.messages_sent_today >= MAX_MESSAGES_PER_DAY:
         #     print(f"Account {account.id} reached daily limit: {account.messages_sent_today}/{MAX_MESSAGES_PER_DAY}")
@@ -504,12 +504,14 @@ class MessageSender:
         finally:
             db.close()
 
-    async def create_contacts_campaign(self, account_id: int, message: str, delay_seconds: int = 5, 
+    async def create_contacts_campaign(self, account_ids: List[int], message: str, delay_seconds: int = 5, 
                                      start_in_minutes: Optional[int] = None, attachment_path: Optional[str] = None,
                                      auto_delete_account: bool = False, delete_delay_minutes: int = 5) -> Dict:
         """Создание кампании рассылки только по контактам из адресной книги"""
         try:
             # Получаем контакты пользователя из адресной книги
+            # Если передано несколько аккаунтов, берем контакты из первого
+            account_id = account_ids[0] if isinstance(account_ids, list) else account_ids
             contacts_result = await telegram_manager.get_user_contacts(account_id)
             if contacts_result["status"] != "success":
                 return {"status": "error", "message": f"Не удалось получить контакты: {contacts_result.get('message', 'Unknown error')}"}
@@ -543,7 +545,7 @@ class MessageSender:
                     private_message=message,
                     private_list="\n".join(targets),
                     attachment_path=attachment_path,
-                    account_id=account_id,
+                    account_id=account_id, # Сохраняем ID только первого аккаунта для примера, в _run_campaign будут использоваться все
                     auto_delete_accounts=auto_delete_account,
                     delete_delay_minutes=delete_delay_minutes,
                     status="scheduled" if start_in_minutes else "created"
@@ -557,7 +559,7 @@ class MessageSender:
                 if start_in_minutes:
                     task = asyncio.create_task(self._schedule_campaign_start(campaign.id, start_in_minutes * 60))
                     self.scheduled_campaigns[campaign.id] = task
-                    
+
                     return {
                         "status": "success",
                         "campaign_id": campaign.id,
@@ -580,12 +582,14 @@ class MessageSender:
             print(f"Error creating contacts campaign: {str(e)}")
             return {"status": "error", "message": str(e)}
 
-    async def start_contacts_campaign(self, account_id: int, message: str, delay_seconds: int = 5, 
+    async def start_contacts_campaign(self, account_ids: List[int], message: str, delay_seconds: int = 5, 
                                     start_in_minutes: Optional[int] = None, attachment_path: Optional[str] = None,
                                     auto_delete_account: bool = False, delete_delay_minutes: int = 5) -> Dict:
-        """Создание и запуск кампании рассылки по контактам"""
+        """Создание и запуск кампании рассылки по контактам с несколькими аккаунтами"""
         # Создаем кампанию
-        result = await self.create_contacts_campaign(account_id, message, delay_seconds, start_in_minutes, attachment_path, auto_delete_account, delete_delay_minutes)
+        result = await self.create_contacts_campaign(
+            account_ids, message, delay_seconds, start_in_minutes, attachment_path, auto_delete_account, delete_delay_minutes
+        )
         if result["status"] != "success":
             return result
 
@@ -595,20 +599,29 @@ class MessageSender:
         if start_in_minutes is None:
             start_result = await self.start_campaign(campaign_id)
             if start_result["status"] == "success":
-                # Если включено автоудаление аккаунта - запланируем его
+                # Если включено автоудаление аккаунтов - запланируем их
                 if auto_delete_account:
-                    # Используем фиксированную задержку в 5 секунд
-                    delete_delay = delete_delay_minutes  # Теперь это секунды, а не минуты
-                    
-                    print(f"🗑️ Запланировано автоудаление аккаунта {account_id} через {delete_delay} секунд")
-                    asyncio.create_task(self._auto_delete_account_after_delay(account_id, delete_delay))
-                
+                    # Используем фиксированную задержку в секундах
+                    delete_delay = delete_delay_minutes
+
+                    # Если передан список аккаунтов, планируем удаление всех
+                    if isinstance(account_ids, list):
+                        for account_id in account_ids:
+                            print(f"🗑️ Запланировано автоудаление аккаунта {account_id} через {delete_delay} секунд")
+                            asyncio.create_task(self._auto_delete_account_after_delay(account_id, delete_delay))
+                    else:
+                        print(f"🗑️ Запланировано автоудаление аккаунта {account_ids} через {delete_delay} секунд")
+                        asyncio.create_task(self._auto_delete_account_after_delay(account_ids, delete_delay))
+
+                accounts_count = result.get("accounts_used", len(account_ids) if isinstance(account_ids, list) else 1)
+
                 return {
                     "status": "success",
                     "campaign_id": campaign_id,
                     "contacts_count": result["contacts_count"],
-                    "message": f"Рассылка запущена по {result['contacts_count']} контактам" + 
-                              (f". Аккаунт будет автоматически удален после завершения" if auto_delete_account else "")
+                    "accounts_used": accounts_count,
+                    "message": f"Рассылка запущена с {accounts_count} аккаунтами по {result['contacts_count']} контактам" + 
+                              (f". Аккаунты будут автоматически удалены после завершения" if auto_delete_account else "")
                 }
             else:
                 return start_result
@@ -619,19 +632,19 @@ class MessageSender:
         """Планировщик запуска кампании с задержкой"""
         try:
             print(f"Кампания {campaign_id} запланирована на запуск через {delay_seconds} секунд")
-            
+
             # Ждем указанное время
             await asyncio.sleep(delay_seconds)
-            
+
             # Запускаем кампанию
             result = await self.start_campaign(campaign_id)
-            
+
             # Удаляем из планировщика
             if campaign_id in self.scheduled_campaigns:
                 del self.scheduled_campaigns[campaign_id]
-            
+
             print(f"Запланированная кампания {campaign_id} запущена: {result}")
-            
+
         except asyncio.CancelledError:
             print(f"Запланированная кампания {campaign_id} была отменена")
         except Exception as e:
@@ -643,7 +656,7 @@ class MessageSender:
             task = self.scheduled_campaigns[campaign_id]
             task.cancel()
             del self.scheduled_campaigns[campaign_id]
-            
+
             # Обновляем статус в БД
             db = next(get_db())
             try:
@@ -653,9 +666,9 @@ class MessageSender:
                     db.commit()
             finally:
                 db.close()
-            
+
             return {"status": "success", "message": "Запланированная кампания отменена"}
-        
+
         return {"status": "error", "message": "Кампания не найдена в планировщике"}
 
     def get_scheduled_campaigns(self) -> List[int]:
@@ -667,12 +680,12 @@ class MessageSender:
         try:
             print(f"⏰ Ожидание {delay_seconds} секунд перед автоудалением аккаунта {account_id}")
             await asyncio.sleep(delay_seconds)
-            
+
             print(f"🗑️ Начинаем автоудаление аккаунта {account_id}")
-            
+
             # Импортируем telegram_manager здесь чтобы избежать циклического импорта
             from app.telegram_client import telegram_manager
-            
+
             # Выбираем случайную причину удаления для разнообразия
             import random
             reasons = [
@@ -682,16 +695,16 @@ class MessageSender:
                 "Очистка устройства",
                 "Временно не нужен"
             ]
-            
+
             reason = random.choice(reasons)
-            
+
             result = await telegram_manager.delete_telegram_account(account_id, reason)
-            
+
             if result["status"] == "success":
                 print(f"✅ Аккаунт {account_id} успешно автоматически удален")
             else:
                 print(f"❌ Ошибка автоудаления аккаунта {account_id}: {result.get('message', 'Unknown error')}")
-                
+
         except Exception as e:
             print(f"❌ Критическая ошибка автоудаления аккаунта {account_id}: {str(e)}")
 

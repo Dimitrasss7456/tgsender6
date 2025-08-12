@@ -1023,37 +1023,83 @@ async def create_contacts_campaign(request: Request, db: Session = Depends(get_d
 
 @app.post("/api/contacts-campaign/start")
 async def start_contacts_campaign(
-    account_id: int = Form(...),
-    message: str = Form(...),
-    delay_seconds: int = Form(5),
-    start_in_minutes: Optional[int] = Form(None),
-    attachment_path: Optional[str] = Form(None),
-    auto_delete_account: bool = Form(False),
-    delete_delay_minutes: int = Form(5),
+    request: Request,
     db: Session = Depends(get_db)
 ):
-    """Создание и запуск кампании рассылки по контактам с поддержкой файлов и автоудаления"""
+    """Создание и запуск кампании рассылки по контактам с поддержкой множественных аккаунтов"""
     try:
-        if not account_id or not message:
-            return JSONResponse({"status": "error", "message": "Не указан аккаунт или сообщение"})
+        # Получаем данные из формы
+        form_data = await request.form()
+        
+        message = form_data.get("message")
+        delay_seconds = int(form_data.get("delay_seconds", 5))
+        start_in_minutes = form_data.get("start_in_minutes")
+        attachment_path = form_data.get("attachment_path")
+        auto_delete_account = form_data.get("auto_delete_account") == "true"
+        delete_delay_minutes = int(form_data.get("delete_delay_minutes", 5))
+        
+        # Получаем аккаунты - может быть один или несколько
+        account_ids_str = form_data.get("account_ids")  # Новое поле для множественных аккаунтов
+        account_id_str = form_data.get("account_id")    # Старое поле для совместимости
+        
+        account_ids = []
+        
+        if account_ids_str:
+            # Обрабатываем множественные аккаунты (JSON массив или строка с запятыми)
+            try:
+                import json
+                if account_ids_str.startswith('['):
+                    account_ids = json.loads(account_ids_str)
+                else:
+                    account_ids = [int(x.strip()) for x in account_ids_str.split(',') if x.strip()]
+            except:
+                return JSONResponse({"status": "error", "message": "Неверный формат списка аккаунтов"})
+        elif account_id_str:
+            # Совместимость со старым форматом
+            try:
+                account_ids = [int(account_id_str)]
+            except:
+                return JSONResponse({"status": "error", "message": "Неверный ID аккаунта"})
+        
+        if not account_ids or not message:
+            return JSONResponse({"status": "error", "message": "Не указаны аккаунты или сообщение"})
 
-        # Проверяем активность аккаунта
-        account = db.query(Account).filter(Account.id == account_id).first()
-        if not account or not account.is_active:
-            return JSONResponse({"status": "error", "message": "Аккаунт неактивен или не найден"})
+        # Проверяем активность всех аккаунтов
+        active_accounts = db.query(Account).filter(
+            Account.id.in_(account_ids),
+            Account.is_active == True
+        ).all()
+        
+        if not active_accounts:
+            return JSONResponse({"status": "error", "message": "Не найдено активных аккаунтов среди указанных"})
+        
+        active_account_ids = [acc.id for acc in active_accounts]
+        
+        if len(active_account_ids) != len(account_ids):
+            inactive_ids = set(account_ids) - set(active_account_ids)
+            print(f"⚠️ Неактивные аккаунты будут пропущены: {inactive_ids}")
 
         # Проверяем существование файла если он указан
         if attachment_path and not os.path.exists(attachment_path):
             return JSONResponse({"status": "error", "message": "Указанный файл не найден"})
 
+        # Преобразуем start_in_minutes если указано
+        start_minutes = None
+        if start_in_minutes and start_in_minutes.strip():
+            try:
+                start_minutes = int(start_in_minutes)
+            except:
+                pass
+
         result = await message_sender.start_contacts_campaign(
-            account_id, message, delay_seconds, start_in_minutes, attachment_path, 
+            active_account_ids, message, delay_seconds, start_minutes, attachment_path, 
             auto_delete_account, delete_delay_minutes
         )
 
         return JSONResponse(result)
 
     except Exception as e:
+        print(f"Error in start_contacts_campaign: {str(e)}")
         return JSONResponse({"status": "error", "message": str(e)})
 
 @app.post("/api/campaigns/{campaign_id}/cancel")

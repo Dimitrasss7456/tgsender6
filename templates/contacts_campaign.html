@@ -16,10 +16,18 @@
             <div class="card-body">
                 <form id="contactsCampaignForm">
                     <div class="mb-3">
-                        <label for="accountSelect" class="form-label">Выберите аккаунт</label>
-                        <select class="form-select" id="accountSelect" required>
+                        <label for="accountSelect" class="form-label">Выберите аккаунты для рассылки</label>
+                        <select class="form-select" id="accountSelect" multiple size="6" required>
                             <option value="">Загрузка аккаунтов...</option>
                         </select>
+                        <div class="form-text">
+                            Удерживайте Ctrl (Cmd на Mac) для выбора нескольких аккаунтов. 
+                            Контакты будут собраны со всех выбранных аккаунтов, дубликаты исключены.
+                        </div>
+                        <div class="mt-2">
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="selectAllAccounts">Выбрать все</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="clearAllAccounts">Очистить</button>
+                        </div>
                     </div>
 
                     <div class="mb-3">
@@ -82,12 +90,14 @@
                 <div class="alert alert-info">
                     <h6><i class="fas fa-lightbulb"></i> Как это работает:</h6>
                     <ul class="mb-0">
-                        <li>Выберите аккаунт для рассылки</li>
+                        <li>Выберите один или несколько аккаунтов для рассылки</li>
                         <li>Напишите текст сообщения</li>
                         <li>При необходимости прикрепите файл</li>
                         <li>Установите задержку между отправками</li>
-                        <li>Система автоматически получит все контакты выбранного аккаунта</li>
-                        <li>Рассылка будет выполнена по всем контактам из адресной книги</li>
+                        <li>Система автоматически получит контакты со всех выбранных аккаунтов</li>
+                        <li>Дублирующие контакты будут исключены автоматически</li>
+                        <li>Рассылка будет выполнена по всем уникальным контактам</li>
+                        <li>Нагрузка распределится между выбранными аккаунтами</li>
                     </ul>
                 </div>
 
@@ -174,19 +184,37 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Обработчики кнопок выбора аккаунтов
+    document.getElementById('selectAllAccounts').addEventListener('click', function() {
+        const options = accountSelect.querySelectorAll('option');
+        options.forEach(option => {
+            if (option.value !== '') {
+                option.selected = true;
+            }
+        });
+    });
+
+    document.getElementById('clearAllAccounts').addEventListener('click', function() {
+        const options = accountSelect.querySelectorAll('option');
+        options.forEach(option => {
+            option.selected = false;
+        });
+    });
+
     // Обработчик отправки формы
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
 
-        const accountId = accountSelect.value;
+        const selectedOptions = Array.from(accountSelect.selectedOptions);
+        const accountIds = selectedOptions.map(option => option.value).filter(value => value !== '');
         const message = document.getElementById('message').value;
         const delaySeconds = parseInt(document.getElementById('delaySeconds').value);
         const startInMinutes = document.getElementById('startInMinutes').value;
         const autoDeleteAccount = document.getElementById('autoDeleteAccount').checked;
         const deleteDelay = parseInt(document.getElementById('deleteDelay').value);
 
-        if (!accountId) {
-            showResult('error', 'Выберите аккаунт');
+        if (accountIds.length === 0) {
+            showResult('error', 'Выберите хотя бы один аккаунт');
             return;
         }
 
@@ -200,11 +228,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
         try {
             const formData = new FormData();
-            formData.append('account_id', accountId);
+            formData.append('account_ids', JSON.stringify(accountIds));
             formData.append('message', message);
             formData.append('delay_seconds', delaySeconds);
             formData.append('auto_delete_account', autoDeleteAccount);
-            formData.append('delete_delay_minutes', deleteDelay); // Теперь это секунды
+            formData.append('delete_delay_minutes', deleteDelay);
             if (startInMinutes) {
                 formData.append('start_in_minutes', startInMinutes);
             }
@@ -224,6 +252,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 form.reset();
                 uploadedFilePath = null;
                 fileInfo.style.display = 'none';
+                // Очищаем выбор аккаунтов
+                accountSelect.querySelectorAll('option').forEach(option => option.selected = false);
             } else {
                 showResult('error', result.message);
             }
