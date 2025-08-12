@@ -1036,26 +1036,30 @@ async def start_contacts_campaign_api(
 ):
     """API для запуска кампании рассылки по контактам"""
     try:
-        print(f"🚀 Получен запрос на запуск кампании по контактам")
+        print(f"🚀 Получен запрос на запуск кампании от пользователя {current_user.username}")
 
-        # Получаем выбранные аккаунты из формы
+        # Получаем все данные формы для отладки
         form_data = await request.form()
+        print(f"📋 Данные формы: {dict(form_data)}")
+        
         selected_accounts = []
 
         # Собираем все выбранные аккаунты
         for key, value in form_data.items():
+            print(f"🔍 Обрабатываем поле: {key} = {value}")
             if key.startswith('account_') and value == 'on':
                 account_id = int(key.replace('account_', ''))
                 selected_accounts.append(account_id)
 
-        print(f"📱 Выбранные аккаунты: {selected_accounts}")
+        print(f"📱 Найдено аккаунтов: {len(selected_accounts)} - {selected_accounts}")
+        print(f"📝 Сообщение: '{message[:50]}{'...' if len(message) > 50 else ''}'")
 
         # Проверяем наличие аккаунтов
         if not selected_accounts:
-            print("❌ Не выбраны аккаунты")
+            print("❌ Аккаунты не выбраны")
             return JSONResponse({
                 "status": "error", 
-                "message": "Не выбраны аккаунты для рассылки"
+                "message": "Не выбраны аккаунты для рассылки. Выберите хотя бы один аккаунт из списка."
             })
 
         # Проверяем наличие сообщения
@@ -1105,6 +1109,21 @@ async def start_contacts_campaign_api(
 
         # Запускаем кампанию с мгновенной отправкой
         print(f"🚀 Запускаем кампанию с {len(selected_accounts)} аккаунтами")
+        print(f"⚙️ Параметры: delay={delay_seconds}, auto_delete={auto_delete_account}")
+
+        # Проверяем что аккаунты активны перед запуском
+        active_accounts = db.query(Account).filter(
+            Account.id.in_(selected_accounts),
+            Account.is_active == True
+        ).all()
+        
+        print(f"✅ Активных аккаунтов найдено: {len(active_accounts)} из {len(selected_accounts)}")
+        
+        if not active_accounts:
+            return JSONResponse({
+                "status": "error",
+                "message": "Выбранные аккаунты неактивны или не найдены"
+            })
 
         result = await message_sender.start_contacts_campaign(
             account_ids=selected_accounts,
@@ -1113,10 +1132,16 @@ async def start_contacts_campaign_api(
             start_in_minutes=start_in_minutes,
             attachment_path=attachment_path,
             auto_delete_account=auto_delete_account,
-            delete_delay_minutes=delete_delay_minutes
+            delete_delay_minutes=5  # Задержка в секундах, не минутах
         )
 
         print(f"📊 Результат кампании: {result}")
+        
+        # Добавляем дополнительную информацию в ответ
+        if result.get("status") == "success":
+            result["accounts_used"] = len(active_accounts)
+            result["message"] = f"Рассылка запущена с {len(active_accounts)} аккаунтами"
+        
         return JSONResponse(result)
 
     except Exception as e:

@@ -226,9 +226,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const delaySeconds = parseInt(document.getElementById('delaySeconds').value);
         const startInMinutes = document.getElementById('startInMinutes').value;
         const autoDeleteAccount = document.getElementById('autoDeleteAccount').checked;
-        // Ensure deleteDelay is correctly accessed; assuming it might be a number input with id 'deleteDelay'
-        // If it's not present or handled elsewhere, this might need adjustment.
-        // For now, assuming it's handled by the startContactsCampaign function logic.
+        // If deleteDelay is a field, it should be appended here.
+        // formData.append('delete_delay_minutes', deleteDelay);
 
         if (accountIds.length === 0) {
             showResult('error', 'Выберите хотя бы один аккаунт');
@@ -249,8 +248,6 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('message', message);
             formData.append('delay_seconds', delaySeconds);
             formData.append('auto_delete_account', autoDeleteAccount);
-            // If deleteDelay is a field, it should be appended here.
-            // formData.append('delete_delay_minutes', deleteDelay);
             if (startInMinutes) {
                 formData.append('start_in_minutes', startInMinutes);
             }
@@ -356,32 +353,34 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Функция для запуска рассылки по контактам
     window.startContactsCampaign = async function() {
-        console.log('Starting contacts campaign...');
+        // Получаем выбранные аккаунты
+        const selectedAccounts = Array.from(accountSelect.selectedOptions).map(option => parseInt(option.value));
 
-        // Получаем выбранные аккаунты из select
-        const accountSelectElement = document.getElementById('accountSelect');
-        const selectedAccounts = Array.from(accountSelectElement.selectedOptions).map(option => option.value).filter(value => value !== '');
+        console.log('Выбранные аккаунты:', selectedAccounts);
+        console.log('Сообщение:', document.getElementById('message').value);
+        console.log('Автоудаление:', document.getElementById('autoDeleteAccount').checked);
 
-        console.log('Selected accounts:', selectedAccounts);
-
+        // Проверяем данные
         if (selectedAccounts.length === 0) {
-            showResult('error', 'Выберите хотя бы один аккаунт для рассылки');
+            showResult('error', '❌ Выберите хотя бы один аккаунт для рассылки');
             return;
         }
 
         const message = document.getElementById('message').value;
-        console.log('Message:', message);
-
-        if (!message || message.trim() === '') {
-            showResult('error', 'Введите текст сообщения');
+        if (!message || !message.trim()) {
+            showResult('error', '❌ Введите текст сообщения для рассылки');
             return;
         }
 
-        // Создаем FormData для отправки файла и других данных
+        const delaySeconds = parseInt(document.getElementById('delaySeconds').value);
+        const autoDeleteAccount = document.getElementById('autoDeleteAccount').checked;
+        const deleteDelayMinutes = 5; // 5 секунд задержка
+
+        // Создаем FormData
         const formData = new FormData();
-        formData.append('message', message);
-        formData.append('delay_seconds', delaySeconds);
-        formData.append('auto_delete_account', autoDeleteAccount);
+        formData.append('message', message.trim());
+        formData.append('delay_seconds', delaySeconds); // Используем значение из поля
+        formData.append('auto_delete_account', autoDeleteAccount ? 'true' : 'false');
         formData.append('delete_delay_minutes', deleteDelayMinutes);
 
         // Добавляем выбранные аккаунты
@@ -390,45 +389,66 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         // Добавляем файл если выбран
-        const fileInput = document.getElementById('attachment');
-        if (fileInput.files.length > 0) {
+        const fileInput = document.getElementById('fileUpload');
+        if (fileInput && fileInput.files.length > 0) {
             formData.append('attachment', fileInput.files[0]);
+            console.log('Добавлен файл:', fileInput.files[0].name);
         }
 
+        // Отключаем кнопку
+        const submitBtn = document.getElementById('submitBtn');
+        const originalText = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Запускаем рассылку...';
+
         try {
-            showResult('info', '🚀 Запускаем рассылку...');
+            showResult('info', '🚀 Запускаем рассылку по контактам...');
+
+            console.log('Отправляем запрос на /api/start-contacts-campaign');
 
             const response = await fetch('/api/start-contacts-campaign', {
                 method: 'POST',
                 body: formData
             });
 
-            console.log('Response status:', response.status);
+            console.log('Статус ответа:', response.status);
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorText = await response.text();
+                console.error('Ошибка сервера:', errorText);
+                throw new Error(`HTTP ${response.status}: ${errorText}`);
             }
 
             const result = await response.json();
-            console.log('Result:', result);
+            console.log('Результат:', result);
 
             if (result.status === 'success') {
-                showResult('success', `Рассылка успешно запущена! Аккаунтов: ${selectedAccounts.length}, Контактов: ${result.contacts_count || 'неизвестно'}`);
+                const message = `✅ Рассылка запущена! 
+                                           📱 Аккаунтов: ${result.accounts_used || selectedAccounts.length}
+                                           🎯 Контактов: ${result.contacts_count || 'загружается...'}
+                                           ${result.message || ''}`;
+                showResult('success', message);
+
+                // Обновляем счетчики
+                loadScheduledCampaigns();
+
+                // Сбрасываем форму
                 form.reset();
                 uploadedFilePath = null;
                 fileInfo.style.display = 'none';
-                // Очищаем выбор аккаунтов
-                accountSelectElement.querySelectorAll('option').forEach(option => option.selected = false);
+                accountSelect.selectedIndex = -1; // Сбрасываем выбор аккаунтов
+
             } else {
-                showResult('error', result.message || 'Ошибка запуска рассылки');
+                showResult('error', `❌ Ошибка: ${result.message || 'Неизвестная ошибка'}`);
             }
 
         } catch (error) {
-            console.error('Error starting campaign:', error);
-            showResult('error', `Ошибка соединения с сервером: ${error.message}`);
+            console.error('Ошибка запроса:', error);
+            showResult('error', `❌ Ошибка соединения: ${error.message}`);
         } finally {
-            startBtn.disabled = false;
-            startBtn.innerHTML = originalText;
+            // Восстанавливаем кнопку
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
         }
     }
 
@@ -469,6 +489,28 @@ document.addEventListener('DOMContentLoaded', function() {
     // In this case, it seems to be the same as loadAccounts, so could be merged or kept for clarity.
     function loadAccountsForCampaign() {
         loadAccounts();
+    }
+
+    // Helper function to load scheduled campaigns status
+    async function loadScheduledCampaigns() {
+        try {
+            const response = await fetch('/api/scheduled-campaigns');
+            const data = await response.json();
+
+            const statusDiv = document.getElementById('campaignStatus');
+            if (data.scheduled_campaigns && data.scheduled_campaigns.length > 0) {
+                statusDiv.innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="fas fa-clock"></i>
+                        Запланированных кампаний: ${data.scheduled_campaigns.length}
+                    </div>
+                `;
+            } else {
+                statusDiv.innerHTML = '';
+            }
+        } catch (error) {
+            console.error('Error loading scheduled campaigns:', error);
+        }
     }
 });
 </script>
