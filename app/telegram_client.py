@@ -791,73 +791,120 @@ class TelegramManager:
         """Безопасное получение контактов пользователя"""
         import traceback
         try:
-            print(f"Получение контактов для аккаунта {account_id}")
+            print(f"📱 Получение контактов для аккаунта {account_id}")
+            
             client = await self._get_client_for_account(account_id)
             if not client:
-                return {
-                    "status": "error",
-                    "message": "Не удалось подключиться к аккаунту"
-                }
+                print(f"❌ Не удалось получить клиент для аккаунта {account_id}")
+                return {"status": "error", "message": "Не удалось подключиться к аккаунту"}
+            
+            # Проверяем подключение
             if not client.is_connected:
+                print(f"🔌 Подключаем клиент для аккаунта {account_id}")
                 await client.connect()
-            contacts_list = []
+            
+            # Проверяем авторизацию
             try:
+                me = await client.get_me()
+                if not me:
+                    return {"status": "error", "message": "Ошибка авторизации аккаунта"}
+                print(f"✅ Авторизован как: {me.first_name}")
+            except Exception as auth_error:
+                print(f"❌ Ошибка авторизации: {auth_error}")
+                return {"status": "error", "message": f"Ошибка авторизации: {str(auth_error)}"}
+            
+            contacts_list = []
+            
+            try:
+                print("📋 Получаем список контактов...")
                 contacts = await client.get_contacts()
+                print(f"📊 Получено {len(contacts)} контактов из API")
+                
             except Exception as e:
-                print(f"Ошибка получения списка контактов: {e}")
+                error_msg = str(e)
+                print(f"❌ Ошибка получения списка контактов: {error_msg}")
                 print(traceback.format_exc())
-                return {
-                    "status": "error",
-                    "message": f"Ошибка получения контактов: {str(e)}"
-                }
+                
+                # Пробуем альтернативный метод через диалоги
+                print("🔄 Пробуем получить контакты через диалоги...")
+                try:
+                    async for dialog in client.get_dialogs(limit=100):
+                        chat = dialog.chat
+                        if hasattr(chat, 'type') and 'PRIVATE' in str(chat.type):
+                            if chat.id != me.id:  # Исключаем самого себя
+                                contact_data = {
+                                    "id": chat.id,
+                                    "first_name": getattr(chat, "first_name", "") or "",
+                                    "last_name": getattr(chat, "last_name", "") or "",
+                                    "username": getattr(chat, "username", "") or "",
+                                    "phone": "",
+                                    "is_bot": bool(getattr(chat, "is_bot", False)),
+                                    "is_verified": bool(getattr(chat, "is_verified", False)),
+                                    "is_premium": bool(getattr(chat, "is_premium", False)),
+                                    "display_name": f"{getattr(chat, 'first_name', '')} {getattr(chat, 'last_name', '')}".strip() or getattr(chat, 'username', '') or f"User {chat.id}"
+                                }
+                                contacts_list.append(contact_data)
+                    
+                    print(f"📊 Получено {len(contacts_list)} контактов через диалоги")
+                    
+                    if contacts_list:
+                        return {
+                            "status": "success",
+                            "contacts": contacts_list,
+                            "count": len(contacts_list)
+                        }
+                    else:
+                        return {"status": "error", "message": "Контакты не найдены"}
+                        
+                except Exception as dialog_error:
+                    print(f"❌ Ошибка получения диалогов: {dialog_error}")
+                    return {"status": "error", "message": f"Ошибка получения контактов: {error_msg}"}
+            
+            # Обрабатываем полученные контакты
             for contact in contacts:
                 if contact is None:
                     continue
+                    
                 try:
                     first_name = getattr(contact, "first_name", "") or ""
                     last_name = getattr(contact, "last_name", "") or ""
                     username = getattr(contact, "username", "") or ""
                     contact_id = getattr(contact, "id", None)
-                    contact_data = {
-                        "id":
-                        contact_id,
-                        "first_name":
-                        first_name,
-                        "last_name":
-                        last_name,
-                        "username":
-                        username,
-                        "phone":
-                        getattr(contact, "phone_number", "") or "",
-                        "is_bot":
-                        bool(getattr(contact, "is_bot", False)),
-                        "is_verified":
-                        bool(getattr(contact, "is_verified", False)),
-                        "is_premium":
-                        bool(getattr(contact, "is_premium", False)),
-                        "display_name":
-                        f"{first_name} {last_name}".strip() or username
-                        or f"User {contact_id}"
-                    }
-                    contacts_list.append(contact_data)
+                    
+                    if contact_id and contact_id != me.id:  # Исключаем самого себя
+                        contact_data = {
+                            "id": contact_id,
+                            "first_name": first_name,
+                            "last_name": last_name,
+                            "username": username,
+                            "phone": getattr(contact, "phone_number", "") or "",
+                            "is_bot": bool(getattr(contact, "is_bot", False)),
+                            "is_verified": bool(getattr(contact, "is_verified", False)),
+                            "is_premium": bool(getattr(contact, "is_premium", False)),
+                            "display_name": f"{first_name} {last_name}".strip() or username or f"User {contact_id}"
+                        }
+                        contacts_list.append(contact_data)
+                        
                 except Exception as ce:
-                    print(f"Ошибка обработки контакта: {ce}")
-                    print(traceback.format_exc())
+                    print(f"⚠️ Ошибка обработки контакта: {ce}")
                     continue
-            print(f"Найдено {len(contacts_list)} контактов")
+            
+            print(f"✅ Обработано {len(contacts_list)} контактов")
+            
+            if not contacts_list:
+                return {"status": "error", "message": "У аккаунта нет контактов для рассылки"}
+            
             return {
                 "status": "success",
                 "contacts": contacts_list,
                 "count": len(contacts_list)
             }
+            
         except Exception as e:
-            import traceback
-            print(f"Общая ошибка при получении контактов: {e}")
+            error_msg = str(e)
+            print(f"❌ Общая ошибка при получении контактов: {error_msg}")
             print(traceback.format_exc())
-            return {
-                "status": "error",
-                "message": f"Не удалось получить контакты: {str(e)}"
-            }
+            return {"status": "error", "message": f"Не удалось получить контакты: {error_msg}"}
 
     async def get_user_dialogs(self, account_id: int) -> Dict:
         """Получение контактов из диалогов (старый метод)"""

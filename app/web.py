@@ -186,13 +186,13 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         SendLog.sent_at >= datetime.utcnow().date(),
         SendLog.account_id.in_([a.id for a in accounts]) if accounts else False
     ).count()
-    
+
     # Для админа показываем демо-статистику
     if current_user.is_admin:
         import random
         seed = datetime.utcnow().day
         random.seed(seed)
-        
+
         demo_stats = {
             "total_accounts": max(total_accounts, 47),
             "active_accounts": max(active_accounts, 43),
@@ -320,12 +320,12 @@ async def add_account_from_tdata(
     import tempfile
     import shutil
     import traceback
-    
+
     tdata_temp_dir = None
-    
+
     try:
         print(f"🔄 Начинаем импорт TDATA для пользователя {current_user.username}")
-        
+
         if not tdata_files or len(tdata_files) == 0:
             print("❌ Файлы TDATA не загружены")
             return JSONResponse({
@@ -340,35 +340,35 @@ async def add_account_from_tdata(
         # Валидация и сохранение файлов
         saved_files = []
         required_files = []
-        
+
         for file in tdata_files:
             if not file.filename:
                 continue
-                
+
             try:
                 file_path = os.path.join(tdata_temp_dir, file.filename)
                 content = await file.read()
-                
+
                 if len(content) == 0:
                     print(f"⚠️ Файл {file.filename} пустой, пропускаем")
                     continue
-                
+
                 # Проверяем размер файла (ограничение 100MB на файл)
                 if len(content) > 100 * 1024 * 1024:
                     print(f"⚠️ Файл {file.filename} слишком большой ({len(content)} байт)")
                     continue
-                
+
                 with open(file_path, "wb") as buffer:
                     buffer.write(content)
-                
+
                 saved_files.append(file.filename)
-                
+
                 # Отмечаем важные файлы
                 if file.filename.startswith("key_data") or file.filename.startswith("map") or file.filename == "settings0":
                     required_files.append(file.filename)
-                
+
                 print(f"✅ Сохранен файл: {file.filename} ({len(content)} байт)")
-                
+
             except Exception as file_error:
                 print(f"❌ Ошибка сохранения файла {file.filename}: {str(file_error)}")
                 continue
@@ -410,14 +410,14 @@ async def add_account_from_tdata(
         )
 
         print(f"✅ Результат импорта: {result}")
-        
+
         # Валидация результата
         if not isinstance(result, dict):
             result = {"status": "error", "message": "Внутренняя ошибка сервера"}
-        
+
         if 'status' not in result:
             result['status'] = 'error'
-        
+
         if result.get('status') == 'error' and 'message' not in result:
             result['message'] = 'Неизвестная ошибка импорта'
 
@@ -431,10 +431,10 @@ async def add_account_from_tdata(
     except Exception as e:
         error_msg = str(e)
         error_trace = traceback.format_exc()
-        
+
         print(f"❌ Критическая ошибка обработки TDATA: {error_msg}")
         print(f"🔍 Стек ошибки: {error_trace}")
-        
+
         # Логируем в файл для отладки
         try:
             with open("tdata_import_errors.log", "a", encoding="utf-8") as log_file:
@@ -445,12 +445,12 @@ async def add_account_from_tdata(
                 log_file.write("=" * 50 + "\n")
         except:
             pass
-        
+
         return JSONResponse({
             "status": "error", 
             "message": f"Критическая ошибка импорта: {error_msg}"
         })
-        
+
     finally:
         # Очистка временной папки
         if tdata_temp_dir and os.path.exists(tdata_temp_dir):
@@ -568,7 +568,7 @@ async def delete_telegram_account(
             ).first()
             if not account:
                 return JSONResponse({"status": "error", "message": "Аккаунт не найден или нет прав доступа"})
-        
+
         result = await telegram_manager.delete_telegram_account(account_id, reason)
         return JSONResponse(result)
     except Exception as e:
@@ -937,10 +937,10 @@ async def get_stats(request: Request, db: Session = Depends(get_db)):
         is_admin = current_user.is_admin if current_user else False
     except:
         pass
-    
+
     accounts = db.query(Account).all()
     campaigns = db.query(Campaign).all()
-    
+
     # Базовая статистика
     base_stats = {
         "accounts": {
@@ -960,14 +960,14 @@ async def get_stats(request: Request, db: Session = Depends(get_db)):
             "used": getattr(proxy_manager, 'get_used_proxies_count', lambda: 0)()
         }
     }
-    
+
     # Для админа показываем демо-статистику
     if is_admin:
         import random
         # Генерируем стабильную "случайную" статистику на основе текущего дня
         seed = datetime.utcnow().day
         random.seed(seed)
-        
+
         demo_stats = {
             "accounts": {
                 "total": max(base_stats["accounts"]["total"], 47),
@@ -990,7 +990,7 @@ async def get_stats(request: Request, db: Session = Depends(get_db)):
             }
         }
         return JSONResponse(demo_stats)
-    
+
     return JSONResponse(base_stats)
 
 @app.post("/api/contacts-campaign")
@@ -1021,118 +1021,114 @@ async def create_contacts_campaign(request: Request, db: Session = Depends(get_d
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)})
 
-@app.post("/api/contacts-campaign/start")
-async def start_contacts_campaign(
+@app.post("/api/start-contacts-campaign")
+async def start_contacts_campaign_api(
     request: Request,
-    db: Session = Depends(get_db)
+    message: str = Form(...),
+    delay_seconds: int = Form(0),
+    start_in_minutes: Optional[int] = Form(None),
+    attachment: Optional[UploadFile] = File(None),
+    auto_delete_account: bool = Form(False),
+    delete_delay_minutes: int = Form(5),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Создание и запуск кампании рассылки по контактам с поддержкой множественных аккаунтов"""
+    """API для запуска кампании рассылки по контактам"""
     try:
-        print("🚀 Запрос на запуск рассылки по контактам получен")
-        
-        # Получаем данные из формы
+        print(f"🚀 Получен запрос на запуск кампании по контактам")
+
+        # Получаем выбранные аккаунты из формы
         form_data = await request.form()
-        print(f"📥 Данные формы: {dict(form_data)}")
-        
-        message = form_data.get("message")
-        delay_seconds = int(form_data.get("delay_seconds", 0))
-        start_in_minutes = form_data.get("start_in_minutes")
-        attachment_path = form_data.get("attachment_path")
-        auto_delete_account = form_data.get("auto_delete_account") == "true"
-        delete_delay_minutes = int(form_data.get("delete_delay_minutes", 5))
-        
-        print(f"📝 Сообщение: {message}")
-        print(f"⏱️ Задержка: {delay_seconds} сек")
-        print(f"🗑️ Автоудаление: {auto_delete_account}")
-        
-        # Получаем аккаунты - может быть один или несколько
-        account_ids_str = form_data.get("account_ids")  # Новое поле для множественных аккаунтов
-        account_id_str = form_data.get("account_id")    # Старое поле для совместимости
-        
-        print(f"🔍 account_ids_str: {account_ids_str}")
-        print(f"🔍 account_id_str: {account_id_str}")
-        
-        account_ids = []
-        
-        if account_ids_str:
-            # Обрабатываем множественные аккаунты (JSON массив или строка с запятыми)
-            try:
-                import json
-                if account_ids_str.startswith('['):
-                    account_ids = json.loads(account_ids_str)
-                else:
-                    account_ids = [int(x.strip()) for x in account_ids_str.split(',') if x.strip()]
-                print(f"✅ Разобранные account_ids: {account_ids}")
-            except Exception as parse_error:
-                print(f"❌ Ошибка разбора account_ids: {parse_error}")
-                return JSONResponse({"status": "error", "message": "Неверный формат списка аккаунтов"})
-        elif account_id_str:
-            # Совместимость со старым форматом
-            try:
-                account_ids = [int(account_id_str)]
-                print(f"✅ Использован старый формат account_id: {account_ids}")
-            except:
-                return JSONResponse({"status": "error", "message": "Неверный ID аккаунта"})
-        
-        if not account_ids or not message:
-            error_msg = f"Не указаны аккаунты ({len(account_ids)}) или сообщение ({'есть' if message else 'нет'})"
-            print(f"❌ {error_msg}")
-            return JSONResponse({"status": "error", "message": error_msg})
+        selected_accounts = []
 
-        print(f"👥 Проверяем аккаунты: {account_ids}")
+        # Собираем все выбранные аккаунты
+        for key, value in form_data.items():
+            if key.startswith('account_') and value == 'on':
+                account_id = int(key.replace('account_', ''))
+                selected_accounts.append(account_id)
 
-        # Проверяем активность всех аккаунтов
-        active_accounts = db.query(Account).filter(
-            Account.id.in_(account_ids),
+        print(f"📱 Выбранные аккаунты: {selected_accounts}")
+
+        # Проверяем наличие аккаунтов
+        if not selected_accounts:
+            print("❌ Не выбраны аккаунты")
+            return JSONResponse({
+                "status": "error", 
+                "message": "Не выбраны аккаунты для рассылки"
+            })
+
+        # Проверяем наличие сообщения
+        if not message or not message.strip():
+            print("❌ Не указано сообщение")
+            return JSONResponse({
+                "status": "error", 
+                "message": "Не указано сообщение для рассылки"
+            })
+
+        print(f"📝 Сообщение: {message[:50]}...")
+
+        # Проверяем что аккаунты существуют и активны
+        accounts = db.query(Account).filter(
+            Account.id.in_(selected_accounts),
             Account.is_active == True
         ).all()
-        
-        print(f"✅ Найдено активных аккаунтов: {len(active_accounts)}")
-        
-        if not active_accounts:
-            return JSONResponse({"status": "error", "message": "Не найдено активных аккаунтов среди указанных"})
-        
-        active_account_ids = [acc.id for acc in active_accounts]
-        
-        if len(active_account_ids) != len(account_ids):
-            inactive_ids = set(account_ids) - set(active_account_ids)
-            print(f"⚠️ Неактивные аккаунты будут пропущены: {inactive_ids}")
 
-        # Проверяем существование файла если он указан
-        if attachment_path and attachment_path.strip() and not os.path.exists(attachment_path):
-            print(f"❌ Файл не найден: {attachment_path}")
-            return JSONResponse({"status": "error", "message": "Указанный файл не найден"})
+        if not accounts:
+            print("❌ Активные аккаунты не найдены")
+            return JSONResponse({
+                "status": "error", 
+                "message": "Выбранные аккаунты не найдены или неактивны"
+            })
 
-        # Преобразуем start_in_minutes если указано
-        start_minutes = None
-        if start_in_minutes and start_in_minutes.strip():
+        print(f"✅ Найдено {len(accounts)} активных аккаунтов")
+
+        # Обработка файла вложения
+        attachment_path = None
+        if attachment and attachment.filename:
             try:
-                start_minutes = int(start_in_minutes)
-                print(f"⏰ Отложенный запуск через: {start_minutes} минут")
-            except:
-                pass
+                print(f"📎 Обрабатываем файл: {attachment.filename}")
+                file_content = await attachment.read()
+                filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{attachment.filename}"
+                attachment_path = os.path.join(UPLOADS_DIR, filename)
 
-        print(f"🚀 Запускаем рассылку с параметрами:")
-        print(f"   - Аккаунты: {active_account_ids}")
-        print(f"   - Сообщение: {message[:50]}...")
-        print(f"   - Задержка: {delay_seconds} сек")
-        print(f"   - Файл: {attachment_path or 'нет'}")
+                with open(attachment_path, "wb") as f:
+                    f.write(file_content)
+
+                print(f"✅ Файл сохранен: {attachment_path}")
+            except Exception as file_error:
+                print(f"❌ Ошибка сохранения файла: {file_error}")
+                return JSONResponse({
+                    "status": "error", 
+                    "message": f"Ошибка сохранения файла: {str(file_error)}"
+                })
+
+        # Запускаем кампанию с мгновенной отправкой
+        print(f"🚀 Запускаем кампанию с {len(selected_accounts)} аккаунтами")
 
         result = await message_sender.start_contacts_campaign(
-            active_account_ids, message, delay_seconds, start_minutes, attachment_path, 
-            auto_delete_account, delete_delay_minutes
+            account_ids=selected_accounts,
+            message=message,
+            delay_seconds=0,  # Мгновенная отправка
+            start_in_minutes=start_in_minutes,
+            attachment_path=attachment_path,
+            auto_delete_account=auto_delete_account,
+            delete_delay_minutes=delete_delay_minutes
         )
 
-        print(f"📊 Результат запуска: {result}")
+        print(f"📊 Результат кампании: {result}")
         return JSONResponse(result)
 
     except Exception as e:
         import traceback
+        error_msg = str(e)
         error_trace = traceback.format_exc()
-        print(f"❌ Критическая ошибка в start_contacts_campaign:")
-        print(f"   Ошибка: {str(e)}")
-        print(f"   Трассировка: {error_trace}")
-        return JSONResponse({"status": "error", "message": f"Ошибка сервера: {str(e)}"})
+        print(f"❌ Ошибка API кампании по контактам: {error_msg}")
+        print(f"🔍 Трассировка: {error_trace}")
+
+        return JSONResponse({
+            "status": "error", 
+            "message": f"Ошибка запуска кампании: {error_msg}"
+        })
 
 @app.post("/api/campaigns/{campaign_id}/cancel")
 async def cancel_scheduled_campaign(campaign_id: int):
