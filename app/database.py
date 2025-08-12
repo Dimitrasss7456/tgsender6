@@ -8,13 +8,17 @@ import secrets
 
 engine = create_engine(
     DATABASE_URL, 
-    connect_args={"check_same_thread": False},
-    pool_size=50,  # Значительно увеличиваем базовый размер пула
-    max_overflow=100,  # Увеличиваем overflow для больших нагрузок
-    pool_timeout=120,  # Увеличиваем таймаут ожидания соединения
-    pool_recycle=1800,  # Переиспользуем соединения в течение 30 минут
+    connect_args={
+        "check_same_thread": False,
+        "timeout": 60  # Таймаут для SQLite операций
+    },
+    pool_size=100,  # Максимально увеличиваем базовый размер пула
+    max_overflow=200,  # Еще больше overflow для пиковых нагрузок
+    pool_timeout=180,  # Увеличиваем таймаут ожидания соединения
+    pool_recycle=900,  # Переиспользуем соединения в течение 15 минут
     pool_pre_ping=True,  # Проверяем соединения перед использованием
-    pool_reset_on_return='commit'  # Сбрасываем транзакции при возврате соединения
+    pool_reset_on_return='commit',  # Сбрасываем транзакции при возврате соединения
+    echo=False  # Отключаем SQL логирование для производительности
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -113,3 +117,16 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def get_db_session():
+    """Получение сессии БД для асинхронных операций"""
+    return SessionLocal()
+
+async def get_async_db_session():
+    """Асинхронное получение сессии БД с автоматическим закрытием"""
+    db = SessionLocal()
+    try:
+        return db
+    except Exception as e:
+        db.close()
+        raise e

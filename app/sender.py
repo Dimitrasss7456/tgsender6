@@ -860,12 +860,13 @@ class MessageSender:
 
     async def _send_single_message_by_id(self, campaign_id: int, account_id: int, target: str, message: str, attachment_path: Optional[str] = None) -> Dict:
         """Отправка одного сообщения по ID аккаунта"""
+        from app.database import get_db_session
+
         account_name = f"ID:{account_id}"  # Значение по умолчанию
 
         try:
-            # Получаем информацию об аккаунте из свежей сессии с правильным управлением контекстом
-            db_gen = get_db()
-            db = next(db_gen)
+            # Получаем информацию об аккаунте с новой сессией
+            db = get_db_session()
             try:
                 account = db.query(Account).filter(Account.id == account_id).first()
                 if not account:
@@ -873,11 +874,7 @@ class MessageSender:
 
                 account_name = account.name
             finally:
-                # Правильно закрываем соединение
-                try:
-                    next(db_gen)
-                except StopIteration:
-                    pass
+                db.close()
 
             print(f"📤 Отправляем сообщение на {target} через аккаунт {account_id} ({account_name})")
 
