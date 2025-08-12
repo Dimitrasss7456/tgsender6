@@ -5,6 +5,7 @@
 """
 
 import os
+import sqlite3
 from app.database import engine, Base
 from app.auth import create_admin_user_if_not_exists
 from app.database import get_db
@@ -23,9 +24,20 @@ def recreate_database():
             return False
     
     try:
-        # Создаем новую базу данных
+        # Создаем новую базу данных напрямую через SQLite
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.close()
+        print("База данных создана через SQLite")
+        
+        # Устанавливаем права доступа
+        os.chmod(db_path, 0o666)
+        print("Права доступа установлены")
+        
+        # Создаем таблицы через SQLAlchemy
         Base.metadata.create_all(bind=engine)
-        print("Новая база данных создана")
+        print("Таблицы созданы через SQLAlchemy")
         
         # Создаем администратора
         db = next(get_db())
@@ -34,10 +46,6 @@ def recreate_database():
             print("Администратор создан")
         finally:
             db.close()
-        
-        # Устанавливаем правильные права доступа
-        os.chmod(db_path, 0o664)
-        print("Права доступа установлены")
         
         return True
         
