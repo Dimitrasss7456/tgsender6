@@ -16,17 +16,27 @@
             <div class="card-body">
                 <form id="contactsCampaignForm">
                     <div class="mb-3">
-                        <label for="accountSelect" class="form-label">Выберите аккаунты для рассылки</label>
-                        <select class="form-select" id="accountSelect" multiple size="6" required>
-                            <option value="">Загрузка аккаунтов...</option>
+                        <label for="accountSelect" class="form-label">
+                            <i class="fas fa-users"></i> Выберите аккаунты для рассылки
+                        </label>
+                        <select class="form-select" id="accountSelect" multiple size="6" required style="font-family: monospace;">
+                            <option value="">🔄 Загрузка аккаунтов...</option>
                         </select>
                         <div class="form-text">
-                            Удерживайте Ctrl (Cmd на Mac) для выбора нескольких аккаунтов.
-                            Контакты будут собраны со всех выбранных аккаунтов, дубликаты исключены.
+                            <i class="fas fa-info-circle"></i> 
+                            <strong>Как выбрать аккаунты:</strong><br>
+                            • Кликните на аккаунт чтобы выбрать/отменить<br>
+                            • Удерживайте <kbd>Ctrl</kbd> (или <kbd>Cmd</kbd> на Mac) для выбора нескольких<br>
+                            • Используйте кнопки ниже для быстрого выбора
                         </div>
-                        <div class="mt-2">
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="selectAllAccounts">Выбрать все</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" id="clearAllAccounts">Очистить</button>
+                        <div class="mt-2 d-flex gap-2">
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="selectAllAccounts">
+                                <i class="fas fa-check-double"></i> Выбрать все
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="clearAllAccounts">
+                                <i class="fas fa-times"></i> Очистить выбор
+                            </button>
+                            <span class="badge bg-info ms-auto align-self-center" id="selectedCount">Выбрано: 0</span>
                         </div>
                     </div>
 
@@ -184,6 +194,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Обновляем счетчик при изменении выбора
+    accountSelect.addEventListener('change', updateSelectedCount);
+
     // Обработчики кнопок выбора аккаунтов
     document.getElementById('selectAllAccounts').addEventListener('click', function() {
         const options = accountSelect.querySelectorAll('option');
@@ -192,6 +205,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 option.selected = true;
             }
         });
+        updateSelectedCount();
     });
 
     document.getElementById('clearAllAccounts').addEventListener('click', function() {
@@ -199,6 +213,7 @@ document.addEventListener('DOMContentLoaded', function() {
         options.forEach(option => {
             option.selected = false;
         });
+        updateSelectedCount();
     });
 
     // Обработчик отправки формы (для обычной отправки, не для запуска)
@@ -276,26 +291,36 @@ document.addEventListener('DOMContentLoaded', function() {
             accountSelect.innerHTML = ''; // Clear previous options
 
             if (accounts.length === 0) {
-                 accountSelect.innerHTML = '<option value="">Нет доступных аккаунтов</option>';
+                 accountSelect.innerHTML = '<option value="" disabled>❌ Нет доступных аккаунтов</option>';
                  return;
             }
 
+            let activeCount = 0;
             accounts.forEach(account => {
                 if (account.is_active && account.status === 'online') {
                     const option = document.createElement('option');
                     option.value = account.id;
-                    option.textContent = `${account.name} (${account.phone})`;
+                    option.textContent = `✅ ${account.name} (${account.phone})`;
+                    option.style.backgroundColor = '#e8f5e8';
                     accountSelect.appendChild(option);
+                    activeCount++;
                 }
             });
 
-            if (accountSelect.children.length === 0) {
-                accountSelect.innerHTML = '<option value="">Нет активных онлайн аккаунтов</option>';
+            if (activeCount === 0) {
+                accountSelect.innerHTML = '<option value="" disabled>⚠️ Нет активных онлайн аккаунтов</option>';
             }
+
+            updateSelectedCount();
         } catch (error) {
             console.error('Error loading accounts:', error);
-            accountSelect.innerHTML = '<option value="">Ошибка загрузки аккаунтов</option>';
+            accountSelect.innerHTML = '<option value="" disabled>❌ Ошибка загрузки аккаунтов</option>';
         }
+    }
+
+    function updateSelectedCount() {
+        const selectedCount = Array.from(accountSelect.selectedOptions).filter(option => option.value !== '').length;
+        document.getElementById('selectedCount').textContent = `Выбрано: ${selectedCount}`;
     }
 
     function showResult(type, message) {
@@ -333,9 +358,6 @@ document.addEventListener('DOMContentLoaded', function() {
     window.startContactsCampaign = async function() {
         console.log('Starting contacts campaign...');
         
-        const form = document.getElementById('contactsCampaignForm');
-        const formData = new FormData(form);
-
         // Получаем выбранные аккаунты из select
         const accountSelectElement = document.getElementById('accountSelect');
         const selectedAccounts = Array.from(accountSelectElement.selectedOptions).map(option => option.value).filter(value => value !== '');
@@ -355,8 +377,13 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // Добавляем выбранные аккаунты в formData
+        // Создаем FormData и добавляем все поля вручную
+        const formData = new FormData();
         formData.set('account_ids', JSON.stringify(selectedAccounts));
+        formData.set('message', message);
+        formData.set('delaySeconds', document.getElementById('delaySeconds').value);
+        formData.set('start_in_minutes', document.getElementById('startInMinutes').value || '');
+        formData.set('autoDeleteAccount', document.getElementById('autoDeleteAccount').checked);
         
         if (uploadedFilePath) {
             formData.set('attachment_path', uploadedFilePath);
