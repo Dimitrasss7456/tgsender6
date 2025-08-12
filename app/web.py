@@ -727,6 +727,206 @@ async def get_chats(account_id: int, db: Session = Depends(get_db)):
             status_code=500
         )
 
+@app.get("/campaign-stats", response_class=HTMLResponse)
+async def campaign_stats_page(request: Request, current_user: User = Depends(get_current_user)):
+    """Страница статистики кампаний"""
+    return templates.TemplateResponse("campaign_stats.html", {
+        "request": request,
+        "current_user": current_user
+    })
+
+@app.get("/api/campaign-stats")
+async def get_campaign_stats(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """API для получения статистики кампаний"""
+    try:
+        # Фильтруем кампании по пользователю
+        if current_user.is_admin:
+            campaigns = db.query(Campaign).all()
+        else:
+            user_accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
+            account_ids = [a.id for a in user_accounts]
+            campaigns = db.query(Campaign).filter(Campaign.account_id.in_(account_ids)).all() if account_ids else []
+
+        campaign_stats = []
+        total_sent = 0
+        total_failed = 0
+
+        for campaign in campaigns:
+            # Получаем статистику отправки для каждой кампании
+            sent_logs = db.query(SendLog).filter(
+                SendLog.campaign_id == campaign.id,
+                SendLog.status == "sent"
+            ).count()
+
+            failed_logs = db.query(SendLog).filter(
+                SendLog.campaign_id == campaign.id,
+                SendLog.status == "failed"
+            ).count()
+
+            # Подсчитываем общее количество целей
+            total_targets = 0
+            if campaign.private_list:
+                try:
+                    import json
+                    targets = json.loads(campaign.private_list)
+                    total_targets += len(targets)
+                except:
+                    targets = campaign.private_list.split('\n')
+                    total_targets += len([t for t in targets if t.strip()])
+
+            if campaign.groups_list:
+                try:
+                    import json
+                    targets = json.loads(campaign.groups_list)
+                    total_targets += len(targets)
+                except:
+                    targets = campaign.groups_list.split('\n')
+                    total_targets += len([t for t in targets if t.strip()])
+
+            if campaign.channels_list:
+                try:
+                    import json
+                    targets = json.loads(campaign.channels_list)
+                    total_targets += len(targets)
+                except:
+                    targets = campaign.channels_list.split('\n')
+                    total_targets += len([t for t in targets if t.strip()])
+
+            # Подсчитываем количество использованных аккаунтов
+            accounts_used = db.query(SendLog.account_id).filter(
+                SendLog.campaign_id == campaign.id
+            ).distinct().count()
+
+            campaign_stat = {
+                "id": campaign.id,
+                "name": campaign.name,
+                "status": campaign.status,
+                "created_at": campaign.created_at.isoformat(),
+                "sent_count": sent_logs,
+                "failed_count": failed_logs,
+                "total_targets": total_targets,
+                "accounts_used": accounts_used,
+                "delay_seconds": campaign.delay_seconds
+            }
+
+            campaign_stats.append(campaign_stat)
+            total_sent += sent_logs
+            total_failed += failed_logs
+
+        # Общая статистика
+        overall_stats = {
+            "total_campaigns": len(campaigns),
+            "total_sent": total_sent,
+            "total_failed": total_failed,
+            "success_rate": round((total_sent / (total_sent + total_failed)) * 100, 1) if (total_sent + total_failed) > 0 else 0
+        }
+
+        return JSONResponse({
+            "status": "success",
+            "overall": overall_stats,
+            "campaigns": campaign_stats
+        })
+
+    except Exception as e:
+        return JSONResponse({
+            "status": "error",
+            "message": f"Ошибка получения статистики: {str(e)}"
+        })
+
+@app.get("/api/campaign-details/{campaign_id}")
+async def get_campaign_details(campaign_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """API для получения детальной информации о кампании"""
+    try:
+        # Проверяем права доступа
+        campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+        if not campaign:
+            return JSONResponse({"status": "error", "message": "Кампания не найдена"})
+
+        if not current_user.is_admin and campaign.account_id:
+            account = db.query(Account).filter(Account.id == campaign.account_id).first()
+            if not account or account.user_id != current_user.id:
+                return JSONResponse({"status": "error", "message": "Нет доступа к этой кампании"})
+
+        # Получаем детальную статистику
+        sent_count = db.query(SendLog).filter(
+            SendLog.campaign_id == campaign_id,
+            SendLog.status == "sent"
+        ).count()
+
+        failed_count = db.query(SendLog).filter(
+            SendLog.campaign_id == campaign_id,
+            SendLog.status == "failed"
+        ).count()
+
+        # Подсчитываем общее количество целей
+        total_targets = 0
+        if campaign.private_list:
+            try:
+                import json
+                targets = json.loads(campaign.private_list)
+                total_targets += len(targets)
+            except:
+                targets = campaign.private_list.split('\n')
+                total_targets += len([t for t in targets if t.strip()])
+
+        if campaign.groups_list:
+            try:
+                import json
+                targets = json.loads(campaign.groups_list)
+                total_targets += len(targets)
+            except:
+                targets = campaign.groups_list.split('\n')
+                total_targets += len([t for t in targets if t.strip()])
+
+        if campaign.channels_list:
+            try:
+                import json
+                targets = json.loads(campaign.channels_list)
+                total_targets += len(targets)
+            except:
+                targets = campaign.channels_list.split('\n')
+                total_targets += len([t for t in targets if t.strip()])
+
+        # Получаем последние логи отправки
+        logs = db.query(SendLog).filter(
+            SendLog.campaign_id == campaign_id
+        ).order_by(SendLog.sent_at.desc()).limit(50).all()
+
+        logs_data = []
+        for log in logs:
+            logs_data.append({
+                "recipient": log.recipient,
+                "status": log.status,
+                "sent_at": log.sent_at.isoformat(),
+                "error_message": log.error_message
+            })
+
+        campaign_data = {
+            "id": campaign.id,
+            "name": campaign.name,
+            "status": campaign.status,
+            "created_at": campaign.created_at.isoformat(),
+            "delay_seconds": campaign.delay_seconds,
+            "private_message": campaign.private_message,
+            "group_message": campaign.group_message,
+            "channel_message": campaign.channel_message,
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "total_targets": total_targets
+        }
+
+        return JSONResponse({
+            "status": "success",
+            "campaign": campaign_data,
+            "logs": logs_data
+        })
+
+    except Exception as e:
+        return JSONResponse({
+            "status": "error",
+            "message": f"Ошибка получения деталей кампании: {str(e)}"
+        })
+
 @app.get("/api/stats")
 async def get_stats(request: Request, db: Session = Depends(get_db)):
     """API для получения статистики"""
