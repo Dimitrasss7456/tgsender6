@@ -257,7 +257,7 @@ class TelegramManager:
                 del self.pending_clients[session_name]
             return {"status": "error", "message": str(e)}
 
-    async def add_account_from_tdata(self, 
+    async def add_account_from_tdata(self,
                                    tdata_path: str,
                                    proxy: Optional[str] = None,
                                    current_user_id: Optional[int] = None) -> Dict:
@@ -268,37 +268,37 @@ class TelegramManager:
         import sqlite3
         import json
         from pathlib import Path
-        
+
         try:
             print(f"🔄 Импорт аккаунта из TDATA: {tdata_path}")
-            
+
             # Валидация входных данных
             if not tdata_path or not isinstance(tdata_path, str):
                 return {"status": "error", "message": "Некорректный путь к TDATA"}
-            
+
             if not os.path.exists(tdata_path):
                 print(f"❌ TDATA папка не найдена: {tdata_path}")
                 return {"status": "error", "message": "TDATA папка не найдена"}
-            
+
             if not os.path.isdir(tdata_path):
                 print(f"❌ Путь не является папкой: {tdata_path}")
                 return {"status": "error", "message": "Указанный путь не является папкой"}
-            
+
             # Проверяем наличие файлов
             try:
                 tdata_files = os.listdir(tdata_path)
                 print(f"📁 Файлы в TDATA папке: {tdata_files}")
             except Exception as list_error:
                 return {"status": "error", "message": f"Ошибка чтения папки: {str(list_error)}"}
-            
+
             if not tdata_files:
                 return {"status": "error", "message": "TDATA папка пустая"}
-            
+
             # Ищем основные файлы TDATA
             key_files = []
             map_files = []
             settings_file = None
-            
+
             for file_name in tdata_files:
                 if file_name.startswith("key_data"):
                     key_files.append(file_name)
@@ -306,35 +306,35 @@ class TelegramManager:
                     map_files.append(file_name)
                 elif file_name == "settings0":
                     settings_file = file_name
-            
+
             print(f"🔍 Key files: {key_files}")
             print(f"🔍 Map files: {len(map_files)} файлов")
             print(f"🔍 Settings file: {settings_file}")
-            
+
             if not key_files:
                 return {"status": "error", "message": "Не найден файл key_data в TDATA"}
-            
+
             # Создаем временную сессию для Pyrogram
             import uuid
             temp_session_name = f"tdata_{uuid.uuid4().hex[:8]}"
             temp_session_dir = os.path.join(SESSIONS_DIR, f"temp_{temp_session_name}")
-            
+
             try:
                 # Создаем временную папку
                 os.makedirs(temp_session_dir, exist_ok=True)
-                
+
                 # Копируем все TDATA файлы во временную папку
                 for file_name in tdata_files:
                     src_file = os.path.join(tdata_path, file_name)
                     dst_file = os.path.join(temp_session_dir, file_name)
-                    
+
                     if os.path.isfile(src_file):
                         shutil.copy2(src_file, dst_file)
                         print(f"✅ Скопирован файл: {file_name}")
-                
+
                 # Пытаемся создать клиент, указав TDATA папку как рабочую директорию
                 print(f"🔄 Создаем Pyrogram клиент с TDATA...")
-                
+
                 client = Client(
                     name=temp_session_name,
                     api_id=API_ID,
@@ -344,34 +344,34 @@ class TelegramManager:
                     no_updates=True,
                     in_memory=False
                 )
-                
+
                 print(f"🔄 Подключаемся к Telegram...")
                 await client.connect()
-                
+
                 # Проверяем авторизацию
                 try:
                     me = await client.get_me()
-                    
+
                     if me and me.id:
                         print(f"✅ Успешная авторизация: {me.first_name} ({me.phone_number})")
-                        
+
                         # Создаем постоянную сессию
                         phone_clean = me.phone_number.replace('+', '').replace(' ', '').replace('(', '').replace(')', '').replace('-', '')
                         permanent_session_name = f"session_{phone_clean}"
                         permanent_session_path = os.path.join(SESSIONS_DIR, permanent_session_name)
-                        
+
                         # Отключаемся от временного клиента
                         await client.disconnect()
-                        
+
                         # Ищем созданный файл сессии
                         temp_session_file = os.path.join(temp_session_dir, f"{temp_session_name}.session")
-                        
+
                         if os.path.exists(temp_session_file):
                             # Копируем файл сессии в постоянное место
                             permanent_session_file = f"{permanent_session_path}.session"
                             shutil.copy2(temp_session_file, permanent_session_file)
                             print(f"✅ Сессия сохранена: {permanent_session_file}")
-                            
+
                             # Сохраняем аккаунт в базу данных
                             await self._save_account(
                                 phone=me.phone_number,
@@ -382,7 +382,7 @@ class TelegramManager:
                                 session_data=None,  # Будет считан из файла
                                 current_user_id=current_user_id
                             )
-                            
+
                             return {
                                 "status": "success",
                                 "name": me.first_name or "TDATA User",
@@ -393,21 +393,21 @@ class TelegramManager:
                     else:
                         await client.disconnect()
                         return {"status": "error", "message": "Не удалось получить информацию о пользователе"}
-                        
+
                 except Exception as auth_error:
                     print(f"❌ Ошибка авторизации: {auth_error}")
                     try:
                         await client.disconnect()
                     except:
                         pass
-                    
+
                     # Если стандартный способ не работает, пробуем альтернативный метод
                     return await self._try_alternative_tdata_import(tdata_path, proxy, current_user_id)
-                    
+
             except Exception as client_error:
                 print(f"❌ Ошибка создания клиента: {client_error}")
                 return await self._try_alternative_tdata_import(tdata_path, proxy, current_user_id)
-                
+
             finally:
                 # Очищаем временную папку
                 try:
@@ -416,27 +416,27 @@ class TelegramManager:
                         print(f"🧹 Временная папка очищена")
                 except Exception as cleanup_error:
                     print(f"⚠️ Ошибка очистки: {cleanup_error}")
-                
+
         except Exception as e:
             error_msg = str(e)
             error_trace = traceback.format_exc()
             print(f"❌ Общая ошибка импорта TDATA: {error_msg}")
             print(f"🔍 Стек ошибки: {error_trace}")
-            
+
             return {"status": "error", "message": f"Ошибка импорта TDATA: {error_msg}"}
 
     async def _try_alternative_tdata_import(self, tdata_path: str, proxy: Optional[str], current_user_id: Optional[int]) -> Dict:
         """Альтернативный метод импорта TDATA используя копирование файлов"""
         import uuid
         import shutil
-        
+
         try:
             print(f"🔄 Пробуем альтернативный метод импорта TDATA...")
-            
+
             # Генерируем уникальное имя сессии
             temp_name = f"alt_tdata_{uuid.uuid4().hex[:8]}"
             temp_session_path = os.path.join(SESSIONS_DIR, temp_name)
-            
+
             # Создаем новый клиент без TDATA
             client = Client(
                 name=temp_name,
@@ -446,38 +446,38 @@ class TelegramManager:
                 no_updates=True,
                 workdir=SESSIONS_DIR
             )
-            
+
             # Сначала подключаемся как обычно
             await client.connect()
-            
+
             # Теперь попробуем заменить файл сессии на TDATA
             await client.disconnect()
-            
+
             # Ищем основные файлы TDATA
             tdata_files = os.listdir(tdata_path)
             key_data_file = None
-            
+
             for file_name in tdata_files:
                 if file_name.startswith("key_data"):
                     key_data_file = os.path.join(tdata_path, file_name)
                     break
-            
+
             if not key_data_file or not os.path.exists(key_data_file):
                 return {"status": "error", "message": "Не найден файл key_data"}
-            
+
             # Копируем TDATA файлы как сессию
             session_file = f"{temp_session_path}.session"
-            
+
             # Читаем key_data
             with open(key_data_file, 'rb') as f:
                 key_data = f.read()
-            
+
             # Создаем базовую SQLite сессию для Pyrogram
             import sqlite3
-            
+
             conn = sqlite3.connect(session_file)
             cursor = conn.cursor()
-            
+
             # Создаем минимальную структуру сессии Pyrogram
             cursor.execute('''
                 CREATE TABLE sessions (
@@ -490,7 +490,7 @@ class TelegramManager:
                     is_bot INTEGER
                 )
             ''')
-            
+
             cursor.execute('''
                 CREATE TABLE peers (
                     id INTEGER PRIMARY KEY,
@@ -500,26 +500,26 @@ class TelegramManager:
                     phone_number TEXT
                 )
             ''')
-            
+
             cursor.execute('''
                 CREATE TABLE version (
                     number INTEGER PRIMARY KEY
                 )
             ''')
-            
+
             # Вставляем версию
             cursor.execute('INSERT INTO version VALUES (?)', (4,))
-            
+
             # Вставляем базовые данные сессии (с дефолтными значениями)
             cursor.execute('''
                 INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', (2, 'telegram.org', 443, key_data[:256] if len(key_data) > 256 else key_data, 0, 0, 0))
-            
+
             conn.commit()
             conn.close()
-            
+
             print(f"✅ Создана базовая сессия из TDATA")
-            
+
             # Пробуем подключиться с новой сессией
             test_client = Client(
                 name=temp_name,
@@ -529,30 +529,30 @@ class TelegramManager:
                 no_updates=True,
                 workdir=SESSIONS_DIR
             )
-            
+
             try:
                 await test_client.connect()
                 me = await test_client.get_me()
-                
+
                 if me and me.id:
                     print(f"✅ Альтернативный метод успешен: {me.first_name}")
-                    
+
                     # Создаем постоянную сессию
                     phone_clean = me.phone_number.replace('+', '').replace(' ', '').replace('(', '').replace(')', '').replace('-', '')
                     final_session_name = f"session_{phone_clean}"
                     final_session_path = os.path.join(SESSIONS_DIR, final_session_name)
-                    
+
                     await test_client.disconnect()
-                    
+
                     # Копируем файл сессии
                     shutil.copy2(session_file, f"{final_session_path}.session")
-                    
+
                     # Удаляем временный файл
                     try:
                         os.remove(session_file)
                     except:
                         pass
-                    
+
                     # Сохраняем аккаунт в базу данных
                     await self._save_account(
                         phone=me.phone_number,
@@ -563,31 +563,31 @@ class TelegramManager:
                         session_data=None,
                         current_user_id=current_user_id
                     )
-                    
+
                     return {
-                        "status": "success", 
+                        "status": "success",
                         "name": me.first_name or "TDATA User",
                         "phone": me.phone_number
                     }
                 else:
                     await test_client.disconnect()
                     return {"status": "error", "message": "Альтернативный метод: не удалось авторизоваться"}
-                    
+
             except Exception as test_error:
                 print(f"❌ Альтернативный метод не сработал: {test_error}")
                 try:
                     await test_client.disconnect()
                 except:
                     pass
-                
+
                 # Очищаем временные файлы
                 try:
                     os.remove(session_file)
                 except:
                     pass
-                
+
                 return {"status": "error", "message": "Не удалось импортировать TDATA. Возможно, файлы повреждены или устарели"}
-                
+
         except Exception as e:
             print(f"❌ Ошибка альтернативного метода: {e}")
             return {"status": "error", "message": f"Альтернативный импорт не удался: {str(e)}"}
@@ -678,7 +678,7 @@ class TelegramManager:
 
     async def _get_client_for_account(self,
                                       account_id: int) -> Optional[Client]:
-        """Получение или создание клиента для аккаунта с улучшенной диагностикой"""
+        """Получение или создание клиента с улучшенной диагностикой"""
         print(f"🔄 Запрос клиента для аккаунта {account_id}")
 
         # Всегда создаем новый клиент для избежания проблем с Broken Pipe
@@ -750,7 +750,7 @@ class TelegramManager:
                 try:
                     # Подключаемся с таймаутом
                     await asyncio.wait_for(client.connect(), timeout=30)
-                    
+
                     # Даем время на стабилизацию соединения
                     await asyncio.sleep(1)
 
@@ -758,18 +758,18 @@ class TelegramManager:
                     try:
                         me = await asyncio.wait_for(client.get_me(), timeout=15)
                         print(f"✓ Клиент для аккаунта {account_id} успешно подключен: {me.first_name}")
-                        
+
                         # Принудительно устанавливаем client.me для корректной работы Pyrogram
                         client.me = me
-                        
+
                         # Обновляем статус в БД
                         account.status = "online"
                         account.last_activity = datetime.utcnow()
                         db.commit()
-                        
+
                         self.clients[account_id] = client
                         return client
-                        
+
                     except FloodWait as fw:
                         print(f"⏰ FLOOD_WAIT для get_me аккаунта {account_id}: {fw.value} секунд")
                         # Сохраняем клиент даже с FLOOD_WAIT
@@ -784,7 +784,7 @@ class TelegramManager:
                 except Exception as auth_error:
                     error_str = str(auth_error).lower()
                     print(f"Попытка {attempt + 1}/{max_retries} - Ошибка подключения клиента {account_id}: {auth_error}")
-                    
+
                     # Специальная обработка Broken Pipe
                     if "broken pipe" in error_str or "errno 32" in error_str:
                         print(f"🔧 Обнаружена ошибка Broken Pipe для аккаунта {account_id}")
@@ -793,7 +793,7 @@ class TelegramManager:
                             await client.disconnect()
                         except:
                             pass
-                        
+
                         if attempt < max_retries - 1:
                             await asyncio.sleep(5)  # Больше времени для восстановления
                             # Создаем новый клиент
@@ -807,7 +807,7 @@ class TelegramManager:
                                             no_updates=True,
                                             workers=1)
                             continue
-                    
+
                     if attempt < max_retries - 1:
                         await asyncio.sleep(3 + attempt * 2)  # Увеличиваем задержку
                         continue
@@ -833,17 +833,17 @@ class TelegramManager:
         import traceback
         try:
             print(f"📱 Получение контактов для аккаунта {account_id}")
-            
+
             client = await self._get_client_for_account(account_id)
             if not client:
                 print(f"❌ Не удалось получить клиент для аккаунта {account_id}")
                 return {"status": "error", "message": "Не удалось подключиться к аккаунту"}
-            
+
             # Проверяем подключение
             if not client.is_connected:
                 print(f"🔌 Подключаем клиент для аккаунта {account_id}")
                 await client.connect()
-            
+
             # Проверяем авторизацию
             try:
                 me = await client.get_me()
@@ -853,19 +853,19 @@ class TelegramManager:
             except Exception as auth_error:
                 print(f"❌ Ошибка авторизации: {auth_error}")
                 return {"status": "error", "message": f"Ошибка авторизации: {str(auth_error)}"}
-            
+
             contacts_list = []
-            
+
             try:
                 print("📋 Получаем список контактов...")
                 contacts = await client.get_contacts()
                 print(f"📊 Получено {len(contacts)} контактов из API")
-                
+
             except Exception as e:
                 error_msg = str(e)
                 print(f"❌ Ошибка получения списка контактов: {error_msg}")
                 print(traceback.format_exc())
-                
+
                 # Пробуем альтернативный метод через диалоги
                 print("🔄 Пробуем получить контакты через диалоги...")
                 try:
@@ -885,9 +885,9 @@ class TelegramManager:
                                     "display_name": f"{getattr(chat, 'first_name', '')} {getattr(chat, 'last_name', '')}".strip() or getattr(chat, 'username', '') or f"User {chat.id}"
                                 }
                                 contacts_list.append(contact_data)
-                    
+
                     print(f"📊 Получено {len(contacts_list)} контактов через диалоги")
-                    
+
                     if contacts_list:
                         return {
                             "status": "success",
@@ -896,22 +896,22 @@ class TelegramManager:
                         }
                     else:
                         return {"status": "error", "message": "Контакты не найдены"}
-                        
+
                 except Exception as dialog_error:
                     print(f"❌ Ошибка получения диалогов: {dialog_error}")
                     return {"status": "error", "message": f"Ошибка получения контактов: {error_msg}"}
-            
+
             # Обрабатываем полученные контакты
             for contact in contacts:
                 if contact is None:
                     continue
-                    
+
                 try:
                     first_name = getattr(contact, "first_name", "") or ""
                     last_name = getattr(contact, "last_name", "") or ""
                     username = getattr(contact, "username", "") or ""
                     contact_id = getattr(contact, "id", None)
-                    
+
                     if contact_id and contact_id != me.id:  # Исключаем самого себя
                         contact_data = {
                             "id": contact_id,
@@ -925,22 +925,22 @@ class TelegramManager:
                             "display_name": f"{first_name} {last_name}".strip() or username or f"User {contact_id}"
                         }
                         contacts_list.append(contact_data)
-                        
+
                 except Exception as ce:
                     print(f"⚠️ Ошибка обработки контакта: {ce}")
                     continue
-            
+
             print(f"✅ Обработано {len(contacts_list)} контактов")
-            
+
             if not contacts_list:
                 return {"status": "error", "message": "У аккаунта нет контактов для рассылки"}
-            
+
             return {
                 "status": "success",
                 "contacts": contacts_list,
                 "count": len(contacts_list)
             }
-            
+
         except Exception as e:
             error_msg = str(e)
             print(f"❌ Общая ошибка при получении контактов: {error_msg}")
@@ -1279,7 +1279,7 @@ class TelegramManager:
             client = await self._get_client_for_account(account_id)
             if not client:
                 return {"status": "error", "message": "Клиент не найден"}
-            
+
             # Проверяем подключение с улучшенной обработкой ошибок
             max_retries = 2
             for attempt in range(max_retries):
@@ -1392,6 +1392,18 @@ class TelegramManager:
                     try:
                         print(f"🔄 Попытка отправки файла через {label} ...")
 
+                        # Проверяем что client.me установлен
+                        if not hasattr(client, 'me') or client.me is None:
+                            print("⚠️ client.me не установлен, создаем заглушку")
+                            from types import SimpleNamespace
+                            client.me = SimpleNamespace(
+                                id=account_id,
+                                first_name="User",
+                                is_premium=False,
+                                is_verified=False,
+                                is_bot=False
+                            )
+
                         # Параметры для отправки
                         send_params = {
                             "chat_id": target_id,
@@ -1434,6 +1446,18 @@ class TelegramManager:
                 }
             else:
                 try:
+                    # Проверяем что client.me установлен
+                    if not hasattr(client, 'me') or client.me is None:
+                        print("⚠️ client.me не установлен, создаем заглушку")
+                        from types import SimpleNamespace
+                        client.me = SimpleNamespace(
+                            id=account_id,
+                            first_name="User",
+                            is_premium=False,
+                            is_verified=False,
+                            is_bot=False
+                        )
+
                     sent = await client.send_message(
                         chat_id=target_id,
                         text=message or "",
@@ -1576,14 +1600,14 @@ class TelegramManager:
         """Полное удаление аккаунта из Telegram"""
         try:
             print(f"🗑️ Начинаем удаление аккаунта {account_id} из Telegram")
-            
+
             client = await self._get_client_for_account(account_id)
             if not client:
                 return {"status": "error", "message": "Не удалось подключиться к аккаунту"}
-            
+
             if not client.is_connected:
                 await client.connect()
-            
+
             # Получаем информацию о пользователе перед удалением
             try:
                 me = await client.get_me()
@@ -1592,41 +1616,41 @@ class TelegramManager:
             except Exception as e:
                 user_info = f"Account ID {account_id}"
                 print(f"⚠️ Не удалось получить информацию о пользователе: {e}")
-            
+
             # Выполняем удаление аккаунта через API Telegram
             try:
                 # Отправляем запрос на удаление аккаунта
                 from pyrogram.raw import functions
-                
+
                 await client.invoke(
                     functions.account.DeleteAccount(reason=reason)
                 )
-                
+
                 print(f"✅ Аккаунт {user_info} успешно удален из Telegram")
-                
+
                 # Закрываем соединение
                 await client.disconnect()
-                
+
                 # Удаляем клиент из памяти
                 if account_id in self.clients:
                     del self.clients[account_id]
-                
+
                 # Удаляем файл сессии
                 await self._cleanup_account_files(account_id)
-                
+
                 # Обновляем статус в базе данных
                 await self._mark_account_as_deleted(account_id)
-                
+
                 return {
-                    "status": "success", 
+                    "status": "success",
                     "message": f"Аккаунт {user_info} удален из Telegram",
                     "deleted_account": user_info
                 }
-                
+
             except Exception as delete_error:
                 error_msg = str(delete_error)
                 print(f"❌ Ошибка при удалении аккаунта: {error_msg}")
-                
+
                 # Специальная обработка известных ошибок
                 if "ACCOUNT_DELETE_DISABLED" in error_msg:
                     return {"status": "error", "message": "Удаление аккаунта отключено в настройках Telegram"}
@@ -1636,7 +1660,7 @@ class TelegramManager:
                     return {"status": "error", "message": "Требуется отключить двухфакторную аутентификацию перед удалением"}
                 else:
                     return {"status": "error", "message": f"Ошибка удаления: {error_msg}"}
-                    
+
         except Exception as general_error:
             error_msg = str(general_error)
             print(f"❌ Общая ошибка удаления аккаунта {account_id}: {error_msg}")
@@ -1652,7 +1676,7 @@ class TelegramManager:
                     # Определяем путь к файлу сессии
                     phone_clean = account.phone.replace('+', '').replace(' ', '').replace('(', '').replace(')', '').replace('-', '')
                     session_names = [f"session_{phone_clean}", f"session_{account.phone}", phone_clean]
-                    
+
                     # Удаляем все возможные файлы сессии
                     for session_name in session_names:
                         session_file = os.path.join(SESSIONS_DIR, f"{session_name}.session")
@@ -1688,54 +1712,54 @@ class TelegramManager:
         """Автоматическое удаление аккаунтов после завершения кампании"""
         try:
             print(f"⏰ Запланировано автоудаление аккаунтов через {delay_seconds} секунд после кампании {campaign_id}")
-            
+
             # Ждем указанное время
             await asyncio.sleep(delay_seconds)
-            
+
             # Получаем аккаунты, участвовавшие в кампании
             db = next(get_db())
             try:
                 # Находим все логи отправки для этой кампании
                 send_logs = db.query(SendLog).filter(SendLog.campaign_id == campaign_id).all()
                 account_ids = list(set(log.account_id for log in send_logs))
-                
+
                 if not account_ids:
                     print(f"⚠️ Не найдено аккаунтов для удаления в кампании {campaign_id}")
                     return {"status": "error", "message": "Не найдено аккаунтов для удаления"}
-                
+
                 print(f"🗑️ Начинаем автоудаление {len(account_ids)} аккаунтов")
-                
+
                 deleted_accounts = []
                 failed_deletions = []
-                
+
                 for account_id in account_ids:
                     print(f"🔄 Удаляем аккаунт {account_id}...")
-                    
+
                     result = await self.delete_telegram_account(
-                        account_id, 
+                        account_id,
                         reason="Автоматическое удаление после рассылки"
                     )
-                    
+
                     if result["status"] == "success":
                         deleted_accounts.append(result.get("deleted_account", f"Account {account_id}"))
                         print(f"✅ Аккаунт {account_id} удален")
                     else:
                         failed_deletions.append(f"Account {account_id}: {result['message']}")
                         print(f"❌ Не удалось удалить аккаунт {account_id}: {result['message']}")
-                    
+
                     # Небольшая задержка между удалениями
                     await asyncio.sleep(2)
-                
+
                 return {
                     "status": "success",
                     "message": f"Автоудаление завершено. Удалено: {len(deleted_accounts)}, ошибок: {len(failed_deletions)}",
                     "deleted_accounts": deleted_accounts,
                     "failed_deletions": failed_deletions
                 }
-                
+
             finally:
                 db.close()
-                
+
         except Exception as e:
             print(f"❌ Ошибка автоудаления после кампании {campaign_id}: {e}")
             return {"status": "error", "message": f"Ошибка автоудаления: {str(e)}"}
