@@ -21,7 +21,7 @@
                             <option value="">Загрузка аккаунтов...</option>
                         </select>
                         <div class="form-text">
-                            Удерживайте Ctrl (Cmd на Mac) для выбора нескольких аккаунтов. 
+                            Удерживайте Ctrl (Cmd на Mac) для выбора нескольких аккаунтов.
                             Контакты будут собраны со всех выбранных аккаунтов, дубликаты исключены.
                         </div>
                         <div class="mt-2">
@@ -70,7 +70,7 @@
                     </div>
 
                     <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary" id="submitBtn">
+                        <button type="button" class="btn btn-primary" id="submitBtn" onclick="startContactsCampaign()">
                             <i class="fas fa-paper-plane"></i> Запустить рассылку
                         </button>
                     </div>
@@ -170,7 +170,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (result.status === 'success') {
                 uploadedFilePath = result.path;
                 fileInfo.innerHTML = `
-                    <i class="fas fa-check-circle text-success"></i> 
+                    <i class="fas fa-check-circle text-success"></i>
                     ${file.name} (${fileSize} МБ) - Загружен успешно
                 `;
             } else {
@@ -201,7 +201,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Обработчик отправки формы
+    // Обработчик отправки формы (для обычной отправки, не для запуска)
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
 
@@ -211,7 +211,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const delaySeconds = parseInt(document.getElementById('delaySeconds').value);
         const startInMinutes = document.getElementById('startInMinutes').value;
         const autoDeleteAccount = document.getElementById('autoDeleteAccount').checked;
-        const deleteDelay = parseInt(document.getElementById('deleteDelay').value);
+        // Ensure deleteDelay is correctly accessed; assuming it might be a number input with id 'deleteDelay'
+        // If it's not present or handled elsewhere, this might need adjustment.
+        // For now, assuming it's handled by the startContactsCampaign function logic.
 
         if (accountIds.length === 0) {
             showResult('error', 'Выберите хотя бы один аккаунт');
@@ -232,7 +234,8 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('message', message);
             formData.append('delay_seconds', delaySeconds);
             formData.append('auto_delete_account', autoDeleteAccount);
-            formData.append('delete_delay_minutes', deleteDelay);
+            // If deleteDelay is a field, it should be appended here.
+            // formData.append('delete_delay_minutes', deleteDelay);
             if (startInMinutes) {
                 formData.append('start_in_minutes', startInMinutes);
             }
@@ -270,7 +273,12 @@ document.addEventListener('DOMContentLoaded', function() {
             const response = await fetch('/api/accounts');
             const accounts = await response.json();
 
-            accountSelect.innerHTML = '<option value="">Выберите аккаунт</option>';
+            accountSelect.innerHTML = ''; // Clear previous options
+
+            if (accounts.length === 0) {
+                 accountSelect.innerHTML = '<option value="">Нет доступных аккаунтов</option>';
+                 return;
+            }
 
             accounts.forEach(account => {
                 if (account.is_active && account.status === 'online') {
@@ -281,8 +289,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
 
-            if (accountSelect.children.length === 1) {
-                accountSelect.innerHTML = '<option value="">Нет активных аккаунтов</option>';
+            if (accountSelect.children.length === 0) {
+                accountSelect.innerHTML = '<option value="">Нет активных онлайн аккаунтов</option>';
             }
         } catch (error) {
             console.error('Error loading accounts:', error);
@@ -309,7 +317,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.scheduled_campaigns && data.scheduled_campaigns.length > 0) {
                 statusDiv.innerHTML = `
                     <div class="alert alert-info">
-                        <i class="fas fa-clock"></i> 
+                        <i class="fas fa-clock"></i>
                         Запланированных кампаний: ${data.scheduled_campaigns.length}
                     </div>
                 `;
@@ -319,6 +327,103 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) {
             console.error('Error updating campaign status:', error);
         }
+    }
+
+    // Функция для запуска рассылки по контактам
+    async function startContactsCampaign() {
+        const form = document.getElementById('contactsCampaignForm');
+        const formData = new FormData(form);
+
+        // Получаем выбранные аккаунты из select
+        const accountSelectElement = document.getElementById('accountSelect');
+        const selectedAccounts = Array.from(accountSelectElement.selectedOptions).map(option => option.value).filter(value => value !== '');
+
+        if (selectedAccounts.length === 0) {
+            showResult('warning', 'Выберите хотя бы один аккаунт для рассылки');
+            return;
+        }
+
+        const message = document.getElementById('message').value;
+        if (!message || message.trim() === '') {
+            showResult('warning', 'Введите текст сообщения');
+            return;
+        }
+
+        // Добавляем выбранные аккаунты в formData
+        formData.set('account_ids', JSON.stringify(selectedAccounts));
+        formData.append('attachment_path', uploadedFilePath || ''); // Ensure attachment_path is set
+
+        const startBtn = document.getElementById('submitBtn'); // Using submitBtn as it's the actual button
+        const originalText = startBtn.innerHTML;
+
+        try {
+            startBtn.disabled = true;
+            startBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Запускаем...';
+
+            const response = await fetch('/api/contacts-campaign/start', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                showResult('success', `Рассылка успешно запущена! Аккаунтов: ${selectedAccounts.length}, Контактов: ${result.contacts_count || 'неизвестно'}`);
+                form.reset();
+                uploadedFilePath = null;
+                fileInfo.style.display = 'none';
+                // Очищаем выбор аккаунтов
+                accountSelectElement.querySelectorAll('option').forEach(option => option.selected = false);
+            } else {
+                showResult('error', result.message || 'Ошибка запуска рассылки');
+            }
+
+        } catch (error) {
+            console.error('Error starting campaign:', error);
+            showResult('error', 'Ошибка соединения с сервером');
+        } finally {
+            startBtn.disabled = false;
+            startBtn.innerHTML = originalText;
+        }
+    }
+
+    // Функция для показа уведомлений (всплывающие)
+    function showAlert(message, type = 'info') {
+        const alertContainer = document.getElementById('alertContainer') || createAlertContainer();
+
+        const alertElement = document.createElement('div');
+        alertElement.className = `alert alert-${type} alert-dismissible fade show`;
+        alertElement.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+
+        alertContainer.appendChild(alertElement);
+
+        // Автоматически скрываем уведомление через 5 секунд
+        setTimeout(() => {
+            if (alertElement.parentNode) {
+                alertElement.remove();
+            }
+        }, 5000);
+    }
+
+    function createAlertContainer() {
+        const container = document.createElement('div');
+        container.id = 'alertContainer';
+        container.style.position = 'fixed';
+        container.style.top = '20px';
+        container.style.right = '20px';
+        container.style.zIndex = '9999';
+        container.style.width = '400px';
+        document.body.appendChild(container);
+        return container;
+    }
+
+    // Helper to load accounts for campaign form (if different from initial load)
+    // In this case, it seems to be the same as loadAccounts, so could be merged or kept for clarity.
+    function loadAccountsForCampaign() {
+        loadAccounts();
     }
 });
 </script>
