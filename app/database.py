@@ -6,7 +6,14 @@ from app.config import DATABASE_URL
 import hashlib
 import secrets
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(
+    DATABASE_URL, 
+    connect_args={"check_same_thread": False},
+    pool_size=20,  # Увеличиваем базовый размер пула
+    max_overflow=30,  # Увеличиваем overflow для пиковой нагрузки
+    pool_timeout=60,  # Увеличиваем таймаут ожидания соединения
+    pool_recycle=3600  # Переиспользуем соединения в течение часа
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

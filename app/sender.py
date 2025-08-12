@@ -862,9 +862,12 @@ class MessageSender:
 
     async def _send_single_message_by_id(self, campaign_id: int, account_id: int, target: str, message: str, attachment_path: Optional[str] = None) -> Dict:
         """Отправка одного сообщения по ID аккаунта"""
+        account_name = f"ID:{account_id}"  # Значение по умолчанию
+        
         try:
-            # Получаем информацию об аккаунте из свежей сессии
-            db = next(get_db())
+            # Получаем информацию об аккаунте из свежей сессии с правильным управлением контекстом
+            db_gen = get_db()
+            db = next(db_gen)
             try:
                 account = db.query(Account).filter(Account.id == account_id).first()
                 if not account:
@@ -872,7 +875,11 @@ class MessageSender:
                 
                 account_name = account.name
             finally:
-                db.close()
+                # Правильно закрываем соединение
+                try:
+                    next(db_gen)
+                except StopIteration:
+                    pass
 
             print(f"📤 Отправляем сообщение на {target} через аккаунт {account_id} ({account_name})")
             
@@ -891,8 +898,8 @@ class MessageSender:
             elif not isinstance(result, dict):
                 result = {"status": "error", "message": f"Неизвестный тип результата: {type(result)}"}
 
-            # Логируем результат
-            self._log_send_result(campaign_id, account_id, target, "private", result)
+            # Логируем результат с новым соединением
+            self._log_send_result_safe(campaign_id, account_id, target, "private", result)
 
             if result.get("status") == "success":
                 print(f"✅ Сообщение отправлено на {target}")
@@ -905,13 +912,36 @@ class MessageSender:
             print(f"❌ Исключение при отправке на {target}: {str(e)}")
             error_result = {"status": "error", "message": str(e)}
             
-            # Логируем ошибку
-            try:
-                self._log_send_result(campaign_id, account_id, target, "private", error_result)
-            except Exception as log_error:
-                print(f"Ошибка логирования: {log_error}")
+            # Логируем ошибку с безопасным соединением
+            self._log_send_result_safe(campaign_id, account_id, target, "private", error_result)
             
             return error_result
+    
+    def _log_send_result_safe(self, campaign_id: int, account_id: int, recipient: str, recipient_type: str, result: Dict):
+        """Безопасное логирование результата с управлением соединением"""
+        try:
+            db_gen = get_db()
+            db = next(db_gen)
+            try:
+                log_entry = SendLog(
+                    campaign_id=campaign_id,
+                    account_id=account_id,
+                    recipient=recipient,
+                    recipient_type=recipient_type,
+                    status=result.get("status", "unknown"),
+                    message=result.get("message", ""),
+                    error_message=result.get("error", "")
+                )
+                db.add(log_entry)
+                db.commit()
+            finally:
+                # Правильно закрываем соединение
+                try:
+                    next(db_gen)
+                except StopIteration:
+                    pass
+        except Exception as log_error:
+            print(f"Ошибка логирования: {log_error}")
 
     async def _auto_delete_account_after_delay(self, account_id: int, delay_seconds: int):
         """Автоматическое удаление аккаунта с задержкой"""
