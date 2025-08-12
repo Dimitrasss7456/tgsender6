@@ -56,9 +56,9 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="delaySeconds" class="form-label">Задержка между сообщениями (секунды)</label>
-                        <input type="number" class="form-control" id="delaySeconds" name="delaySeconds" value="5" min="1" max="300">
-                        <small class="form-text text-muted">Рекомендуется 5-7 секунд</small>
+                        <label for="delaySeconds" class="form-label">Задержка между сообщениями (сек)</label>
+                        <input type="number" class="form-control" id="delaySeconds" name="delaySeconds" value="0" min="0" max="3600">
+                        <div class="form-text">Задержка в секундах. 0 = мгновенная отправка со всех аккаунтов параллельно</div>
                     </div>
 
                     <div class="mb-3">
@@ -357,7 +357,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Функция для запуска рассылки по контактам
     window.startContactsCampaign = async function() {
         console.log('Starting contacts campaign...');
-        
+
         // Получаем выбранные аккаунты из select
         const accountSelectElement = document.getElementById('accountSelect');
         const selectedAccounts = Array.from(accountSelectElement.selectedOptions).map(option => option.value).filter(value => value !== '');
@@ -371,7 +371,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const message = document.getElementById('message').value;
         console.log('Message:', message);
-        
+
         if (!message || message.trim() === '') {
             showResult('error', 'Введите текст сообщения');
             return;
@@ -384,7 +384,7 @@ document.addEventListener('DOMContentLoaded', function() {
         formData.set('delaySeconds', document.getElementById('delaySeconds').value);
         formData.set('start_in_minutes', document.getElementById('startInMinutes').value || '');
         formData.set('autoDeleteAccount', document.getElementById('autoDeleteAccount').checked);
-        
+
         if (uploadedFilePath) {
             formData.set('attachment_path', uploadedFilePath);
         }

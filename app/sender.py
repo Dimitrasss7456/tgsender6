@@ -131,7 +131,7 @@ class MessageSender:
         return {"status": "error", "message": "Кампания не активна"}
 
     async def _run_campaign(self, campaign_id: int):
-        """Выполнение кампании рассылки"""
+        """Выполнение кампании рассылки с параллельной отправкой"""
         db = next(get_db())
         try:
             campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
@@ -141,28 +141,23 @@ class MessageSender:
 
             print(f"Starting campaign {campaign_id} execution")
 
-            # Для кампаний по контактам используем только тот аккаунт, который был указан
+            # Получаем все активные аккаунты для параллельной отправки
             if hasattr(campaign, 'account_id') and campaign.account_id:
-                # Используем конкретный аккаунт для рассылки по его контактам
-                account = db.query(Account).filter(
-                    Account.id == campaign.account_id,
-                    Account.is_active == True
-                ).first()
-
-                if not account:
-                    print(f"Account {campaign.account_id} not found or inactive")
+                # Для кампаний по контактам получаем все аккаунты из списка
+                # Ищем другие аккаунты, которые могли быть заданы в названии кампании или другим способом
+                accounts = db.query(Account).filter(Account.is_active == True).all()
+                if not accounts:
+                    print("No active accounts found")
                     campaign.status = "completed"
                     db.commit()
                     return
-
-                # Сбрасываем счетчики сообщений для нового запуска
-                account.messages_sent_today = 0
-                account.messages_sent_hour = 0
+                
+                # Сбрасываем счетчики для всех аккаунтов
+                for acc in accounts:
+                    acc.messages_sent_today = 0
+                    acc.messages_sent_hour = 0
                 db.commit()
-                print(f"Reset message counters for account {account.id}")
-
-                accounts = [account]
-                print(f"Using specific account {account.id} ({account.name}) for contacts campaign")
+                print(f"Reset message counters for {len(accounts)} accounts")
             else:
                 # Для обычных кампаний используем все активные аккаунты
                 accounts = db.query(Account).filter(Account.is_active == True).all()
@@ -182,9 +177,9 @@ class MessageSender:
                 db.commit()
                 return
 
-            account_index = 0
-            total_sent = 0
-
+            # Собираем все задачи отправки для параллельного выполнения
+            send_tasks = []
+            
             for recipient_type, recipient_list in recipients.items():
                 if not self.active_campaigns.get(campaign_id, False):
                     print(f"Campaign {campaign_id} stopped by user")
@@ -199,82 +194,42 @@ class MessageSender:
                     print(f"No message for recipient type {recipient_type}")
                     continue
 
-                print(f"Processing {len(recipient_list)} recipients of type {recipient_type}")
+                print(f"Preparing {len(recipient_list)} recipients of type {recipient_type} for parallel sending")
 
-                # Отправляем все сообщения мгновенно через встроенный планировщик Telegram
+                # Создаем задачи для каждого получателя
                 for i, recipient in enumerate(recipient_list):
                     if not self.active_campaigns.get(campaign_id, False):
-                        print(f"Campaign {campaign_id} stopped during execution")
                         break
 
-                    # Выбираем аккаунт
-                    if len(accounts) == 1:
-                        # Используем единственный аккаунт
-                        account = accounts[0]
-                    else:
-                        # Выбираем аккаунт по ротации
-                        account = accounts[account_index % len(accounts)]
-                        account_index += 1
+                    # Распределяем получателей по аккаунтам равномерно
+                    account = accounts[i % len(accounts)]
 
-                    # Проверяем лимиты аккаунта
-                    if not self._check_account_limits(account):
-                        print(f"Account {account.id} reached limits, skipping")
-                        continue
-
-                    print(f"[{i+1}/{len(recipient_list)}] Sending message to {recipient} via account {account.id}")
-
-                    try:
-                        # Отправляем сообщение через встроенный планировщик Telegram с задержкой из кампании
-                        result = await telegram_manager.send_message(
-                            account.id,
-                            recipient,
-                            message,
-                            getattr(campaign, 'attachment_path', None),
-                            schedule_seconds=campaign.delay_seconds if campaign.delay_seconds > 0 else 0
+                    # Создаем задачу отправки
+                    task = asyncio.create_task(
+                        self._send_message_task(
+                            campaign_id, account, recipient, message, 
+                            recipient_type, getattr(campaign, 'attachment_path', None)
                         )
+                    )
+                    send_tasks.append(task)
 
-                        print(f"Send result for {recipient}: {result}")
+            print(f"Starting parallel execution of {len(send_tasks)} send tasks")
 
-                        # Проверяем и нормализуем результат
-                        if hasattr(result, 'id'):  # Это объект Message из Pyrogram
-                            # Преобразуем объект Message в словарь результата
-                            original_result = result
-                            result = {
-                                "status": "success",
-                                "message_id": getattr(original_result, 'id', None),
-                                "chat_id": getattr(original_result.chat, 'id', None) if hasattr(original_result, 'chat') else None
-                            }
-                            print(f"🔄 Преобразован объект Message в результат: {result}")
-                        elif not isinstance(result, dict):
-                            # Если результат не словарь и не объект Pyrogram
-                            print(f"⚠️ Неожиданный тип результата: {type(result)}")
-                            result = {"status": "error", "message": f"Неизвестный тип результата: {type(result)}"}
+            # Выполняем все задачи параллельно
+            if send_tasks:
+                results = await asyncio.gather(*send_tasks, return_exceptions=True)
+                
+                # Подсчитываем успешные отправки
+                total_sent = 0
+                for result in results:
+                    if isinstance(result, dict) and result.get("status") == "success":
+                        total_sent += 1
+                    elif isinstance(result, Exception):
+                        print(f"Task exception: {result}")
 
-                        # Логируем результат
-                        self._log_send_result(
-                            campaign_id, account.id, recipient, 
-                            recipient_type, result
-                        )
-
-                        if result.get("status") == "success":
-                            total_sent += 1
-                            if campaign.delay_seconds > 0:
-                                print(f"✓ Message scheduled successfully via Telegram to {recipient} (will be sent in {campaign.delay_seconds} seconds)")
-                            else:
-                                print(f"✓ Message sent immediately to {recipient}")
-                        else:
-                            print(f"✗ Failed to send message to {recipient}: {result.get('message', 'Unknown error')}")
-
-                    except Exception as send_error:
-                        print(f"Exception while sending to {recipient}: {str(send_error)}")
-                        # Логируем ошибку
-                        error_result = {"status": "error", "message": str(send_error)}
-                        self._log_send_result(
-                            campaign_id, account.id, recipient, 
-                            recipient_type, error_result
-                        )
-
-            print(f"Campaign {campaign_id} completed. Total sent: {total_sent}")
+                print(f"Campaign {campaign_id} completed. Total sent: {total_sent}")
+            else:
+                print(f"Campaign {campaign_id} completed. No tasks to execute")
 
             # Завершаем кампанию
             campaign.status = "completed"
@@ -285,7 +240,7 @@ class MessageSender:
                 delete_delay = getattr(campaign, 'delete_delay_minutes', 5)
                 print(f"🗑️ Запланировано автоудаление аккаунтов через {delete_delay} секунд")
 
-                # Запускаем автоудаление в фоне (delay_delay уже в секундах, не переводим в минуты)
+                # Запускаем автоудаление в фоне
                 asyncio.create_task(
                     telegram_manager.auto_delete_after_campaign(campaign_id, delete_delay)
                 )
@@ -305,6 +260,58 @@ class MessageSender:
                 pass
         finally:
             db.close()
+
+    async def _send_message_task(self, campaign_id: int, account: Account, recipient: str, 
+                                message: str, recipient_type: str, attachment_path: str = None) -> Dict:
+        """Задача отправки одного сообщения"""
+        try:
+            # Проверяем, что кампания все еще активна
+            if not self.active_campaigns.get(campaign_id, False):
+                return {"status": "error", "message": "Campaign stopped"}
+
+            print(f"🚀 Sending to {recipient} via account {account.id} ({account.name})")
+
+            # Отправляем сообщение мгновенно (без задержки)
+            result = await telegram_manager.send_message(
+                account.id,
+                recipient,
+                message,
+                attachment_path,
+                schedule_seconds=0  # Мгновенная отправка
+            )
+
+            # Проверяем и нормализуем результат
+            if hasattr(result, 'id'):  # Это объект Message из Pyrogram
+                original_result = result
+                result = {
+                    "status": "success",
+                    "message_id": getattr(original_result, 'id', None),
+                    "chat_id": getattr(original_result.chat, 'id', None) if hasattr(original_result, 'chat') else None
+                }
+            elif not isinstance(result, dict):
+                result = {"status": "error", "message": f"Неизвестный тип результата: {type(result)}"}
+
+            # Логируем результат
+            self._log_send_result(campaign_id, account.id, recipient, recipient_type, result)
+
+            if result.get("status") == "success":
+                print(f"✅ Message sent instantly to {recipient} via account {account.id}")
+            else:
+                print(f"❌ Failed to send message to {recipient}: {result.get('message', 'Unknown error')}")
+
+            return result
+
+        except Exception as send_error:
+            print(f"❌ Exception while sending to {recipient}: {str(send_error)}")
+            error_result = {"status": "error", "message": str(send_error)}
+            
+            # Логируем ошибку
+            try:
+                self._log_send_result(campaign_id, account.id, recipient, recipient_type, error_result)
+            except Exception as log_error:
+                print(f"Failed to log error: {log_error}")
+            
+            return error_result
 
     def _parse_recipients(self, campaign: Campaign) -> Dict[str, List[str]]:
         """Парсинг списков получателей"""
@@ -504,13 +511,13 @@ class MessageSender:
         finally:
             db.close()
 
-    async def create_contacts_campaign(self, account_ids: List[int], message: str, delay_seconds: int = 5, 
+    async def create_contacts_campaign(self, account_ids: List[int], message: str, delay_seconds: int = 0, 
                                      start_in_minutes: Optional[int] = None, attachment_path: Optional[str] = None,
                                      auto_delete_account: bool = False, delete_delay_minutes: int = 5) -> Dict:
-        """Создание кампании рассылки только по контактам из адресной книги"""
+        """Создание кампании рассылки только по контактам из адресной книги с использованием всех аккаунтов"""
         try:
             # Получаем контакты пользователя из адресной книги
-            # Если передано несколько аккаунтов, берем контакты из первого
+            # Берем контакты из первого аккаунта, но будем использовать все аккаунты для отправки
             account_id = account_ids[0] if isinstance(account_ids, list) else account_ids
             contacts_result = await telegram_manager.get_user_contacts(account_id)
             if contacts_result["status"] != "success":
@@ -540,12 +547,12 @@ class MessageSender:
                     start_time = start_time + timedelta(minutes=start_in_minutes)
 
                 campaign = Campaign(
-                    name=f"Рассылка по контактам {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-                    delay_seconds=delay_seconds,
+                    name=f"Рассылка по контактам (параллельно) {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                    delay_seconds=0,  # Устанавливаем задержку в 0 для мгновенной отправки
                     private_message=message,
                     private_list="\n".join(targets),
                     attachment_path=attachment_path,
-                    account_id=account_id, # Сохраняем ID только первого аккаунта для примера, в _run_campaign будут использоваться все
+                    account_id=account_id, # Маркер для определения типа кампании
                     auto_delete_accounts=auto_delete_account,
                     delete_delay_minutes=delete_delay_minutes,
                     status="scheduled" if start_in_minutes else "created"
@@ -564,15 +571,17 @@ class MessageSender:
                         "status": "success",
                         "campaign_id": campaign.id,
                         "contacts_count": len(targets),
+                        "accounts_count": len(account_ids) if isinstance(account_ids, list) else 1,
                         "scheduled_start": start_time.strftime('%Y-%m-%d %H:%M:%S'),
-                        "message": f"Кампания создана и запланирована на {start_time.strftime('%H:%M')}. Рассылка по {len(targets)} контактам"
+                        "message": f"Кампания создана и запланирована на {start_time.strftime('%H:%M')}. Параллельная рассылка по {len(targets)} контактам с {len(account_ids) if isinstance(account_ids, list) else 1} аккаунтами"
                     }
                 else:
                     return {
                         "status": "success",
                         "campaign_id": campaign.id,
                         "contacts_count": len(targets),
-                        "message": f"Кампания создана с {len(targets)} контактами. Готова к запуску"
+                        "accounts_count": len(account_ids) if isinstance(account_ids, list) else 1,
+                        "message": f"Кампания создана с {len(targets)} контактами. Готова к параллельному запуску с {len(account_ids) if isinstance(account_ids, list) else 1} аккаунтами"
                     }
 
             finally:

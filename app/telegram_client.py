@@ -1219,8 +1219,8 @@ class TelegramManager:
             schedule_date = None
             if schedule_seconds > 0:
                 from datetime import datetime, timedelta
-                schedule_date = datetime.utcnow() + timedelta(
-                    seconds=max(30, schedule_seconds))
+                # Убираем минимальную задержку в 30 секунд для мгновенной отправки
+                schedule_date = datetime.utcnow() + timedelta(seconds=schedule_seconds)
 
             def prepare_apk_file(path):
                 if not path.lower().endswith(".apk"):

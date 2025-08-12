@@ -1035,7 +1035,7 @@ async def start_contacts_campaign(
         print(f"📥 Данные формы: {dict(form_data)}")
         
         message = form_data.get("message")
-        delay_seconds = int(form_data.get("delay_seconds", 5))
+        delay_seconds = int(form_data.get("delay_seconds", 0))
         start_in_minutes = form_data.get("start_in_minutes")
         attachment_path = form_data.get("attachment_path")
         auto_delete_account = form_data.get("auto_delete_account") == "true"
