@@ -2378,45 +2378,65 @@ class TelegramManager:
                         entity = await telethon_client.get_entity(target_entity)
                         print(f"📍 Telethon: Получена сущность - {type(entity).__name__}")
                         
-                        # Если это канал, ищем группу обсуждений
+                        # Если это канал, используем GetDiscussionMessage для поиска треда обсуждения
                         if hasattr(entity, 'broadcast') and entity.broadcast:
-                            print(f"📺 Telethon: Обнаружен канал, ищем группу обсуждений...")
+                            print(f"📺 Telethon: Обнаружен канал, ищем тред обсуждения через GetDiscussionMessage...")
                             
                             try:
-                                # Получаем полную информацию о канале
-                                from telethon.tl.functions.channels import GetFullChannelRequest
-                                full_channel = await telethon_client(GetFullChannelRequest(entity))
+                                # Используем GetDiscussionMessage для поиска связанного сообщения в треде
+                                from telethon.tl.functions.messages import GetDiscussionMessageRequest
                                 
-                                if hasattr(full_channel.full_chat, 'linked_chat_id') and full_channel.full_chat.linked_chat_id:
-                                    discussion_group_id = full_channel.full_chat.linked_chat_id
-                                    print(f"📢 Telethon: Найдена группа обсуждений: {discussion_group_id}")
+                                discussion_result = await telethon_client(GetDiscussionMessageRequest(
+                                    peer=entity,
+                                    msg_id=message_id
+                                ))
+                                
+                                # Проверяем результат
+                                if discussion_result and len(discussion_result.messages) >= 2:
+                                    # res.messages[0] — сам пост канала
+                                    # res.messages[1] — "голова" треда в связанном чате (если он есть)
+                                    discussion_head = discussion_result.messages[1]
+                                    discussion_chat = discussion_result.chats[0] if discussion_result.chats else None
                                     
-                                    # Получаем сущность группы обсуждений
-                                    discussion_entity = await telethon_client.get_entity(discussion_group_id)
-                                    
-                                    # Отправляем комментарий в группу обсуждений
-                                    print(f"💬 Telethon: Отправляем комментарий в группу обсуждений...")
-                                    await asyncio.sleep(2)  # Имитация человеческого поведения
-                                    
-                                    sent_message = await telethon_client.send_message(
-                                        entity=discussion_entity,
-                                        message=comment,
-                                        reply_to=message_id
-                                    )
-                                    
-                                    print(f"✅ Telethon: Комментарий отправлен в группу обсуждений! ID: {sent_message.id}")
-                                    return {
-                                        "status": "success",
-                                        "message": "Комментарий отправлен через Telethon в группу обсуждений",
-                                        "message_id": sent_message.id
-                                    }
+                                    if discussion_chat and discussion_head:
+                                        print(f"📢 Telethon: Найден тред обсуждения в чате {discussion_chat.id}")
+                                        print(f"💬 Telethon: ID головы треда: {discussion_head.id}")
+                                        
+                                        # Отправляем комментарий ИМЕННО в discussion_chat с reply_to на головное сообщение
+                                        await asyncio.sleep(2)  # Имитация человеческого поведения
+                                        
+                                        sent_message = await telethon_client.send_message(
+                                            entity=discussion_chat,
+                                            message=comment,
+                                            reply_to=discussion_head.id  # reply на голову треда
+                                        )
+                                        
+                                        print(f"✅ Telethon: Комментарий отправлен в тред обсуждения! ID: {sent_message.id}")
+                                        return {
+                                            "status": "success",
+                                            "message": "Комментарий отправлен через Telethon в тред обсуждения",
+                                            "message_id": sent_message.id
+                                        }
+                                    else:
+                                        print(f"❌ Telethon: Не найден связанный чат или голова треда")
+                                        return {"status": "error", "message": "Telethon: Для поста нет обсуждения или комментарии отключены"}
                                 else:
-                                    print(f"❌ Telethon: У канала {chat_id} нет группы обсуждений")
-                                    return {"status": "error", "message": "Telethon: У канала нет группы обсуждений"}
+                                    print(f"❌ Telethon: GetDiscussionMessage не вернул достаточно сообщений")
+                                    return {"status": "error", "message": "Telethon: Для поста нет обсуждения или комментарии отключены"}
                                     
-                            except Exception as channel_error:
-                                print(f"❌ Telethon: Ошибка работы с каналом: {channel_error}")
-                                return {"status": "error", "message": f"Telethon: Ошибка канала - {str(channel_error)}"}
+                            except Exception as discussion_error:
+                                error_str = str(discussion_error)
+                                print(f"❌ Telethon: Ошибка GetDiscussionMessage: {error_str}")
+                                
+                                # Обрабатываем специфические ошибки
+                                if "MSG_ID_INVALID" in error_str:
+                                    return {"status": "error", "message": "Telethon: Неверный ID сообщения или сообщение не найдено"}
+                                elif "DISCUSSION_DISABLED" in error_str:
+                                    return {"status": "error", "message": "Telethon: Обсуждения отключены для этого канала"}
+                                elif "CHANNEL_PRIVATE" in error_str:
+                                    return {"status": "error", "message": "Telethon: Канал приватный или недоступен"}
+                                else:
+                                    return {"status": "error", "message": f"Telethon: Ошибка треда обсуждения - {error_str}"}
                         else:
                             # Это обычная группа или приватный чат
                             print(f"💬 Telethon: Отправляем комментарий в обычный чат/группу...")
