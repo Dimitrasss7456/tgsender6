@@ -592,8 +592,7 @@ class TelegramManager:
             print(f"❌ Ошибка альтернативного метода: {e}")
             return {"status": "error", "message": f"Альтернативный импорт не удался: {str(e)}"}
 
-    async def _save_account(self, phone: str, session_path: str, name: str,
-                            proxy: Optional[str], user_id: int, session_data: Optional[str], current_user_id: Optional[int]): # Добавлены user_id и current_user_id
+    async def _save_account(self, phone: str, session_path: str, name: str, proxy: Optional[str], user_id: int, session_data: Optional[str], current_user_id: Optional[int]): # Добавлены user_id и current_user_id
         """Сохранение аккаунта в базу данных"""
         db = next(get_db())
         try:
@@ -1916,7 +1915,7 @@ class TelegramManager:
             return {"status": "error", "message": f"Ошибка просмотра сообщения: {str(e)}"}
 
     async def send_comment(self, account_id: int, chat_id: str, message_id: int, comment: str) -> Dict:
-        """Отправка комментария с улучшенной обработкой каналов"""
+        """Отправка комментария под пост (reply) с правильной обработкой каналов"""
         try:
             client = await self._get_client_for_account(account_id)
             if not client:
@@ -1941,107 +1940,65 @@ class TelegramManager:
                         is_bot=False
                     )
 
-            print(f"🔄 Отправка комментария от аккаунта {account_id} в чат {chat_id}, сообщение {message_id}")
+            print(f"🔄 Отправка комментария от аккаунта {account_id} в чат {chat_id}, reply к сообщению {message_id}")
             print(f"📝 Комментарий: {comment}")
 
+            # Нормализуем chat_id
+            target_chat = chat_id
+            if isinstance(chat_id, str) and chat_id.isdigit():
+                target_chat = int(chat_id)
+            elif isinstance(chat_id, str) and chat_id.startswith('-'):
+                target_chat = int(chat_id)
+
             try:
-                # Пытаемся отправить комментарий напрямую
+                # Основная попытка - отправляем комментарий как reply к посту
                 sent_message = await client.send_message(
-                    chat_id=chat_id,
+                    chat_id=target_chat,
                     text=comment,
                     reply_to_message_id=message_id
                 )
 
-                print(f"✅ Комментарий отправлен напрямую аккаунтом {account_id}")
+                print(f"✅ Комментарий отправлен под пост аккаунтом {account_id}")
                 return {
                     "status": "success",
-                    "message": "Комментарий отправлен",
+                    "message": "Комментарий отправлен под пост",
                     "message_id": sent_message.id
                 }
 
             except Exception as send_error:
                 error_str = str(send_error)
-                print(f"❌ Ошибка отправки комментария аккаунтом {account_id}: {error_str}")
+                print(f"❌ Ошибка отправки комментария под пост аккаунтом {account_id}: {error_str}")
 
-                # Если это канал и нужны права администратора, пробуем найти группу обсуждений
-                if "CHAT_ADMIN_REQUIRED" in error_str and isinstance(chat_id, str) and chat_id.startswith('@'):
-                    print(f"🔄 Пробуем найти группу обсуждений для канала {chat_id}")
+                # Специальная обработка для каналов с закрытыми комментариями
+                if "CHAT_ADMIN_REQUIRED" in error_str:
+                    # Для каналов без возможности комментирования возвращаем ошибку
+                    if isinstance(chat_id, str) and chat_id.startswith('@'):
+                        print(f"❌ Канал {chat_id} не поддерживает комментарии или требует права администратора")
+                        return {
+                            "status": "error",
+                            "message": f"Канал {chat_id} не разрешает комментарии. Попробуйте другой канал с включенными комментариями"
+                        }
+                    else:
+                        return {
+                            "status": "error",
+                            "message": "Нет прав для отправки комментариев в этот чат. Требуются права администратора"
+                        }
 
-                    try:
-                        # Получаем информацию о канале
-                        channel = await client.get_chat(chat_id)
-
-                        # Ищем связанную группу обсуждений
-                        if hasattr(channel, 'linked_chat_id') and channel.linked_chat_id:
-                            discussion_group_id = channel.linked_chat_id
-                            print(f"📢 Найдена группа обсуждений: {discussion_group_id}")
-
-                            try:
-                                # Пытаемся вступить в группу обсуждений если не состоим
-                                try:
-                                    await client.join_chat(discussion_group_id)
-                                    print(f"✅ Вступили в группу обсуждений {discussion_group_id}")
-                                    # Небольшая задержка после вступления
-                                    await asyncio.sleep(2)
-                                except Exception as join_error:
-                                    print(f"⚠️ Не удалось вступить в группу: {join_error}")
-
-                                # Отправляем комментарий в группу обсуждений
-                                sent_message = await client.send_message(
-                                    chat_id=discussion_group_id,
-                                    text=comment,
-                                    reply_to_message_id=message_id
-                                )
-
-                                print(f"✅ Комментарий отправлен в группу обсуждений аккаунтом {account_id}")
-                                return {
-                                    "status": "success",
-                                    "message": "Комментарий отправлен в группу обсуждений",
-                                    "message_id": sent_message.id
-                                }
-
-                            except Exception as discussion_send_error:
-                                discussion_error_str = str(discussion_send_error)
-                                print(f"❌ Ошибка отправки в группу обсуждений: {discussion_error_str}")
-                                
-                                # Обрабатываем специфические ошибки группы обсуждений
-                                if "CHAT_GUEST_SEND_FORBIDDEN" in discussion_error_str:
-                                    return {
-                                        "status": "error",
-                                        "message": "Аккаунт не имеет прав для отправки в группу обсуждений канала. Необходимо быть участником с правами отправки сообщений"
-                                    }
-                                elif "USER_BANNED_IN_CHANNEL" in discussion_error_str:
-                                    return {
-                                        "status": "error",
-                                        "message": "Аккаунт заблокирован в канале или группе обсуждений"
-                                    }
-                                elif "CHAT_WRITE_FORBIDDEN" in discussion_error_str:
-                                    return {
-                                        "status": "error", 
-                                        "message": "Запрещена отправка сообщений в группу обсуждений канала"
-                                    }
-                                else:
-                                    return {
-                                        "status": "error",
-                                        "message": f"Ошибка отправки в группу обсуждений: {discussion_error_str}"
-                                    }
-                        else:
-                            print(f"❌ У канала {chat_id} нет группы обсуждений")
-                            return {"status": "error", "message": "У канала нет группы обсуждений"}
-
-                    except Exception as discussion_error:
-                        print(f"❌ Ошибка поиска группы обсуждений: {discussion_error}")
-                        return {"status": "error", "message": f"Не удалось найти группу обсуждений: {str(discussion_error)}"}
-
-                # Обрабатываем другие специфические ошибки
+                # Обрабатываем другие специфические ошибки Telegram
                 elif "USERNAME_INVALID" in error_str:
                     return {"status": "error", "message": f"Неверное имя пользователя или канала: {chat_id}"}
                 elif "PEER_ID_INVALID" in error_str:
                     return {"status": "error", "message": f"Канал/чат {chat_id} не найден или недоступен"}
+                elif "MESSAGE_ID_INVALID" in error_str:
+                    return {"status": "error", "message": f"Сообщение с ID {message_id} не найдено или недоступно"}
                 elif "USER_BANNED_IN_CHANNEL" in error_str:
                     return {"status": "error", "message": "Аккаунт заблокирован в этом канале"}
                 elif "CHAT_WRITE_FORBIDDEN" in error_str:
                     return {"status": "error", "message": "Запрещена отправка сообщений в этот канал"}
+                elif "REPLY_MESSAGE_INVALID" in error_str:
+                    return {"status": "error", "message": "Нельзя ответить на это сообщение"}
+                elif "COMMENTS_DISABLED" in error_str:
+                    return {"status": "error", "message": "Комментарии отключены для этого поста"}
                 else:
                     # Возвращаем исходную ошибку
                     return {"status": "error", "message": f"Ошибка отправки комментария: {error_str}"}
