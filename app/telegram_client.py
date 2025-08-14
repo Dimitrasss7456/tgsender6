@@ -785,6 +785,12 @@ class TelegramManager:
                     error_str = str(auth_error).lower()
                     print(f"Попытка {attempt + 1}/{max_retries} - Ошибка подключения клиента {account_id}: {auth_error}")
 
+                    # Специальная обработка AUTH_KEY_UNREGISTERED
+                    if "auth_key_unregistered" in error_str:
+                        print(f"🔧 Обнаружена недействительная сессия для аккаунта {account_id}")
+                        await self._handle_auth_key_unregistered(account_id)
+                        return None
+
                     # Специальная обработка Broken Pipe
                     if "broken pipe" in error_str or "errno 32" in error_str:
                         print(f"🔧 Обнаружена ошибка Broken Pipe для аккаунта {account_id}")

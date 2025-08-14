@@ -38,19 +38,19 @@
                         <form id="commentForm" onsubmit="return false;">
                             <div class="mb-3">
                                 <label for="commentPost" class="form-label">Ссылка на пост</label>
-                                <input type="url" class="form-control" id="commentPost" 
+                                <input type="url" class="form-control" id="commentPost"
                                        placeholder="https://t.me/channel/123" required>
                             </div>
 
                             <div class="mb-3">
                                 <label for="maleComments" class="form-label">Мужские комментарии (по одному на строку)</label>
-                                <textarea class="form-control" id="maleComments" rows="5" 
+                                <textarea class="form-control" id="maleComments" rows="5"
                                           placeholder="Отличный пост!&#10;Согласен&#10;Интересно"></textarea>
                             </div>
 
                             <div class="mb-3">
                                 <label for="femaleComments" class="form-label">Женские комментарии (по одному на строку)</label>
-                                <textarea class="form-control" id="femaleComments" rows="5" 
+                                <textarea class="form-control" id="femaleComments" rows="5"
                                           placeholder="Отличная идея!&#10;Спасибо за пост&#10;Очень полезно"></textarea>
                             </div>
 
@@ -75,7 +75,7 @@
                         <form id="reactionForm" onsubmit="return false;">
                             <div class="mb-3">
                                 <label for="reactionPost" class="form-label">Ссылка на пост</label>
-                                <input type="url" class="form-control" id="reactionPost" 
+                                <input type="url" class="form-control" id="reactionPost"
                                        placeholder="https://t.me/channel/123" required>
                             </div>
 
@@ -112,7 +112,7 @@
                         <form id="viewForm" onsubmit="return false;">
                             <div class="mb-3">
                                 <label for="viewPost" class="form-label">Ссылка на пост</label>
-                                <input type="url" class="form-control" id="viewPost" 
+                                <input type="url" class="form-control" id="viewPost"
                                        placeholder="https://t.me/channel/123" required>
                             </div>
 
@@ -144,13 +144,13 @@
                                     {{ account.phone }}
                                 </span>
                                 <div class="btn-group btn-group-sm">
-                                    <button class="btn btn-outline-primary btn-sm" 
-                                            onclick="updateTelegramProfile({{ account.id }})" 
+                                    <button class="btn btn-outline-primary btn-sm"
+                                            onclick="updateTelegramProfile({{ account.id }})"
                                             title="Обновить профиль в Telegram">
                                         <i class="fas fa-sync"></i>
                                     </button>
-                                    <button class="btn btn-outline-success btn-sm" 
-                                            onclick="editProfile({{ account.id }})" 
+                                    <button class="btn btn-outline-success btn-sm"
+                                            onclick="showEditProfileModal({{ account.id }})"
                                             title="Применить изменения">
                                         <i class="fas fa-check"></i>
                                     </button>
@@ -161,21 +161,21 @@
                                     <div class="col-md-6">
                                         <div class="mb-2">
                                             <label class="form-label small">Имя</label>
-                                            <input type="text" class="form-control form-control-sm" 
+                                            <input type="text" class="form-control form-control-sm"
                                                    value="{{ account.first_name or '' }}"
                                                    onchange="updateField({{ account.id }}, 'first_name', this.value)">
                                         </div>
 
                                         <div class="mb-2">
                                             <label class="form-label small">Фамилия</label>
-                                            <input type="text" class="form-control form-control-sm" 
+                                            <input type="text" class="form-control form-control-sm"
                                                    value="{{ account.last_name or '' }}"
                                                    onchange="updateField({{ account.id }}, 'last_name', this.value)">
                                         </div>
 
                                         <div class="mb-2">
                                             <label class="form-label small">Гендер</label>
-                                            <select class="form-control form-control-sm" 
+                                            <select class="form-control form-control-sm"
                                                     onchange="updateField({{ account.id }}, 'gender', this.value)">
                                                 <option value="">Не указан</option>
                                                 <option value="male" {{ 'selected' if account.gender == 'male' else '' }}>Мужской</option>
@@ -187,14 +187,14 @@
                                     <div class="col-md-6">
                                         <div class="mb-2">
                                             <label class="form-label small">О себе</label>
-                                            <textarea class="form-control form-control-sm" rows="3" 
+                                            <textarea class="form-control form-control-sm" rows="3"
                                                       onchange="updateField({{ account.id }}, 'bio', this.value)"
                                                       placeholder="Краткая информация о себе">{{ account.bio or '' }}</textarea>
                                         </div>
 
                                         <div class="mb-2">
                                             <label class="form-label small">Фото профиля</label>
-                                            <input type="file" class="form-control form-control-sm" 
+                                            <input type="file" class="form-control form-control-sm"
                                                    accept="image/*"
                                                    onchange="uploadProfilePhoto({{ account.id }}, this)">
                                         </div>
@@ -236,7 +236,7 @@
         // Функция редактирования профиля
         function editProfile(accountId) {
             console.log('Editing profile for account:', accountId);
-            // Здесь можно добавить логику для редактирования профиля
+            // Этот код был заменен
         }
 
         // Функция обновления поля аккаунта
