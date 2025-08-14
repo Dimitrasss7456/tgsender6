@@ -2401,14 +2401,15 @@ class TelegramManager:
                         entity = await telethon_client.get_entity(target_entity)
                         print(f"📍 Telethon: Получена сущность - {type(entity).__name__}")
                         
-                        # Если это канал, используем GetDiscussionMessage для поиска треда обсуждения
+                        # Если это канал, пробуем несколько методов отправки комментариев
                         if hasattr(entity, 'broadcast') and entity.broadcast:
-                            print(f"📺 Telethon: Обнаружен канал, ищем тред обсуждения...")
+                            print(f"📺 Telethon: Обнаружен канал, пробуем разные методы отправки комментариев...")
                             
+                            # Метод 1: GetDiscussionMessage для поиска треда обсуждения
                             try:
-                                # Используем GetDiscussionMessage для поиска связанного сообщения в треде
                                 from telethon.tl.functions.messages import GetDiscussionMessageRequest
                                 
+                                print(f"🔍 Telethon: Метод 1 - Ищем тред обсуждения через GetDiscussionMessage...")
                                 discussion_result = await telethon_client(GetDiscussionMessageRequest(
                                     peer=entity,
                                     msg_id=message_id
@@ -2441,25 +2442,84 @@ class TelegramManager:
                                             "message_id": sent_message.id
                                         }
                                     else:
-                                        print(f"❌ Telethon: Не найден связанный чат или голова треда")
-                                        return {"status": "error", "message": "Telethon: Для поста нет обсуждения или комментарии отключены"}
+                                        print(f"⚠️ Telethon: Не найден связанный чат или голова треда, пробуем другие методы")
                                 else:
-                                    print(f"❌ Telethon: GetDiscussionMessage не вернул достаточно сообщений")
-                                    return {"status": "error", "message": "Telethon: Для поста нет обсуждения или комментарии отключены"}
+                                    print(f"⚠️ Telethon: GetDiscussionMessage не вернул достаточно сообщений, пробуем другие методы")
                                     
                             except Exception as discussion_error:
                                 error_str = str(discussion_error)
-                                print(f"❌ Telethon: Ошибка GetDiscussionMessage: {error_str}")
+                                print(f"⚠️ Telethon: Ошибка GetDiscussionMessage: {error_str}, пробуем другие методы")
+                            
+                            # Метод 2: Попытка получить полную информацию о канале для поиска linked_chat_id
+                            try:
+                                from telethon.tl.functions.channels import GetFullChannelRequest
                                 
-                                # Обрабатываем специфические ошибки
-                                if "MSG_ID_INVALID" in error_str:
-                                    return {"status": "error", "message": "Telethon: Неверный ID сообщения или сообщение не найдено"}
-                                elif "DISCUSSION_DISABLED" in error_str:
-                                    return {"status": "error", "message": "Telethon: Обсуждения отключены для этого канала"}
-                                elif "CHANNEL_PRIVATE" in error_str:
-                                    return {"status": "error", "message": "Telethon: Канал приватный или недоступен"}
+                                print(f"🔍 Telethon: Метод 2 - Ищем связанную группу через GetFullChannel...")
+                                full_channel_result = await telethon_client(GetFullChannelRequest(channel=entity))
+                                
+                                if hasattr(full_channel_result, 'full_chat') and hasattr(full_channel_result.full_chat, 'linked_chat_id'):
+                                    linked_chat_id = full_channel_result.full_chat.linked_chat_id
+                                    if linked_chat_id:
+                                        print(f"📢 Telethon: Найдена связанная группа: {linked_chat_id}")
+                                        
+                                        # Получаем сущность связанной группы
+                                        linked_chat = await telethon_client.get_entity(linked_chat_id)
+                                        
+                                        # Отправляем комментарий напрямую в связанную группу
+                                        await asyncio.sleep(2)
+                                        
+                                        sent_message = await telethon_client.send_message(
+                                            entity=linked_chat,
+                                            message=comment
+                                        )
+                                        
+                                        print(f"✅ Telethon: Комментарий отправлен в связанную группу! ID: {sent_message.id}")
+                                        return {
+                                            "status": "success",
+                                            "message": "Комментарий отправлен в связанную группу канала",
+                                            "message_id": sent_message.id
+                                        }
+                                    else:
+                                        print(f"⚠️ Telethon: Связанная группа не найдена, пробуем следующий метод")
                                 else:
-                                    return {"status": "error", "message": f"Telethon: Ошибка треда обсуждения - {error_str}"}
+                                    print(f"⚠️ Telethon: Информация о связанной группе недоступна, пробуем следующий метод")
+                                    
+                            except Exception as full_channel_error:
+                                error_str = str(full_channel_error)
+                                print(f"⚠️ Telethon: Ошибка GetFullChannel: {error_str}, пробуем следующий метод")
+                            
+                            # Метод 3: Попытка отправить комментарий напрямую в канал (если разрешено)
+                            try:
+                                print(f"🔍 Telethon: Метод 3 - Пробуем отправить комментарий напрямую в канал...")
+                                
+                                await asyncio.sleep(2)
+                                
+                                sent_message = await telethon_client.send_message(
+                                    entity=entity,
+                                    message=comment,
+                                    reply_to=message_id
+                                )
+                                
+                                print(f"✅ Telethon: Комментарий отправлен напрямую в канал! ID: {sent_message.id}")
+                                return {
+                                    "status": "success",
+                                    "message": "Комментарий отправлен в канал",
+                                    "message_id": sent_message.id
+                                }
+                                
+                            except Exception as direct_error:
+                                error_str = str(direct_error)
+                                print(f"❌ Telethon: Ошибка прямой отправки в канал: {error_str}")
+                                
+                                # Если все методы не сработали, возвращаем ошибку
+                                if "CHAT_ADMIN_REQUIRED" in error_str:
+                                    return {"status": "error", "message": "Telethon: Требуются права администратора для отправки в канал"}
+                                elif "CHAT_WRITE_FORBIDDEN" in error_str:
+                                    return {"status": "error", "message": "Telethon: Запрещена отправка сообщений в этот канал"}
+                                elif "MSG_ID_INVALID" in error_str:
+                                    return {"status": "error", "message": "Telethon: Неверный ID сообщения или сообщение не найдено"}
+                                else:
+                                    return {"status": "error", "message": f"Telethon: Все методы отправки комментариев не удались. Возможно, комментарии отключены для канала {chat_id}"}
                         else:
                             # Это обычная группа или приватный чат
                             print(f"💬 Telethon: Отправляем комментарий в обычный чат/группу...")
