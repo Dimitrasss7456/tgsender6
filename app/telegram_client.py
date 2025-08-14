@@ -1780,29 +1780,31 @@ class TelegramManager:
                 existing_tables = [row[0] for row in cursor.fetchall()]
                 print(f"📋 Существующие таблицы: {existing_tables}")
                 
+                # Всегда пересоздаем все таблицы для гарантии совместимости
+                print("🔄 Удаляем все существующие таблицы для чистого старта...")
+                for table in existing_tables:
+                    try:
+                        cursor.execute(f"DROP TABLE IF EXISTS {table}")
+                        print(f"🗑️ Удалена таблица {table}")
+                    except Exception as drop_error:
+                        print(f"⚠️ Не удалось удалить таблицу {table}: {drop_error}")
+                
                 # Таблица version (обязательная для Telethon)
-                if 'version' not in existing_tables:
-                    cursor.execute("CREATE TABLE version (version INTEGER)")
-                    cursor.execute("INSERT INTO version VALUES (1)")
-                    print("✅ Создана таблица version")
-                else:
-                    print("ℹ️ Таблица version уже существует")
+                cursor.execute("CREATE TABLE IF NOT EXISTS version (version INTEGER)")
+                cursor.execute("INSERT INTO version VALUES (1)")
+                print("✅ Создана таблица version")
                 
                 # Таблица sessions (основная таблица с данными авторизации)
-                if 'sessions' not in existing_tables:
-                    cursor.execute("""
-                        CREATE TABLE sessions (
-                            dc_id INTEGER PRIMARY KEY,
-                            server_address TEXT,
-                            port INTEGER,
-                            auth_key BLOB,
-                            takeout_id INTEGER
-                        )
-                    """)
-                    print("✅ Создана таблица sessions")
-                else:
-                    print("ℹ️ Таблица sessions уже существует, очищаем...")
-                    cursor.execute("DELETE FROM sessions")
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS sessions (
+                        dc_id INTEGER PRIMARY KEY,
+                        server_address TEXT,
+                        port INTEGER,
+                        auth_key BLOB,
+                        takeout_id INTEGER
+                    )
+                """)
+                print("✅ Создана таблица sessions")
                 
                 # Вставляем данные сессии
                 cursor.execute("""
@@ -1812,41 +1814,35 @@ class TelegramManager:
                 print("✅ Данные авторизации добавлены в таблицу sessions")
                 
                 # Таблица entities (для кеша пользователей/чатов)
-                if 'entities' not in existing_tables:
-                    cursor.execute("""
-                        CREATE TABLE entities (
-                            id INTEGER PRIMARY KEY,
-                            hash INTEGER NOT NULL,
-                            username TEXT,
-                            phone INTEGER,
-                            name TEXT,
-                            date INTEGER
-                        )
-                    """)
-                    print("✅ Создана таблица entities")
-                else:
-                    print("ℹ️ Таблица entities уже существует")
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS entities (
+                        id INTEGER PRIMARY KEY,
+                        hash INTEGER NOT NULL,
+                        username TEXT,
+                        phone INTEGER,
+                        name TEXT,
+                        date INTEGER
+                    )
+                """)
+                print("✅ Создана таблица entities")
                 
                 # Таблица sent_files (для кеша отправленных файлов)
-                if 'sent_files' not in existing_tables:
-                    cursor.execute("""
-                        CREATE TABLE sent_files (
-                            md5_digest BLOB,
-                            file_size INTEGER,
-                            type INTEGER,
-                            id INTEGER,
-                            hash INTEGER,
-                            PRIMARY KEY(md5_digest, file_size, type)
-                        )
-                    """)
-                    print("✅ Создана таблица sent_files")
-                else:
-                    print("ℹ️ Таблица sent_files уже существует")
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS sent_files (
+                        md5_digest BLOB,
+                        file_size INTEGER,
+                        type INTEGER,
+                        id INTEGER,
+                        hash INTEGER,
+                        PRIMARY KEY(md5_digest, file_size, type)
+                    )
+                """)
+                print("✅ Создана таблица sent_files")
                 
                 # Таблица update_state (для состояния обновлений)
                 if 'update_state' not in existing_tables:
                     cursor.execute("""
-                        CREATE TABLE update_state (
+                        CREATE TABLE IF NOT EXISTS update_state (
                             id INTEGER PRIMARY KEY,
                             pts INTEGER,
                             qts INTEGER,
@@ -1857,6 +1853,9 @@ class TelegramManager:
                     print("✅ Создана таблица update_state")
                 else:
                     print("ℹ️ Таблица update_state уже существует")
+                    # Очищаем существующую таблицу для свежего старта
+                    cursor.execute("DELETE FROM update_state")
+                    print("🧹 Очищена существующая таблица update_state")
                 
                 conn.commit()
                 print("✅ Сессия успешно создана для Telethon с полной совместимостью")
