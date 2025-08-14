@@ -1772,69 +1772,91 @@ class TelegramManager:
             cursor = conn.cursor()
             
             try:
-                # Создаем правильную структуру для Telethon
+                # Создаем правильную структуру для Telethon с проверкой существования таблиц
                 print("🔨 Создаем структуру базы данных Telethon...")
                 
+                # Проверяем какие таблицы уже существуют
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                existing_tables = [row[0] for row in cursor.fetchall()]
+                print(f"📋 Существующие таблицы: {existing_tables}")
+                
                 # Таблица version (обязательная для Telethon)
-                cursor.execute("CREATE TABLE version (version INTEGER)")
-                cursor.execute("INSERT INTO version VALUES (1)")
-                print("✅ Создана таблица version")
+                if 'version' not in existing_tables:
+                    cursor.execute("CREATE TABLE version (version INTEGER)")
+                    cursor.execute("INSERT INTO version VALUES (1)")
+                    print("✅ Создана таблица version")
+                else:
+                    print("ℹ️ Таблица version уже существует")
                 
                 # Таблица sessions (основная таблица с данными авторизации)
-                cursor.execute("""
-                    CREATE TABLE sessions (
-                        dc_id INTEGER PRIMARY KEY,
-                        server_address TEXT,
-                        port INTEGER,
-                        auth_key BLOB,
-                        takeout_id INTEGER
-                    )
-                """)
+                if 'sessions' not in existing_tables:
+                    cursor.execute("""
+                        CREATE TABLE sessions (
+                            dc_id INTEGER PRIMARY KEY,
+                            server_address TEXT,
+                            port INTEGER,
+                            auth_key BLOB,
+                            takeout_id INTEGER
+                        )
+                    """)
+                    print("✅ Создана таблица sessions")
+                else:
+                    print("ℹ️ Таблица sessions уже существует, очищаем...")
+                    cursor.execute("DELETE FROM sessions")
                 
                 # Вставляем данные сессии
                 cursor.execute("""
-                    INSERT INTO sessions (dc_id, server_address, port, auth_key, takeout_id) 
+                    INSERT OR REPLACE INTO sessions (dc_id, server_address, port, auth_key, takeout_id) 
                     VALUES (?, ?, ?, ?, NULL)
                 """, (dc_id, server_address, port, auth_key))
-                print("✅ Создана таблица sessions с данными авторизации")
+                print("✅ Данные авторизации добавлены в таблицу sessions")
                 
                 # Таблица entities (для кеша пользователей/чатов)
-                cursor.execute("""
-                    CREATE TABLE entities (
-                        id INTEGER PRIMARY KEY,
-                        hash INTEGER NOT NULL,
-                        username TEXT,
-                        phone INTEGER,
-                        name TEXT,
-                        date INTEGER
-                    )
-                """)
-                print("✅ Создана таблица entities")
+                if 'entities' not in existing_tables:
+                    cursor.execute("""
+                        CREATE TABLE entities (
+                            id INTEGER PRIMARY KEY,
+                            hash INTEGER NOT NULL,
+                            username TEXT,
+                            phone INTEGER,
+                            name TEXT,
+                            date INTEGER
+                        )
+                    """)
+                    print("✅ Создана таблица entities")
+                else:
+                    print("ℹ️ Таблица entities уже существует")
                 
                 # Таблица sent_files (для кеша отправленных файлов)
-                cursor.execute("""
-                    CREATE TABLE sent_files (
-                        md5_digest BLOB,
-                        file_size INTEGER,
-                        type INTEGER,
-                        id INTEGER,
-                        hash INTEGER,
-                        PRIMARY KEY(md5_digest, file_size, type)
-                    )
-                """)
-                print("✅ Создана таблица sent_files")
+                if 'sent_files' not in existing_tables:
+                    cursor.execute("""
+                        CREATE TABLE sent_files (
+                            md5_digest BLOB,
+                            file_size INTEGER,
+                            type INTEGER,
+                            id INTEGER,
+                            hash INTEGER,
+                            PRIMARY KEY(md5_digest, file_size, type)
+                        )
+                    """)
+                    print("✅ Создана таблица sent_files")
+                else:
+                    print("ℹ️ Таблица sent_files уже существует")
                 
                 # Таблица update_state (для состояния обновлений)
-                cursor.execute("""
-                    CREATE TABLE update_state (
-                        id INTEGER PRIMARY KEY,
-                        pts INTEGER,
-                        qts INTEGER,
-                        date INTEGER,
-                        seq INTEGER
-                    )
-                """)
-                print("✅ Создана таблица update_state")
+                if 'update_state' not in existing_tables:
+                    cursor.execute("""
+                        CREATE TABLE update_state (
+                            id INTEGER PRIMARY KEY,
+                            pts INTEGER,
+                            qts INTEGER,
+                            date INTEGER,
+                            seq INTEGER
+                        )
+                    """)
+                    print("✅ Создана таблица update_state")
+                else:
+                    print("ℹ️ Таблица update_state уже существует")
                 
                 conn.commit()
                 print("✅ Сессия успешно создана для Telethon с полной совместимостью")
