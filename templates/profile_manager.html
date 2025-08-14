@@ -260,7 +260,7 @@
 
     <script>
         // Функция для показа уведомлений
-        function showAlert(type, message) {
+        function showAlert(message, type) {
             const alertsContainer = document.getElementById('alerts');
             const alertDiv = document.createElement('div');
             alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
@@ -271,15 +271,26 @@
             alertsContainer.appendChild(alertDiv);
 
             setTimeout(() => {
-                alertDiv.remove();
+                if(alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
             }, 5000);
         }
 
-        // Функция редактирования профиля (теперь вызывается через модальное окно)
-        function editProfile(accountId) {
-            console.log('Editing profile for account:', accountId);
-            // Эта функция больше не используется напрямую, вместо нее openEditProfileModal
+        // Функция для редактирования профиля аккаунта
+        function editAccountProfile(accountId) {
+            const accountCard = document.getElementById(`account-${accountId}`);
+            if (!accountCard) return;
+
+            const firstNameInput = accountCard.querySelector('input[id*="first_name"]');
+            const lastNameInput = accountCard.querySelector('input[id*="last_name"]');
+            const bioTextarea = accountCard.querySelector('textarea[id*="bio"]');
+            const genderSelect = accountCard.querySelector('select[id*="gender"]');
+
+            // Переключаем в режим редактирования, используя модальное окно
+            openEditProfileModal(accountId);
         }
+
 
         // Функция обновления поля аккаунта
         function updateField(accountId, field, value) {
@@ -293,13 +304,13 @@
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    showNotification('success', 'Профиль обновлен');
+                    // showAlert('Профиль обновлен', 'success'); // Сообщение будет показано в saveEditedProfile
                 } else {
-                    showNotification('error', data.message || 'Ошибка обновления');
+                    showAlert(data.message || 'Ошибка обновления', 'danger');
                 }
             })
             .catch(error => {
-                showNotification('error', 'Ошибка соединения');
+                showAlert('Ошибка соединения', 'danger');
             });
         }
 
@@ -324,13 +335,13 @@
                 }
 
                 if (result.success) {
-                    showAlert('success', 'Профиль успешно обновлен в Telegram!');
+                    showAlert('Профиль успешно обновлен в Telegram!', 'success');
                 } else {
-                    showAlert('danger', 'Ошибка обновления профиля: ' + result.message);
+                    showAlert('Ошибка обновления профиля: ' + result.message, 'danger');
                 }
             } catch (error) {
                 console.error('Ошибка:', error);
-                showAlert('danger', 'Ошибка обновления профиля в Telegram');
+                showAlert('Ошибка обновления профиля в Telegram', 'danger');
 
                 const button = document.querySelector(`#account-${accountId} .btn-group .btn-outline-primary`);
                 if (button) {
@@ -342,43 +353,22 @@
 
         // Функция показа модального окна для редактирования профиля
         function showEditProfileModal(accountId) {
-            const accountCard = document.getElementById(`account-${accountId}`);
-            const firstNameInput = accountCard.querySelector('input[onchange*="first_name"]');
-            const lastNameInput = accountCard.querySelector('input[onchange*="last_name"]');
-            const bioTextarea = accountCard.querySelector('textarea[onchange*="bio"]');
-            const genderSelect = accountCard.querySelector('select[onchange*="gender"]');
+            fetch(`/api/accounts/${accountId}`)
+                .then(response => response.json())
+                .then(account => {
+                    document.getElementById('edit-account-id').value = accountId;
+                    document.getElementById('edit-first-name').value = account.first_name || '';
+                    document.getElementById('edit-last-name').value = account.last_name || '';
+                    document.getElementById('edit-bio').value = account.bio || '';
+                    document.getElementById('edit-gender').value = account.gender || '';
 
-            const currentFirstName = firstNameInput ? firstNameInput.value : '';
-            const currentLastName = lastNameInput ? lastNameInput.value : '';
-            const currentBio = bioTextarea ? bioTextarea.value : '';
-            const currentGender = genderSelect ? genderSelect.value : '';
-
-            const newFirstName = prompt('Введите новое имя:', currentFirstName);
-            if (newFirstName === null) return;
-
-            const newLastName = prompt('Введите новую фамилию:', currentLastName);
-            if (newLastName === null) return;
-
-            const newBio = prompt('Введите новое описание (био):', currentBio);
-            if (newBio === null) return;
-
-            const newGender = prompt('Введите новый пол (male/female/):', currentGender);
-            if (newGender === null) return;
-
-
-            updateField(accountId, 'first_name', newFirstName);
-            updateField(accountId, 'last_name', newLastName);
-            updateField(accountId, 'bio', newBio);
-            updateField(accountId, 'gender', newGender);
-
-            // Обновляем значения в инпутах на странице, чтобы они соответствовали введенным
-            if (firstNameInput) firstNameInput.value = newFirstName;
-            if (lastNameInput) lastNameInput.value = newLastName;
-            if (bioTextarea) bioTextarea.value = newBio;
-            if (genderSelect) genderSelect.value = newGender;
-
-
-            showAlert('info', 'Изменения в профиле сохранены. Нажмите "Обновить в Telegram" для синхронизации.');
+                    const modal = new bootstrap.Modal(document.getElementById('editProfileModal'));
+                    modal.show();
+                })
+                .catch(error => {
+                    console.error('Ошибка получения данных аккаунта:', error);
+                    showAlert('Ошибка получения данных аккаунта', 'danger');
+                });
         }
 
         // Загрузка фото профиля
@@ -396,13 +386,13 @@
 
                 const result = await response.json();
                 if (result.success) {
-                    showAlert('success', 'Фото загружено успешно!');
+                    showAlert('Фото загружено успешно!', 'success');
                 } else {
-                    showAlert('danger', 'Ошибка загрузки фото: ' + result.message);
+                    showAlert('Ошибка загрузки фото: ' + result.message, 'danger');
                 }
             } catch (error) {
                 console.error('Ошибка:', error);
-                showAlert('danger', 'Ошибка загрузки фото');
+                showAlert('Ошибка загрузки фото', 'danger');
             }
         }
 
@@ -420,13 +410,13 @@
 
                 const data = await response.json();
                 if (data.success) {
-                    showAlert('success', data.message);
+                    showAlert(data.message, 'success');
                     setTimeout(() => location.reload(), 1500);
                 } else {
-                    showAlert('danger', data.message || 'Ошибка назначения гендеров');
+                    showAlert(data.message || 'Ошибка назначения гендеров', 'danger');
                 }
             } catch (error) {
-                showAlert('danger', 'Ошибка назначения гендеров: ' + error.message);
+                showAlert('Ошибка назначения гендеров: ' + error.message, 'danger');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-magic"></i> Автозаполнение';
@@ -441,7 +431,7 @@
             const delay = document.getElementById('commentDelay').value;
 
             if (!postUrl || (!maleComments && !femaleComments)) {
-                showAlert('warning', 'Заполните ссылку на пост и комментарии');
+                showAlert('Заполните ссылку на пост и комментарии', 'warning');
                 return;
             }
 
@@ -472,16 +462,16 @@
 
                     const startResult = await startResponse.json();
                     if (startResult.success) {
-                        showAlert('success', 'Кампания комментирования запущена!');
+                        showAlert('Кампания комментирования запущена!', 'success');
                         document.getElementById('commentForm').reset();
                     } else {
-                        showAlert('danger', 'Ошибка запуска: ' + startResult.message);
+                        showAlert('Ошибка запуска: ' + startResult.message, 'danger');
                     }
                 } else {
-                    showAlert('danger', 'Ошибка создания кампании: ' + result.message);
+                    showAlert('Ошибка создания кампании: ' + result.message, 'danger');
                 }
             } catch (error) {
-                showAlert('danger', 'Ошибка: ' + error.message);
+                showAlert('Ошибка: ' + error.message, 'danger');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-play"></i> Запустить комментирование';
@@ -495,7 +485,7 @@
             const delay = document.getElementById('reactionDelay').value;
 
             if (!postUrl) {
-                showAlert('warning', 'Заполните ссылку на пост');
+                showAlert('Заполните ссылку на пост', 'warning');
                 return;
             }
 
@@ -517,13 +507,13 @@
 
                 const result = await response.json();
                 if (result.success) {
-                    showAlert('success', 'Кампания реакций запущена!');
+                    showAlert('Кампания реакций запущена!', 'success');
                     document.getElementById('reactionForm').reset();
                 } else {
-                    showAlert('danger', 'Ошибка: ' + result.message);
+                    showAlert('Ошибка: ' + result.message, 'danger');
                 }
             } catch (error) {
-                showAlert('danger', 'Ошибка запуска кампании: ' + error.message);
+                showAlert('Ошибка запуска кампании: ' + error.message, 'danger');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-play"></i> Запустить реакции';
@@ -536,7 +526,7 @@
             const delay = document.getElementById('viewDelay').value;
 
             if (!postUrl) {
-                showAlert('warning', 'Заполните ссылку на пост');
+                showAlert('Заполните ссылку на пост', 'warning');
                 return;
             }
 
@@ -557,13 +547,13 @@
 
                 const result = await response.json();
                 if (result.success) {
-                    showAlert('success', 'Кампания просмотров запущена!');
+                    showAlert('Кампания просмотров запущена!', 'success');
                     document.getElementById('viewForm').reset();
                 } else {
-                    showAlert('danger', 'Ошибка: ' + result.message);
+                    showAlert('Ошибка: ' + result.message, 'danger');
                 }
             } catch (error) {
-                showAlert('danger', 'Ошибка запуска кампании: ' + error.message);
+                showAlert('Ошибка запуска кампании: ' + error.message, 'danger');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-play"></i> Запустить просмотры';
@@ -586,10 +576,10 @@
             // Обновляем значения в отображаемых карточках
             const accountCard = document.getElementById(`account-${accountId}`);
             if (accountCard) {
-                const firstNameInput = accountCard.querySelector('input[onchange*="first_name"]');
-                const lastNameInput = accountCard.querySelector('input[onchange*="last_name"]');
-                const bioTextarea = accountCard.querySelector('textarea[onchange*="bio"]');
-                const genderSelect = accountCard.querySelector('select[onchange*="gender"]');
+                const firstNameInput = accountCard.querySelector('input[id*="first_name"]');
+                const lastNameInput = accountCard.querySelector('input[id*="last_name"]');
+                const bioTextarea = accountCard.querySelector('textarea[id*="bio"]');
+                const genderSelect = accountCard.querySelector('select[id*="gender"]');
 
                 if (firstNameInput) firstNameInput.value = firstName;
                 if (lastNameInput) lastNameInput.value = lastName;
@@ -599,31 +589,8 @@
 
             const modal = bootstrap.Modal.getInstance(document.getElementById('editProfileModal'));
             modal.hide();
-            showAlert('info', 'Изменения сохранены. Не забудьте нажать "Обновить в Telegram".');
+            showAlert('Изменения сохранены. Не забудьте нажать "Обновить в Telegram".', 'info');
         }
-
-        // Функция для открытия модального окна редактирования профиля
-        function openEditProfileModal(accountId) {
-            fetch(`/api/accounts/${accountId}`)
-                .then(response => response.json())
-                .then(account => {
-                    document.getElementById('edit-account-id').value = accountId;
-                    document.getElementById('edit-first-name').value = account.first_name || '';
-                    document.getElementById('edit-last-name').value = account.last_name || '';
-                    document.getElementById('edit-bio').value = account.bio || '';
-                    document.getElementById('edit-gender').value = account.gender || '';
-
-                    const modal = new bootstrap.Modal(document.getElementById('editProfileModal'));
-                    modal.show();
-                })
-                .catch(error => {
-                    console.error('Ошибка получения данных аккаунта:', error);
-                    showAlert('danger', 'Ошибка получения данных аккаунта');
-                });
-        }
-
-        // Изначальная загрузка аккаунтов при старте страницы (если есть такой функционал)
-        // document.addEventListener('DOMContentLoaded', loadAccounts); // Закомментировано, так как loadAccounts не используется в текущей версии
     </script>
 </body>
 </html>
