@@ -72,6 +72,13 @@ class Account(Base):
     messages_sent_hour = Column(Integer, default=0)
     last_message_time = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
+    
+    # Новые поля для профиля
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
+    bio = Column(Text, nullable=True)
+    gender = Column(String, nullable=True)  # male, female, other
+    profile_photo_path = Column(String, nullable=True)
 
     # Связь с пользователем
     user = relationship("User", back_populates="accounts")
@@ -107,6 +114,52 @@ class SendLog(Base):
     message = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
     sent_at = Column(DateTime, default=datetime.utcnow)
+
+class CommentCampaign(Base):
+    __tablename__ = "comment_campaigns"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    post_url = Column(String)  # URL поста для комментирования
+    comments_male = Column(Text)  # Комментарии для мужских аккаунтов (разделенные \n)
+    comments_female = Column(Text)  # Комментарии для женских аккаунтов (разделенные \n)
+    delay_seconds = Column(Integer, default=60)  # Задержка между комментариями
+    status = Column(String, default="created")  # created, running, completed, stopped
+    created_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+class CommentLog(Base):
+    __tablename__ = "comment_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    campaign_id = Column(Integer, ForeignKey("comment_campaigns.id"))
+    account_id = Column(Integer, ForeignKey("accounts.id"))
+    comment_text = Column(Text)
+    status = Column(String)  # sent, failed, blocked
+    error_message = Column(Text, nullable=True)
+    sent_at = Column(DateTime, default=datetime.utcnow)
+
+class ReactionCampaign(Base):
+    __tablename__ = "reaction_campaigns"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    post_url = Column(String)
+    reaction_emoji = Column(String)  # Эмодзи для реакции
+    delay_seconds = Column(Integer, default=30)
+    status = Column(String, default="created")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class ViewCampaign(Base):
+    __tablename__ = "view_campaigns"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    post_url = Column(String)
+    delay_seconds = Column(Integer, default=10)
+    status = Column(String, default="created")
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 # Создаем таблицы
 Base.metadata.create_all(bind=engine)

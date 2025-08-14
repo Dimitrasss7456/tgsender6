@@ -1768,6 +1768,99 @@ class TelegramManager:
         """Вспомогательная функция для получения клиента (переименована для соответствия изменениям)"""
         return await self._get_client_for_account(account_id)
 
+    async def update_profile(self, account_id: int, first_name: str = None, last_name: str = None, bio: str = None) -> Dict:
+        """Обновление профиля аккаунта в Telegram"""
+        try:
+            client = await self._get_client_for_account(account_id)
+            if not client:
+                return {"status": "error", "message": "Не удалось подключиться к аккаунту"}
+
+            if not client.is_connected:
+                await client.connect()
+
+            # Обновляем профиль
+            await client.update_profile(
+                first_name=first_name or "",
+                last_name=last_name or "",
+                bio=bio or ""
+            )
+
+            return {"status": "success", "message": "Профиль успешно обновлен"}
+
+        except Exception as e:
+            return {"status": "error", "message": f"Ошибка обновления профиля: {str(e)}"}
+
+    async def send_reaction(self, account_id: int, chat_id: str, message_id: int, emoji: str) -> Dict:
+        """Отправка реакции на сообщение"""
+        try:
+            client = await self._get_client_for_account(account_id)
+            if not client:
+                return {"status": "error", "message": "Не удалось подключиться к аккаунту"}
+
+            if not client.is_connected:
+                await client.connect()
+
+            # Отправляем реакцию
+            from pyrogram.raw import functions
+            from pyrogram.raw.types import ReactionEmoji
+
+            await client.invoke(
+                functions.messages.SendReaction(
+                    peer=await client.resolve_peer(chat_id),
+                    msg_id=message_id,
+                    reaction=[ReactionEmoji(emoticon=emoji)]
+                )
+            )
+
+            return {"status": "success", "message": "Реакция отправлена"}
+
+        except Exception as e:
+            return {"status": "error", "message": f"Ошибка отправки реакции: {str(e)}"}
+
+    async def view_message(self, account_id: int, chat_id: str, message_id: int) -> Dict:
+        """Просмотр сообщения"""
+        try:
+            client = await self._get_client_for_account(account_id)
+            if not client:
+                return {"status": "error", "message": "Не удалось подключиться к аккаунту"}
+
+            if not client.is_connected:
+                await client.connect()
+
+            # Читаем историю чата до указанного сообщения
+            await client.read_chat_history(chat_id=chat_id, max_id=message_id)
+
+            return {"status": "success", "message": "Сообщение просмотрено"}
+
+        except Exception as e:
+            return {"status": "error", "message": f"Ошибка просмотра сообщения: {str(e)}"}
+
+    async def send_comment(self, account_id: int, chat_id: str, message_id: int, comment: str) -> Dict:
+        """Отправка комментария (ответа на сообщение)"""
+        try:
+            client = await self._get_client_for_account(account_id)
+            if not client:
+                return {"status": "error", "message": "Не удалось подключиться к аккаунту"}
+
+            if not client.is_connected:
+                await client.connect()
+
+            # Отправляем комментарий как ответ на сообщение
+            sent_message = await client.send_message(
+                chat_id=chat_id,
+                text=comment,
+                reply_to_message_id=message_id
+            )
+
+            return {
+                "status": "success", 
+                "message": "Комментарий отправлен",
+                "message_id": sent_message.id
+            }
+
+        except Exception as e:
+            return {"status": "error", "message": f"Ошибка отправки комментария: {str(e)}"}
+
 
 # Глобальный экземпляр менеджера
 telegram_manager = TelegramManager()

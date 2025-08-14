@@ -17,6 +17,7 @@ from app.auth import (
     get_current_user, get_current_admin, authenticate_user,
     create_session_token, invalidate_session, create_admin_user_if_not_exists
 )
+import asyncio
 
 # Создаем приложение FastAPI в самом начале
 app = FastAPI(title="Telegram Mass Sender")
@@ -329,7 +330,7 @@ async def add_account_from_tdata(
         if not tdata_files or len(tdata_files) == 0:
             print("❌ Файлы TDATA не загружены")
             return JSONResponse({
-                "status": "error", 
+                "status": "error",
                 "message": "Выберите файлы TDATA для импорта"
             })
 
@@ -375,7 +376,7 @@ async def add_account_from_tdata(
 
         if not saved_files:
             return JSONResponse({
-                "status": "error", 
+                "status": "error",
                 "message": "Не удалось сохранить файлы. Проверьте формат загружаемых файлов"
             })
 
@@ -383,7 +384,7 @@ async def add_account_from_tdata(
         has_key_data = any(f.startswith("key_data") for f in saved_files)
         if not has_key_data:
             return JSONResponse({
-                "status": "error", 
+                "status": "error",
                 "message": "В загруженных файлах не найден key_data. Убедитесь что загружаете правильные файлы из папки tdata"
             })
 
@@ -447,7 +448,7 @@ async def add_account_from_tdata(
             pass
 
         return JSONResponse({
-            "status": "error", 
+            "status": "error",
             "message": f"Критическая ошибка импорта: {error_msg}"
         })
 
@@ -1041,7 +1042,7 @@ async def start_contacts_campaign_api(
         # Получаем все данные формы для отладки
         form_data = await request.form()
         print(f"📋 Данные формы: {dict(form_data)}")
-        
+
         selected_accounts = []
 
         # Собираем все выбранные аккаунты
@@ -1058,7 +1059,7 @@ async def start_contacts_campaign_api(
         if not selected_accounts:
             print("❌ Аккаунты не выбраны")
             return JSONResponse({
-                "status": "error", 
+                "status": "error",
                 "message": "Не выбраны аккаунты для рассылки. Выберите хотя бы один аккаунт из списка."
             })
 
@@ -1066,7 +1067,7 @@ async def start_contacts_campaign_api(
         if not message or not message.strip():
             print("❌ Не указано сообщение")
             return JSONResponse({
-                "status": "error", 
+                "status": "error",
                 "message": "Не указано сообщение для рассылки"
             })
 
@@ -1081,8 +1082,8 @@ async def start_contacts_campaign_api(
         if not accounts:
             print("❌ Активные аккаунты не найдены")
             return JSONResponse({
-                "status": "error", 
-                "message": "Выбранные аккаунты не найдены или неактивны"
+                "status": "error",
+                "message": "Выбранные аккаунты неактивны или не найдены"
             })
 
         print(f"✅ Найдено {len(accounts)} активных аккаунтов")
@@ -1103,7 +1104,7 @@ async def start_contacts_campaign_api(
             except Exception as file_error:
                 print(f"❌ Ошибка сохранения файла: {file_error}")
                 return JSONResponse({
-                    "status": "error", 
+                    "status": "error",
                     "message": f"Ошибка сохранения файла: {str(file_error)}"
                 })
 
@@ -1116,9 +1117,9 @@ async def start_contacts_campaign_api(
             Account.id.in_(selected_accounts),
             Account.is_active == True
         ).all()
-        
+
         print(f"✅ Активных аккаунтов найдено: {len(active_accounts)} из {len(selected_accounts)}")
-        
+
         if not active_accounts:
             return JSONResponse({
                 "status": "error",
@@ -1136,12 +1137,12 @@ async def start_contacts_campaign_api(
         )
 
         print(f"📊 Результат кампании: {result}")
-        
+
         # Добавляем дополнительную информацию в ответ
         if result.get("status") == "success":
             result["accounts_used"] = len(active_accounts)
             result["message"] = f"Рассылка запущена с {len(active_accounts)} аккаунтами"
-        
+
         return JSONResponse(result)
 
     except Exception as e:
@@ -1152,7 +1153,7 @@ async def start_contacts_campaign_api(
         print(f"🔍 Трассировка: {error_trace}")
 
         return JSONResponse({
-            "status": "error", 
+            "status": "error",
             "message": f"Ошибка запуска кампании: {error_msg}"
         })
 
@@ -1256,8 +1257,500 @@ async def upload_file(file: UploadFile = File(...)):
             content={"status": "error", "message": f"Ошибка загрузки файла: {str(e)}"}
         )
 
+# API для управления профилями
+@app.post("/api/accounts/{account_id}/update_field")
+async def update_account_field(account_id: int, request: Request, db: Session = Depends(get_db)):
+    """Обновление поля аккаунта"""
+    try:
+        data = await request.json()
+        field = data.get('field')
+        value = data.get('value')
+
+        account = db.query(Account).filter(Account.id == account_id).first()
+        if not account:
+            return {"success": False, "message": "Аккаунт не найден"}
+
+        if hasattr(account, field):
+            setattr(account, field, value)
+            db.commit()
+            return {"success": True}
+        else:
+            return {"success": False, "message": "Неизвестное поле"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+@app.post("/api/accounts/auto_assign_genders")
+async def auto_assign_genders(db: Session = Depends(get_db)):
+    """Автоматическое назначение гендеров"""
+    try:
+        import random
+
+        # Примерные списки имен (можно расширить)
+        male_first_names = [
+            "Александр", "Дмитрий", "Сергей", "Андрей", "Алексей", "Павел", "Николай", "Михаил",
+            "Иван", "Владимир", "Константин", "Олег", "Роман", "Антон", "Денис", "Максим"
+        ]
+        female_first_names = [
+            "Анна", "Елена", "Мария", "Наталья", "Ольга", "Екатерина", "Татьяна", "Ирина",
+            "Юлия", "Светлана", "Людмила", "Галина", "Валентина", "Дарья", "Алёна", "Ксения"
+        ]
+
+        male_last_names = [
+            "Иванов", "Петров", "Сидоров", "Козлов", "Новиков", "Морозов", "Петров", "Волков",
+            "Соколов", "Зайцев", "Попов", "Васильев", "Кузнецов", "Смирнов", "Федоров", "Михайлов"
+        ]
+        female_last_names = [
+            "Иванова", "Петрова", "Сидорова", "Козлова", "Новикова", "Морозова", "Петрова", "Волкова",
+            "Соколова", "Зайцева", "Попова", "Васильева", "Кузнецова", "Смирнова", "Федорова", "Михайлова"
+        ]
+
+        accounts = db.query(Account).filter(Account.is_active == True).all()
+        updated_count = 0
+
+        for account in accounts:
+            # Случайно назначаем гендер если не задан
+            if not account.gender:
+                account.gender = random.choice(['male', 'female'])
+
+            # Назначаем имя и фамилию по гендеру
+            if account.gender == 'male':
+                account.first_name = random.choice(male_first_names)
+                account.last_name = random.choice(male_last_names)
+            elif account.gender == 'female':
+                account.first_name = random.choice(female_first_names)
+                account.last_name = random.choice(female_last_names)
+
+            updated_count += 1
+
+        db.commit()
+        return {"success": True, "message": f"Обновлено {updated_count} аккаунтов"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+@app.post("/api/accounts/{account_id}/update_telegram_profile")
+async def update_telegram_profile(account_id: int, db: Session = Depends(get_db)):
+    """Обновление профиля в Telegram"""
+    try:
+        account = db.query(Account).filter(Account.id == account_id).first()
+        if not account:
+            return {"success": False, "message": "Аккаунт не найден"}
+
+        # Получаем клиент для аккаунта
+        client = await telegram_manager.get_client(account_id)
+        if not client:
+            return {"success": False, "message": "Не удалось подключиться к аккаунту"}
+
+        # Обновляем профиль в Telegram
+        try:
+            await client.update_profile(
+                first_name=account.first_name or "",
+                last_name=account.last_name or "",
+                bio=account.bio or ""
+            )
+            return {"success": True, "message": "Профиль обновлен в Telegram"}
+        except Exception as tg_error:
+            return {"success": False, "message": f"Ошибка Telegram: {str(tg_error)}"}
+
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+# API для кампаний комментирования
+@app.post("/api/comment_campaigns")
+async def create_comment_campaign(request: Request, db: Session = Depends(get_db)):
+    """Создание кампании комментирования"""
+    try:
+        from app.database import CommentCampaign
+
+        data = await request.json()
+
+        campaign = CommentCampaign(
+            name=data['name'],
+            post_url=data['post_url'],
+            comments_male=data['male_comments'],
+            comments_female=data['female_comments'],
+            delay_seconds=data['delay_seconds']
+        )
+
+        db.add(campaign)
+        db.commit()
+
+        return {"success": True, "campaign_id": campaign.id}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+@app.get("/api/comment_campaigns")
+async def get_comment_campaigns(db: Session = Depends(get_db)):
+    """Получение списка кампаний комментирования"""
+    try:
+        from app.database import CommentCampaign
+
+        campaigns = db.query(CommentCampaign).order_by(CommentCampaign.created_at.desc()).all()
+        campaigns_data = []
+
+        for campaign in campaigns:
+            campaigns_data.append({
+                "id": campaign.id,
+                "name": campaign.name,
+                "post_url": campaign.post_url,
+                "status": campaign.status,
+                "created_at": campaign.created_at.isoformat()
+            })
+
+        return {"campaigns": campaigns_data}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+@app.post("/api/comment_campaigns/{campaign_id}/start")
+async def start_comment_campaign(campaign_id: int, db: Session = Depends(get_db)):
+    """Запуск кампании комментирования"""
+    try:
+        from app.database import CommentCampaign
+
+        campaign = db.query(CommentCampaign).filter(CommentCampaign.id == campaign_id).first()
+        if not campaign:
+            return {"success": False, "message": "Кампания не найдена"}
+
+        # Запускаем кампанию в фоне
+        asyncio.create_task(run_comment_campaign(campaign_id))
+
+        campaign.status = "running"
+        campaign.started_at = datetime.utcnow()
+        db.commit()
+
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+@app.post("/api/comment_campaigns/{campaign_id}/stop")
+async def stop_comment_campaign(campaign_id: int, db: Session = Depends(get_db)):
+    """Остановка кампании комментирования"""
+    try:
+        from app.database import CommentCampaign
+
+        campaign = db.query(CommentCampaign).filter(CommentCampaign.id == campaign_id).first()
+        if not campaign:
+            return {"success": False, "message": "Кампания не найдена"}
+
+        campaign.status = "stopped"
+        db.commit()
+
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+# API для кампаний реакций
+@app.post("/api/reaction_campaigns")
+async def create_reaction_campaign(request: Request, db: Session = Depends(get_db)):
+    """Создание кампании реакций"""
+    try:
+        from app.database import ReactionCampaign
+
+        data = await request.json()
+
+        campaign = ReactionCampaign(
+            name=data['name'],
+            post_url=data['post_url'],
+            reaction_emoji=data['reaction_emoji'],
+            delay_seconds=data['delay_seconds']
+        )
+
+        db.add(campaign)
+        db.commit()
+
+        # Запускаем кампанию сразу
+        asyncio.create_task(run_reaction_campaign(campaign.id))
+
+        return {"success": True, "campaign_id": campaign.id}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+# API для кампаний просмотров
+@app.post("/api/view_campaigns")
+async def create_view_campaign(request: Request, db: Session = Depends(get_db)):
+    """Создание кампании просмотров"""
+    try:
+        from app.database import ViewCampaign
+
+        data = await request.json()
+
+        campaign = ViewCampaign(
+            name=data['name'],
+            post_url=data['post_url'],
+            delay_seconds=data['delay_seconds']
+        )
+
+        db.add(campaign)
+        db.commit()
+
+        # Запускаем кампанию сразу
+        asyncio.create_task(run_view_campaign(campaign.id))
+
+        return {"success": True, "campaign_id": campaign.id}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+# Функции выполнения кампаний
+async def run_comment_campaign(campaign_id: int):
+    """Выполнение кампании комментирования"""
+    try:
+        from app.database import CommentCampaign, CommentLog, get_db_session
+
+        db = get_db_session()
+        try:
+            campaign = db.query(CommentCampaign).filter(CommentCampaign.id == campaign_id).first()
+            if not campaign or campaign.status != "running":
+                return
+
+            # Получаем аккаунты по гендерам
+            male_accounts = db.query(Account).filter(
+                Account.is_active == True,
+                Account.gender == 'male'
+            ).all()
+
+            female_accounts = db.query(Account).filter(
+                Account.is_active == True,
+                Account.gender == 'female'
+            ).all()
+
+            # Разбиваем комментарии
+            male_comments = [c.strip() for c in campaign.comments_male.split('\n') if c.strip()]
+            female_comments = [c.strip() for c in campaign.comments_female.split('\n') if c.strip()]
+
+            # Извлекаем chat_id и message_id из URL
+            chat_id, message_id = parse_telegram_url(campaign.post_url)
+            if not chat_id or not message_id:
+                print(f"❌ Невозможно извлечь данные из URL: {campaign.post_url}")
+                return
+
+            comment_index = 0
+
+            # Отправляем мужские комментарии
+            for i, comment in enumerate(male_comments):
+                if campaign.status != "running":
+                    break
+
+                if i < len(male_accounts):
+                    account = male_accounts[i]
+                    await send_comment_to_post(account.id, chat_id, message_id, comment, campaign_id, db)
+
+                    comment_index += 1
+                    if comment_index < len(male_comments) + len(female_comments):
+                        await asyncio.sleep(campaign.delay_seconds)
+
+            # Отправляем женские комментарии
+            for i, comment in enumerate(female_comments):
+                if campaign.status != "running":
+                    break
+
+                if i < len(female_accounts):
+                    account = female_accounts[i]
+                    await send_comment_to_post(account.id, chat_id, message_id, comment, campaign_id, db)
+
+                    comment_index += 1
+                    if comment_index < len(male_comments) + len(female_comments):
+                        await asyncio.sleep(campaign.delay_seconds)
+
+            # Завершаем кампанию
+            campaign.status = "completed"
+            campaign.completed_at = datetime.utcnow()
+            db.commit()
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        print(f"❌ Ошибка в кампании комментирования {campaign_id}: {e}")
+
+async def send_comment_to_post(account_id: int, chat_id: str, message_id: int, comment: str, campaign_id: int, db):
+    """Отправка комментария к посту"""
+    try:
+        from app.database import CommentLog
+
+        # Получаем клиент
+        client = await telegram_manager.get_client(account_id)
+        if not client:
+            print(f"❌ Не удалось получить клиент для аккаунта {account_id}")
+            return
+
+        # Отправляем комментарий (reply to message)
+        try:
+            sent_message = await client.send_message(
+                chat_id=chat_id,
+                text=comment,
+                reply_to_message_id=message_id
+            )
+
+            # Логируем успешную отправку
+            log = CommentLog(
+                campaign_id=campaign_id,
+                account_id=account_id,
+                comment_text=comment,
+                status="sent"
+            )
+            db.add(log)
+            db.commit()
+
+            print(f"✅ Комментарий отправлен аккаунтом {account_id}: {comment[:50]}...")
+
+        except Exception as send_error:
+            print(f"❌ Ошибка отправки комментария аккаунтом {account_id}: {send_error}")
+
+            # Логируем ошибку
+            log = CommentLog(
+                campaign_id=campaign_id,
+                account_id=account_id,
+                comment_text=comment,
+                status="failed",
+                error_message=str(send_error)
+            )
+            db.add(log)
+            db.commit()
+
+    except Exception as e:
+        print(f"❌ Общая ошибка отправки комментария: {e}")
+
+async def run_reaction_campaign(campaign_id: int):
+    """Выполнение кампании реакций"""
+    try:
+        from app.database import ReactionCampaign, get_db_session
+
+        db = get_db_session()
+        try:
+            campaign = db.query(ReactionCampaign).filter(ReactionCampaign.id == campaign_id).first()
+            if not campaign:
+                return
+
+            # Получаем активные аккаунты
+            accounts = db.query(Account).filter(Account.is_active == True).all()
+
+            # Извлекаем данные из URL
+            chat_id, message_id = parse_telegram_url(campaign.post_url)
+            if not chat_id or not message_id:
+                print(f"❌ Невозможно извлечь данные из URL: {campaign.post_url}")
+                return
+
+            campaign.status = "running"
+            db.commit()
+
+            for account in accounts:
+                if campaign.status != "running":
+                    break
+
+                await send_reaction_to_post(account.id, chat_id, message_id, campaign.reaction_emoji)
+                await asyncio.sleep(campaign.delay_seconds)
+
+            campaign.status = "completed"
+            db.commit()
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        print(f"❌ Ошибка в кампании реакций {campaign_id}: {e}")
+
+async def send_reaction_to_post(account_id: int, chat_id: str, message_id: int, emoji: str):
+    """Отправка реакции на пост"""
+    try:
+        client = await telegram_manager.get_client(account_id)
+        if not client:
+            return
+
+        # Отправляем реакцию
+        await client.send_reaction(
+            chat_id=chat_id,
+            message_id=message_id,
+            emoji=emoji
+        )
+
+        print(f"✅ Реакция {emoji} отправлена аккаунтом {account_id}")
+
+    except Exception as e:
+        print(f"❌ Ошибка отправки реакции аккаунтом {account_id}: {e}")
+
+async def run_view_campaign(campaign_id: int):
+    """Выполнение кампании просмотров"""
+    try:
+        from app.database import ViewCampaign, get_db_session
+
+        db = get_db_session()
+        try:
+            campaign = db.query(ViewCampaign).filter(ViewCampaign.id == campaign_id).first()
+            if not campaign:
+                return
+
+            # Получаем активные аккаунты
+            accounts = db.query(Account).filter(Account.is_active == True).all()
+
+            # Извлекаем данные из URL
+            chat_id, message_id = parse_telegram_url(campaign.post_url)
+            if not chat_id or not message_id:
+                print(f"❌ Невозможно извлечь данные из URL: {campaign.post_url}")
+                return
+
+            campaign.status = "running"
+            db.commit()
+
+            for account in accounts:
+                if campaign.status != "running":
+                    break
+
+                await view_post(account.id, chat_id, message_id)
+                await asyncio.sleep(campaign.delay_seconds)
+
+            campaign.status = "completed"
+            db.commit()
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        print(f"❌ Ошибка в кампании просмотров {campaign_id}: {e}")
+
+async def view_post(account_id: int, chat_id: str, message_id: int):
+    """Просмотр поста"""
+    try:
+        client = await telegram_manager.get_client(account_id)
+        if not client:
+            return
+
+        # Читаем сообщение (это засчитывается как просмотр)
+        await client.read_chat_history(chat_id=chat_id, max_id=message_id)
+
+        print(f"✅ Пост просмотрен аккаунтом {account_id}")
+
+    except Exception as e:
+        print(f"❌ Ошибка просмотра поста аккаунтом {account_id}: {e}")
+
+def parse_telegram_url(url: str):
+    """Извлечение chat_id и message_id из URL Telegram"""
+    try:
+        import re
+
+        # Паттерны для разных форматов URL
+        patterns = [
+            r'https://t\.me/([^/]+)/(\d+)',  # https://t.me/channel/123
+            r'https://telegram\.me/([^/]+)/(\d+)',  # https://telegram.me/channel/123
+        ]
+
+        for pattern in patterns:
+            match = re.match(pattern, url)
+            if match:
+                chat_username = match.group(1)
+                message_id = int(match.group(2))
+
+                # Если это username, добавляем @
+                if not chat_username.startswith('@'):
+                    chat_username = f"@{chat_username}"
+
+                return chat_username, message_id
+
+        return None, None
+
+    except Exception as e:
+        print(f"❌ Ошибка парсинга URL: {e}")
+        return None, None
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=5000)
