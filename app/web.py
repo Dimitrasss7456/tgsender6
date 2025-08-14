@@ -1630,16 +1630,33 @@ async def send_comment_to_post(account_id: int, chat_id: str, message_id: int, c
     try:
         from app.database import CommentLog
 
+        print(f"🔄 Отправка комментария от аккаунта {account_id} в чат {chat_id}, сообщение {message_id}")
+        print(f"📝 Комментарий: {comment}")
+
         # Получаем клиент
         client = await telegram_manager.get_client(account_id)
         if not client:
             print(f"❌ Не удалось получить клиент для аккаунта {account_id}")
             return
 
+        # Проверяем подключение
+        if not client.is_connected:
+            await client.connect()
+
         # Отправляем комментарий (reply to message)
         try:
+            # Преобразуем chat_id к правильному формату
+            if isinstance(chat_id, str) and chat_id.startswith('@'):
+                target_chat = chat_id
+            elif chat_id.startswith('-'):
+                target_chat = int(chat_id)
+            else:
+                target_chat = chat_id
+
+            print(f"🎯 Целевой чат: {target_chat}")
+
             sent_message = await client.send_message(
-                chat_id=chat_id,
+                chat_id=target_chat,
                 text=comment,
                 reply_to_message_id=message_id
             )
@@ -1657,7 +1674,16 @@ async def send_comment_to_post(account_id: int, chat_id: str, message_id: int, c
             print(f"✅ Комментарий отправлен аккаунтом {account_id}: {comment[:50]}...")
 
         except Exception as send_error:
-            print(f"❌ Ошибка отправки комментария аккаунтом {account_id}: {send_error}")
+            error_msg = str(send_error)
+            print(f"❌ Ошибка отправки комментария аккаунтом {account_id}: {error_msg}")
+            
+            # Более детальная обработка ошибок
+            if "PEER_ID_INVALID" in error_msg:
+                print(f"❌ Чат {chat_id} не найден или нет доступа")
+            elif "MESSAGE_ID_INVALID" in error_msg:
+                print(f"❌ Сообщение {message_id} не найдено")
+            elif "CHAT_WRITE_FORBIDDEN" in error_msg:
+                print(f"❌ Нет прав для записи в чат {chat_id}")
 
             # Логируем ошибку
             log = CommentLog(
@@ -1665,7 +1691,7 @@ async def send_comment_to_post(account_id: int, chat_id: str, message_id: int, c
                 account_id=account_id,
                 comment_text=comment,
                 status="failed",
-                error_message=str(send_error)
+                error_message=error_msg
             )
             db.add(log)
             db.commit()

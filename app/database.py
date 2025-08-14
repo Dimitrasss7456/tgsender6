@@ -7,7 +7,7 @@ import hashlib
 import secrets
 
 engine = create_engine(
-    DATABASE_URL, 
+    DATABASE_URL,
     connect_args={
         "check_same_thread": False,
         "timeout": 60  # Таймаут для SQLite операций
@@ -72,7 +72,7 @@ class Account(Base):
     messages_sent_hour = Column(Integer, default=0)
     last_message_time = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
-    
+
     # Новые поля для профиля
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
@@ -102,32 +102,39 @@ class Campaign(Base):
     auto_delete_accounts = Column(Boolean, default=False)  # Автоудаление аккаунтов
     delete_delay_minutes = Column(Integer, default=5)  # Задержка перед удалением в минутах
 
+    # Связи
+    send_logs = relationship("SendLog", back_populates="campaign")
+
+
 class SendLog(Base):
     __tablename__ = "send_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    campaign_id = Column(Integer)
-    account_id = Column(Integer)
+    campaign_id = Column(Integer, ForeignKey("campaigns.id"))
+    account_id = Column(Integer, ForeignKey("accounts.id"))
     recipient = Column(String)
-    recipient_type = Column(String)  # channel, group, private
-    status = Column(String)  # sent, failed, blocked
-    message = Column(Text, nullable=True)
-    error_message = Column(Text, nullable=True)
+    recipient_type = Column(String)  # private, group, channel
+    status = Column(String)  # sent, failed
+    error_message = Column(Text)
     sent_at = Column(DateTime, default=datetime.utcnow)
+
+    # Связи
+    campaign = relationship("Campaign", back_populates="send_logs")
+    account = relationship("Account")
 
 class CommentCampaign(Base):
     __tablename__ = "comment_campaigns"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    post_url = Column(String)  # URL поста для комментирования
-    comments_male = Column(Text)  # Комментарии для мужских аккаунтов (разделенные \n)
-    comments_female = Column(Text)  # Комментарии для женских аккаунтов (разделенные \n)
-    delay_seconds = Column(Integer, default=60)  # Задержка между комментариями
+    name = Column(String, nullable=False)
+    post_url = Column(String, nullable=False)
+    comments_male = Column(Text)
+    comments_female = Column(Text)
+    delay_seconds = Column(Integer, default=60)
     status = Column(String, default="created")  # created, running, completed, stopped
     created_at = Column(DateTime, default=datetime.utcnow)
-    started_at = Column(DateTime, nullable=True)
-    completed_at = Column(DateTime, nullable=True)
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
 
 class CommentLog(Base):
     __tablename__ = "comment_logs"
@@ -136,17 +143,17 @@ class CommentLog(Base):
     campaign_id = Column(Integer, ForeignKey("comment_campaigns.id"))
     account_id = Column(Integer, ForeignKey("accounts.id"))
     comment_text = Column(Text)
-    status = Column(String)  # sent, failed, blocked
-    error_message = Column(Text, nullable=True)
+    status = Column(String)  # sent, failed
+    error_message = Column(Text)
     sent_at = Column(DateTime, default=datetime.utcnow)
 
 class ReactionCampaign(Base):
     __tablename__ = "reaction_campaigns"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    post_url = Column(String)
-    reaction_emoji = Column(String)  # Эмодзи для реакции
+    name = Column(String, nullable=False)
+    post_url = Column(String, nullable=False)
+    reaction_emoji = Column(String, default="👍")
     delay_seconds = Column(Integer, default=30)
     status = Column(String, default="created")
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -155,9 +162,9 @@ class ViewCampaign(Base):
     __tablename__ = "view_campaigns"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    post_url = Column(String)
-    delay_seconds = Column(Integer, default=10)
+    name = Column(String, nullable=False)
+    post_url = Column(String, nullable=False)
+    delay_seconds = Column(Integer, default=15)
     status = Column(String, default="created")
     created_at = Column(DateTime, default=datetime.utcnow)
 

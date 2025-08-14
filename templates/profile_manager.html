@@ -263,6 +263,421 @@
                                                 <div class="mb-3">
                                                     <label for="femaleComments" class="form-label">Женские комментарии (по одному на строку)</label>
                                                     <textarea class="form-control" id="femaleComments" rows="5" 
+                                                              placeholder="Отличная идея!&#10;Спасибо за пост&#10;Очень полезно"></textarea>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="commentDelay" class="form-label">Задержка между комментариями (секунды)</label>
+                                                    <input type="number" class="form-control" id="commentDelay" value="60" min="1">
+                                                </div>
+
+                                                <button type="button" class="btn btn-primary" onclick="startCommentCampaign()">
+                                                    <i class="fas fa-play"></i> Запустить комментирование
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Реакции -->
+                                    <div class="col-md-4">
+                                        <div class="card">
+                                            <div class="card-header">
+                                                <h6><i class="fas fa-heart me-2"></i>Реакции</h6>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="mb-3">
+                                                    <label for="reactionPost" class="form-label">Ссылка на пост</label>
+                                                    <input type="text" class="form-control" id="reactionPost" 
+                                                           placeholder="https://t.me/channel/123">
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="reactionEmoji" class="form-label">Эмодзи реакции</label>
+                                                    <select class="form-control" id="reactionEmoji">
+                                                        <option value="👍">👍 Лайк</option>
+                                                        <option value="❤️">❤️ Сердце</option>
+                                                        <option value="🔥">🔥 Огонь</option>
+                                                        <option value="🎉">🎉 Праздник</option>
+                                                        <option value="😍">😍 Влюблен</option>
+                                                        <option value="👏">👏 Аплодисменты</option>
+                                                    </select>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="reactionDelay" class="form-label">Задержка между реакциями (секунды)</label>
+                                                    <input type="number" class="form-control" id="reactionDelay" value="30" min="1">
+                                                </div>
+
+                                                <button type="button" class="btn btn-danger" onclick="startReactionCampaign()">
+                                                    <i class="fas fa-heart"></i> Поставить реакции
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Просмотры -->
+                                    <div class="col-md-4">
+                                        <div class="card">
+                                            <div class="card-header">
+                                                <h6><i class="fas fa-eye me-2"></i>Просмотры</h6>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="mb-3">
+                                                    <label for="viewPost" class="form-label">Ссылка на пост</label>
+                                                    <input type="text" class="form-control" id="viewPost" 
+                                                           placeholder="https://t.me/channel/123">
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="viewDelay" class="form-label">Задержка между просмотрами (секунды)</label>
+                                                    <input type="number" class="form-control" id="viewDelay" value="15" min="1">
+                                                </div>
+
+                                                <button type="button" class="btn btn-info" onclick="startViewCampaign()">
+                                                    <i class="fas fa-eye"></i> Накрутить просмотры
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="row mt-4">
+                                    <div class="col-12">
+                                        <div class="card">
+                                            <div class="card-header">
+                                                <h6><i class="fas fa-list me-2"></i>Активные кампании</h6>
+                                            </div>
+                                            <div class="card-body">
+                                                <div id="activeCampaigns">
+                                                    <p class="text-muted">Активных кампаний нет</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Функция для редактирования профиля
+        function editProfile(accountId) {
+            const row = document.querySelector(`[data-account-id="${accountId}"]`);
+            if (!row) return;
+            
+            const firstNameCell = row.querySelector('.first-name');
+            const lastNameCell = row.querySelector('.last-name');
+            const bioCell = row.querySelector('.bio');
+            
+            const currentFirstName = firstNameCell.textContent.trim();
+            const currentLastName = lastNameCell.textContent.trim();
+            const currentBio = bioCell.textContent.trim();
+            
+            // Создаем форму редактирования
+            firstNameCell.innerHTML = `<input type="text" class="form-control form-control-sm" value="${currentFirstName}" id="firstName_${accountId}">`;
+            lastNameCell.innerHTML = `<input type="text" class="form-control form-control-sm" value="${currentLastName}" id="lastName_${accountId}">`;
+            bioCell.innerHTML = `<input type="text" class="form-control form-control-sm" value="${currentBio}" id="bio_${accountId}">`;
+            
+            // Меняем кнопку на "Сохранить"
+            const editBtn = row.querySelector('.edit-profile-btn');
+            editBtn.innerHTML = '<i class="fas fa-save"></i>';
+            editBtn.setAttribute('onclick', `saveProfile(${accountId})`);
+            editBtn.classList.remove('btn-outline-primary');
+            editBtn.classList.add('btn-success');
+        }
+
+        // Функция для сохранения профиля
+        function saveProfile(accountId) {
+            const firstName = document.getElementById(`firstName_${accountId}`).value;
+            const lastName = document.getElementById(`lastName_${accountId}`).value;
+            const bio = document.getElementById(`bio_${accountId}`).value;
+            
+            // Отправляем данные на сервер для сохранения в БД
+            Promise.all([
+                fetch(`/api/accounts/${accountId}/update_field`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({field: 'first_name', value: firstName})
+                }),
+                fetch(`/api/accounts/${accountId}/update_field`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({field: 'last_name', value: lastName})
+                }),
+                fetch(`/api/accounts/${accountId}/update_field`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({field: 'bio', value: bio})
+                })
+            ]).then(() => {
+                // Возвращаем обычный вид
+                const row = document.querySelector(`[data-account-id="${accountId}"]`);
+                row.querySelector('.first-name').textContent = firstName;
+                row.querySelector('.last-name').textContent = lastName;
+                row.querySelector('.bio').textContent = bio;
+                
+                const editBtn = row.querySelector('.edit-profile-btn');
+                editBtn.innerHTML = '<i class="fas fa-edit"></i>';
+                editBtn.setAttribute('onclick', `editProfile(${accountId})`);
+                editBtn.classList.remove('btn-success');
+                editBtn.classList.add('btn-outline-primary');
+            });
+        }
+
+        // Функция для загрузки фото
+        function uploadPhoto(accountId) {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.onchange = function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const formData = new FormData();
+                formData.append('photo', file);
+                
+                fetch(`/api/accounts/${accountId}/upload_photo`, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert('success', 'Фото загружено успешно');
+                    } else {
+                        showAlert('danger', data.message || 'Ошибка загрузки фото');
+                    }
+                });
+            };
+            input.click();
+        }
+
+        // Функция для обновления профиля в Telegram
+        function updateTelegramProfile(accountId) {
+            const btn = document.querySelector(`[onclick="updateTelegramProfile(${accountId})"]`);
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Обновление...';
+            
+            fetch(`/api/accounts/${accountId}/update_telegram_profile`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('success', data.message || 'Профиль обновлен в Telegram');
+                } else {
+                    showAlert('danger', data.message || 'Ошибка обновления профиля');
+                }
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-sync"></i>';
+            });
+        }
+
+        // Функция для автоназначения гендеров
+        function autoAssignGenders() {
+            const btn = document.getElementById('autoAssignBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Обработка...';
+            
+            fetch('/api/accounts/auto_assign_genders', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('success', data.message);
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showAlert('danger', data.message || 'Ошибка назначения гендеров');
+                }
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-magic"></i> Автозаполнение';
+            });
+        }
+
+        // Функция для запуска кампании комментирования
+        function startCommentCampaign() {
+            const postUrl = document.getElementById('commentPost').value;
+            const maleComments = document.getElementById('maleComments').value;
+            const femaleComments = document.getElementById('femaleComments').value;
+            const delay = document.getElementById('commentDelay').value;
+            
+            if (!postUrl || (!maleComments && !femaleComments)) {
+                showAlert('warning', 'Заполните ссылку на пост и комментарии');
+                return;
+            }
+            
+            const btn = event.target;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Запуск...';
+            
+            fetch('/api/comment_campaigns', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    name: `Комментирование ${new Date().toLocaleString()}`,
+                    post_url: postUrl,
+                    male_comments: maleComments,
+                    female_comments: femaleComments,
+                    delay_seconds: parseInt(delay)
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('success', 'Кампания комментирования запущена');
+                    // Запускаем кампанию
+                    return fetch(`/api/comment_campaigns/${data.campaign_id}/start`, {method: 'POST'});
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('success', 'Комментирование началось');
+                    loadActiveCampaigns();
+                } else {
+                    showAlert('danger', data.message || 'Ошибка запуска кампании');
+                }
+            })
+            .catch(error => {
+                showAlert('danger', error.message || 'Ошибка создания кампании');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-play"></i> Запустить комментирование';
+            });
+        }
+
+        // Функция для запуска кампании реакций
+        function startReactionCampaign() {
+            const postUrl = document.getElementById('reactionPost').value;
+            const emoji = document.getElementById('reactionEmoji').value;
+            const delay = document.getElementById('reactionDelay').value;
+            
+            if (!postUrl) {
+                showAlert('warning', 'Заполните ссылку на пост');
+                return;
+            }
+            
+            const btn = event.target;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Запуск...';
+            
+            fetch('/api/reaction_campaigns', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    name: `Реакции ${new Date().toLocaleString()}`,
+                    post_url: postUrl,
+                    reaction_emoji: emoji,
+                    delay_seconds: parseInt(delay)
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('success', 'Кампания реакций запущена');
+                    loadActiveCampaigns();
+                } else {
+                    showAlert('danger', data.message || 'Ошибка запуска кампании');
+                }
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-heart"></i> Поставить реакции';
+            });
+        }
+
+        // Функция для запуска кампании просмотров
+        function startViewCampaign() {
+            const postUrl = document.getElementById('viewPost').value;
+            const delay = document.getElementById('viewDelay').value;
+            
+            if (!postUrl) {
+                showAlert('warning', 'Заполните ссылку на пост');
+                return;
+            }
+            
+            const btn = event.target;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Запуск...';
+            
+            fetch('/api/view_campaigns', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    name: `Просмотры ${new Date().toLocaleString()}`,
+                    post_url: postUrl,
+                    delay_seconds: parseInt(delay)
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('success', 'Кампания просмотров запущена');
+                    loadActiveCampaigns();
+                } else {
+                    showAlert('danger', data.message || 'Ошибка запуска кампании');
+                }
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-eye"></i> Накрутить просмотры';
+            });
+        }
+
+        // Функция для загрузки активных кампаний
+        function loadActiveCampaigns() {
+            fetch('/api/comment_campaigns')
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('activeCampaigns');
+                if (data.campaigns && data.campaigns.length > 0) {
+                    container.innerHTML = data.campaigns.map(campaign => `
+                        <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                            <div>
+                                <strong>${campaign.name}</strong>
+                                <br><small class="text-muted">${campaign.post_url}</small>
+                            </div>
+                            <span class="badge ${campaign.status === 'running' ? 'bg-success' : 'bg-secondary'}">${campaign.status}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    container.innerHTML = '<p class="text-muted">Активных кампаний нет</p>';
+                }
+            });
+        }
+
+        // Функция для показа уведомлений
+        function showAlert(type, message) {
+            const alertHtml = `
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            document.querySelector('.container-fluid').insertAdjacentHTML('afterbegin', alertHtml);
+        }
+
+        // Загружаем активные кампании при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            loadActiveCampaigns();
+            setInterval(loadActiveCampaigns, 30000); // Обновляем каждые 30 секунд
+        });
+    </script>-label">Женские комментарии (по одному на строку)</label>
+                                                    <textarea class="form-control" id="femaleComments" rows="5" 
                                                               placeholder="Очень красиво!&#10;Мне нравится&#10;Супер!"></textarea>
                                                 </div>
 
