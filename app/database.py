@@ -142,7 +142,9 @@ class CommentLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     campaign_id = Column(Integer, ForeignKey("comment_campaigns.id"))
     account_id = Column(Integer, ForeignKey("accounts.id"))
-    comment_text = Column(Text)
+    chat_id = Column(String)  # ID чата где отправлялся комментарий
+    message_id = Column(Integer)  # ID сообщения к которому отвечали
+    comment = Column(Text)  # Текст комментария
     status = Column(String)  # sent, failed
     error_message = Column(Text)
     sent_at = Column(DateTime, default=datetime.utcnow)
