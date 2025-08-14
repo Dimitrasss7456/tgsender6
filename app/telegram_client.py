@@ -1885,6 +1885,85 @@ class TelegramManager:
                 pass
             raise e
 
+    async def _create_minimal_telethon_session(self, pyrogram_path: str, telethon_path: str):
+        """Создание абсолютно минимальной Telethon сессии только с обязательными таблицами"""
+        try:
+            import sqlite3
+            
+            print(f"🔄 Создаем минимальную Telethon сессию с базовыми таблицами")
+            
+            telethon_session_file = f"{telethon_path}.session"
+            
+            # Полностью удаляем старый файл если существует
+            if os.path.exists(telethon_session_file):
+                os.remove(telethon_session_file)
+                print(f"🗑️ Удален старый файл сессии")
+            
+            # Читаем auth_key из Pyrogram сессии
+            if not os.path.exists(pyrogram_path):
+                raise Exception(f"Pyrogram сессия не найдена: {pyrogram_path}")
+                
+            pyrogram_conn = sqlite3.connect(pyrogram_path)
+            pyrogram_cursor = pyrogram_conn.cursor()
+            
+            try:
+                pyrogram_cursor.execute("SELECT dc_id, auth_key FROM sessions LIMIT 1")
+                session_data = pyrogram_cursor.fetchone()
+                if session_data:
+                    dc_id, auth_key = session_data
+                    # Используем стандартные значения
+                    server_address = "149.154.167.51" if dc_id == 2 else "149.154.175.53"
+                    port = 443
+                else:
+                    raise Exception("Не найдены данные сессии в Pyrogram файле")
+            finally:
+                pyrogram_conn.close()
+            
+            # Создаем новую чистую базу данных
+            conn = sqlite3.connect(telethon_session_file)
+            cursor = conn.cursor()
+            
+            try:
+                print("🔨 Создаем минимальную структуру...")
+                
+                # Только обязательные таблицы для Telethon
+                cursor.execute("CREATE TABLE version (version INTEGER)")
+                cursor.execute("INSERT INTO version VALUES (1)")
+                
+                cursor.execute("""
+                    CREATE TABLE sessions (
+                        dc_id INTEGER PRIMARY KEY,
+                        server_address TEXT,
+                        port INTEGER,
+                        auth_key BLOB
+                    )
+                """)
+                
+                cursor.execute("""
+                    INSERT INTO sessions (dc_id, server_address, port, auth_key) 
+                    VALUES (?, ?, ?, ?)
+                """, (dc_id, server_address, port, auth_key))
+                
+                # Минимальные вспомогательные таблицы
+                cursor.execute("""
+                    CREATE TABLE entities (
+                        id INTEGER PRIMARY KEY,
+                        hash INTEGER NOT NULL
+                    )
+                """)
+                
+                conn.commit()
+                print("✅ Минимальная сессия создана для Telethon")
+                
+            finally:
+                conn.close()
+                
+        except Exception as e:
+            print(f"❌ Ошибка создания минимальной сессии: {e}")
+            if os.path.exists(f"{telethon_path}.session"):
+                os.remove(f"{telethon_path}.session")
+            raise e
+
     async def _convert_pyrogram_to_telethon_session(self, pyrogram_path: str, telethon_path: str):
         """Конвертация сессии Pyrogram в формат Telethon с полной совместимостью"""
         try:
@@ -2005,28 +2084,8 @@ class TelegramManager:
                 """)
                 print("✅ Создана таблица sent_files")
                 
-                # Таблица update_state (для состояния обновлений) - создаем только если не существует
-                try:
-                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='update_state'")
-                    table_exists = cursor.fetchone()
-                    
-                    if not table_exists:
-                        cursor.execute("""
-                            CREATE TABLE IF NOT EXISTS update_state (
-                                id INTEGER PRIMARY KEY,
-                                pts INTEGER,
-                                qts INTEGER,
-                                date INTEGER,
-                                seq INTEGER
-                            )
-                        """)
-                        print("✅ Создана/проверена таблица update_state")
-                    else:
-                        print("✅ Таблица update_state уже существует")
-                except Exception as table_error:
-                    # Если ошибка создания таблицы, пропускаем - Telethon все равно работает без неё
-                    print(f"⚠️ Предупреждение при создании update_state: {table_error}")
-                    print("📝 Продолжаем создание сессии без update_state")
+                # НЕ создаем update_state - Telethon создает её сам при необходимости
+                print("⚠️ Таблица update_state не создается - Telethon управляет ею сам")
                 
                 conn.commit()
                 print("✅ Сессия успешно создана для Telethon с полной совместимостью")
@@ -2656,54 +2715,35 @@ class TelegramManager:
                         return {"status": "error", "message": "Telethon: Файл сессии не создан"}
                     
                     print(f"✅ Telethon: Файл сессии найден, создаем клиент...")
+                    
+                    # Создаем клиент с игнорированием ошибок структуры БД
                     telethon_client = TelegramClient(telethon_session_file, API_ID, API_HASH)
+                    print(f"✅ Telethon: Клиент создан успешно")
                     
                 except Exception as client_create_error:
                     error_str = str(client_create_error)
                     print(f"❌ Telethon: Ошибка создания клиента: {error_str}")
                     
-                    # Обрабатываем известные ошибки и пересоздаем сессию
-                    if any(error in error_str for error in ["table", "already exists", "no such column", "version"]):
-                        print(f"🔄 Telethon: Пересоздаем сессию из-за проблемы с базой данных...")
+                    # Обрабатываем ошибки структуры БД - это не критично для работы
+                    if any(error in error_str.lower() for error in ["table", "already exists", "duplicate column", "version"]):
+                        print(f"⚠️ Telethon: Проблема структуры БД - игнорируем и продолжаем")
+                        
+                        # Удаляем проблемный файл и пересоздаем с минимальной структурой
                         try:
-                            # Удаляем поврежденный файл полностью
                             if os.path.exists(session_file_path):
                                 os.remove(session_file_path)
-                                print(f"🗑️ Telethon: Удален поврежденный файл сессии")
+                                print(f"🗑️ Telethon: Удален проблемный файл сессии")
                             
-                            # Дополнительная очистка - удаляем все связанные файлы
-                            import glob
-                            session_pattern = f"{telethon_session_file}*"
-                            for file_to_remove in glob.glob(session_pattern):
-                                try:
-                                    os.remove(file_to_remove)
-                                    print(f"🗑️ Telethon: Удален файл: {file_to_remove}")
-                                except:
-                                    pass
+                            # Создаем сессию с абсолютным минимумом таблиц
+                            await self._create_minimal_telethon_session(pyrogram_session_file, telethon_session_file)
                             
-                            # Ждем немного перед пересозданием
-                            await asyncio.sleep(0.5)
-                            
-                            # Пересоздаем сессию с новой логикой
-                            await self._convert_pyrogram_to_telethon_session(pyrogram_session_file, telethon_session_file)
+                            # Пробуем создать клиент еще раз
                             telethon_client = TelegramClient(telethon_session_file, API_ID, API_HASH)
-                            print(f"✅ Telethon: Сессия пересоздана успешно")
-                        except Exception as retry_error:
-                            retry_error_str = str(retry_error)
-                            print(f"❌ Telethon: Повторная попытка не удалась: {retry_error}")
+                            print(f"✅ Telethon: Клиент создан с минимальной сессией")
                             
-                            # Если снова та же ошибка, попробуем создать клиент игнорируя ошибки структуры
-                            if "already exists" in retry_error_str or "table" in retry_error_str:
-                                print(f"🔄 Telethon: Пробуем создать клиент игнорируя ошибки структуры БД...")
-                                try:
-                                    # Создаем клиент несмотря на возможные ошибки структуры
-                                    telethon_client = TelegramClient(telethon_session_file, API_ID, API_HASH)
-                                    print(f"✅ Telethon: Клиент создан несмотря на предупреждения о структуре БД")
-                                except Exception as final_error:
-                                    print(f"🚫 Telethon: Окончательная неудача создания клиента: {final_error}")
-                                    return {"status": "error", "message": "Telethon: Критическая ошибка структуры базы данных"}
-                            else:
-                                return {"status": "error", "message": f"Telethon: Критическая ошибка сессии: {str(retry_error)}"}
+                        except Exception as final_error:
+                            print(f"❌ Telethon: Финальная ошибка: {final_error}")
+                            return {"status": "error", "message": f"Telethon: Не удалось создать рабочую сессию: {str(final_error)}"}
                     else:
                         return {"status": "error", "message": f"Telethon: Ошибка создания клиента: {error_str}"}
                 
