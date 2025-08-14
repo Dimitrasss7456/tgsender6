@@ -591,48 +591,29 @@
             modal.hide();
             showAlert('Изменения сохранены. Не забудьте нажать "Обновить в Telegram".', 'info');
         }
-        
+
         // Новые функции для редактирования профиля (добавлены)
-        function editProfile(accountId) {
-            // Создаем модальное окно для редактирования профиля
-            const modal = document.createElement('div');
-            modal.className = 'modal';
-            modal.innerHTML = `
-                <div class="modal-content">
-                    <h3>Редактировать профиль</h3>
-                    <form id="editProfileForm" onsubmit="submitProfileEdit(event, ${accountId})">
-                        <div class="form-group">
-                            <label for="firstName">Имя:</label>
-                            <input type="text" id="firstName" name="firstName" maxlength="64" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="lastName">Фамилия:</label>
-                            <input type="text" id="lastName" name="lastName" maxlength="64">
-                        </div>
-                        <div class="form-group">
-                            <label for="bio">О себе:</label>
-                            <textarea id="bio" name="bio" maxlength="70" rows="3"></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label for="profilePhoto">Фото профиля:</label>
-                            <input type="file" id="profilePhoto" name="profilePhoto" accept="image/*">
-                        </div>
-                        <div class="form-buttons">
-                            <button type="submit">Сохранить</button>
-                            <button type="button" onclick="closeModal()">Отмена</button>
-                        </div>
-                    </form>
-                </div>
-            `;
+        function openEditModal(accountId) {
+            showEditForm(accountId);
+        }
 
-            document.body.appendChild(modal);
+        function showEditForm(accountId) {
+            fetch(`/api/accounts/${accountId}`)
+                .then(response => response.json())
+                .then(account => {
+                    document.getElementById('edit-account-id').value = accountId;
+                    document.getElementById('edit-first-name').value = account.first_name || '';
+                    document.getElementById('edit-last-name').value = account.last_name || '';
+                    document.getElementById('edit-bio').value = account.bio || '';
+                    document.getElementById('edit-gender').value = account.gender || '';
 
-            // Добавляем обработчик для закрытия по клику вне модального окна
-            modal.addEventListener('click', function(e) {
-                if (e.target === modal) {
-                    closeModal();
-                }
-            });
+                    const modal = new bootstrap.Modal(document.getElementById('editProfileModal'));
+                    modal.show();
+                })
+                .catch(error => {
+                    console.error('Ошибка получения данных аккаунта:', error);
+                    showAlert('Ошибка получения данных аккаунта', 'danger');
+                });
         }
 
         function closeModal() {

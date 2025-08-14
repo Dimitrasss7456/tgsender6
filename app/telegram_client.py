@@ -1782,7 +1782,7 @@ class TelegramManager:
             try:
                 print("🔨 Создаем структуру базы данных Telethon с нуля...")
                 
-                # Проверяем что база пустая
+                # Проверяем что база пустая и очищаем её полностью
                 cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
                 existing_tables = cursor.fetchall()
                 if existing_tables:
@@ -1792,6 +1792,23 @@ class TelegramManager:
                         cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
                         print(f"🗑️ Удалена таблица: {table_name}")
                 
+                # Дополнительно очищаем все индексы и триггеры
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='index'")
+                existing_indexes = cursor.fetchall()
+                for index_name, in existing_indexes:
+                    try:
+                        cursor.execute(f"DROP INDEX IF EXISTS {index_name}")
+                    except:
+                        pass
+                
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='trigger'")
+                existing_triggers = cursor.fetchall()
+                for trigger_name, in existing_triggers:
+                    try:
+                        cursor.execute(f"DROP TRIGGER IF EXISTS {trigger_name}")
+                    except:
+                        pass
+                
                 # Создаем таблицы заново
                 # 1. Таблица version (обязательная для Telethon)
                 cursor.execute("CREATE TABLE version (version INTEGER)")
@@ -1799,21 +1816,22 @@ class TelegramManager:
                 print("✅ Создана таблица version")
                 
                 # 2. Таблица sessions (основная таблица с данными авторизации)
-                # Создаем только необходимые столбцы для Telethon
+                # Создаем минимальную структуру для Telethon без дублирования столбцов
                 cursor.execute("""
                     CREATE TABLE sessions (
                         dc_id INTEGER PRIMARY KEY,
                         server_address TEXT,
                         port INTEGER,
-                        auth_key BLOB
+                        auth_key BLOB,
+                        takeout_id INTEGER
                     )
                 """)
-                print("✅ Создана таблица sessions (без takeout_id)")
+                print("✅ Создана таблица sessions с правильной структурой")
                 
-                # Вставляем данные сессии БЕЗ takeout_id
+                # Вставляем данные сессии с NULL для takeout_id
                 cursor.execute("""
-                    INSERT INTO sessions (dc_id, server_address, port, auth_key) 
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO sessions (dc_id, server_address, port, auth_key, takeout_id) 
+                    VALUES (?, ?, ?, ?, NULL)
                 """, (dc_id, server_address, port, auth_key))
                 print("✅ Данные авторизации добавлены в таблицу sessions")
                 
@@ -1824,11 +1842,10 @@ class TelegramManager:
                         hash INTEGER NOT NULL,
                         username TEXT,
                         phone INTEGER,
-                        name TEXT,
-                        date INTEGER
+                        name TEXT
                     )
                 """)
-                print("✅ Создана таблица entities")
+                print("✅ Создана таблица entities без столбца date")
                 
                 # 4. Таблица sent_files (для кеша отправленных файлов)
                 cursor.execute("""
@@ -1843,8 +1860,21 @@ class TelegramManager:
                 """)
                 print("✅ Создана таблица sent_files")
                 
-                # НЕ создаем таблицы update_state и другие проблемные таблицы
-                print("⚠️ Проблемные таблицы (update_state, etc.) пропущены")
+                # 5. Создаем минимальную таблицу update_state если нужно
+                try:
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS update_state (
+                            id INTEGER PRIMARY KEY,
+                            pts INTEGER,
+                            qts INTEGER,
+                            seq INTEGER,
+                            date_value INTEGER
+                        )
+                    """)
+                    print("✅ Создана минимальная таблица update_state")
+                except Exception as update_state_error:
+                    print(f"⚠️ Пропускаем update_state из-за ошибки: {update_state_error}")
+                    # Не критично, Telethon может работать без неё
                 
                 conn.commit()
                 print("✅ Чистая минимальная сессия создана для Telethon")
