@@ -1833,21 +1833,30 @@ class TelegramManager:
                 """)
                 print("✅ Создана таблица sent_files")
                 
-                # Таблица update_state (для состояния обновлений) - создаем только если не существует
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='update_state'")
-                if not cursor.fetchone():
-                    cursor.execute("""
-                        CREATE TABLE update_state (
-                            id INTEGER PRIMARY KEY,
-                            pts INTEGER,
-                            qts INTEGER,
-                            date INTEGER,
-                            seq INTEGER
-                        )
-                    """)
-                    print("✅ Создана таблица update_state")
-                else:
-                    print("✅ Таблица update_state уже существует")
+                # Таблица update_state (для состояния обновлений) - проверяем и создаем безопасно
+                try:
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='update_state'")
+                    table_exists = cursor.fetchone()
+                    
+                    if not table_exists:
+                        cursor.execute("""
+                            CREATE TABLE update_state (
+                                id INTEGER PRIMARY KEY,
+                                pts INTEGER,
+                                qts INTEGER,
+                                date INTEGER,
+                                seq INTEGER
+                            )
+                        """)
+                        print("✅ Создана таблица update_state")
+                    else:
+                        print("✅ Таблица update_state уже существует")
+                except Exception as table_error:
+                    # Если таблица уже существует или другая ошибка, просто игнорируем
+                    if "already exists" in str(table_error):
+                        print("✅ Таблица update_state уже существует (обнаружено через исключение)")
+                    else:
+                        print(f"⚠️ Предупреждение при создании update_state: {table_error}")
                 
                 conn.commit()
                 print("✅ Сессия успешно создана для Telethon с полной совместимостью")
@@ -2330,10 +2339,16 @@ class TelegramManager:
                             retry_error_str = str(retry_error)
                             print(f"❌ Telethon: Повторная попытка не удалась: {retry_error}")
                             
-                            # Если снова та же ошибка, пропускаем Telethon полностью
+                            # Если снова та же ошибка, попробуем создать клиент игнорируя ошибки структуры
                             if "already exists" in retry_error_str or "table" in retry_error_str:
-                                print(f"🚫 Telethon: Критическая ошибка структуры БД, пропускаем Telethon")
-                                return {"status": "error", "message": "Telethon: Несовместимость структуры базы данных"}
+                                print(f"🔄 Telethon: Пробуем создать клиент игнорируя ошибки структуры БД...")
+                                try:
+                                    # Создаем клиент несмотря на возможные ошибки структуры
+                                    telethon_client = TelegramClient(telethon_session_file, API_ID, API_HASH)
+                                    print(f"✅ Telethon: Клиент создан несмотря на предупреждения о структуре БД")
+                                except Exception as final_error:
+                                    print(f"🚫 Telethon: Окончательная неудача создания клиента: {final_error}")
+                                    return {"status": "error", "message": "Telethon: Критическая ошибка структуры базы данных"}
                             else:
                                 return {"status": "error", "message": f"Telethon: Критическая ошибка сессии: {str(retry_error)}"}
                     else:
