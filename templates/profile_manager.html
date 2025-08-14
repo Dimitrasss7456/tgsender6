@@ -7,100 +7,102 @@
 <div class="container-fluid">
     <div class="row">
         <div class="col-12">
-            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                <h1 class="h2">Управление профилями и взаимодействиями</h1>
-            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h4><i class="fas fa-user-cog me-2"></i>Управление профилями</h4>
+                </div>
+                <div class="card-body">
+                    <!-- Навигация по вкладкам -->
+                    <ul class="nav nav-tabs mb-4" id="profileTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="profiles-tab" data-bs-toggle="tab" data-bs-target="#profiles-pane" type="button" role="tab">
+                                <i class="fas fa-users me-2"></i>
+                                Редактирование профилей
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="reactions-tab" data-bs-toggle="tab" data-bs-target="#reactions-pane" type="button" role="tab">
+                                <i class="fas fa-thumbs-up me-2"></i>
+                                Реакции
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="views-tab" data-bs-toggle="tab" data-bs-target="#views-pane" type="button" role="tab">
+                                <i class="fas fa-eye me-2"></i>
+                                Просмотры
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="comments-tab" data-bs-toggle="tab" data-bs-target="#comments-pane" type="button" role="tab">
+                                <i class="fas fa-comments me-2"></i>
+                                Комментирование
+                            </button>
+                        </li>
+                    </ul>
 
-            <!-- Навигация по вкладкам -->
-            <ul class="nav nav-tabs mb-4" id="profileTabs" role="tablist">
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="profiles-tab" data-bs-toggle="tab" data-bs-target="#profiles-pane" type="button" role="tab">
-                        <i class="fas fa-user-edit me-2"></i>Редактирование профилей
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="comments-tab" data-bs-toggle="tab" data-bs-target="#comments-pane" type="button" role="tab">
-                        <i class="fas fa-comments me-2"></i>Комментарии
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="reactions-tab" data-bs-toggle="tab" data-bs-target="#reactions-pane" type="button" role="tab">
-                        <i class="fas fa-heart me-2"></i>Реакции
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="views-tab" data-bs-toggle="tab" data-bs-target="#views-pane" type="button" role="tab">
-                        <i class="fas fa-eye me-2"></i>Просмотры
-                    </button>
-                </li>
-            </ul>
-
-            <!-- Содержимое вкладок -->
-            <div class="tab-content" id="profileTabContent">
-                <!-- Вкладка редактирования профилей -->
-                <div class="tab-pane fade show active" id="profiles-pane" role="tabpanel">
-                    <div class="row mb-4">
-                        <div class="col-md-6">
-                            <div class="card">
-                                <div class="card-header">
-                                    <h5><i class="fas fa-file-upload me-2"></i>Загрузить имена и фамилии</h5>
+                    <!-- Содержимое вкладок -->
+                    <div class="tab-content" id="profileTabContent">
+                        <!-- Вкладка редактирования профилей -->
+                        <div class="tab-pane fade show active" id="profiles-pane" role="tabpanel">
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h5><i class="fas fa-magic me-2"></i>Автоматическое назначение</h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <p>Автоматически назначить имена, фамилии и гендеры всем аккаунтам</p>
+                                            <button type="button" class="btn btn-primary" onclick="autoAssignGenders()">
+                                                <i class="fas fa-robot me-2"></i>Авто-назначение
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="card-body">
-                                    <form id="uploadNamesForm" enctype="multipart/form-data">
-                                        <div class="mb-3">
-                                            <label for="firstNamesFile" class="form-label">Файл с именами (firstname.txt)</label>
-                                            <input type="file" class="form-control" id="firstNamesFile" accept=".txt">
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h5><i class="fas fa-upload me-2"></i>Загрузить списки имен</h5>
                                         </div>
-                                        <div class="mb-3">
-                                            <label for="lastNamesFile" class="form-label">Файл с фамилиями (lastname.txt)</label>
-                                            <input type="file" class="form-control" id="lastNamesFile" accept=".txt">
+                                        <div class="card-body">
+                                            <p>Загрузите файлы с именами и фамилиями для более точного назначения</p>
+                                            <form id="uploadNamesForm" enctype="multipart/form-data">
+                                                <div class="mb-3">
+                                                    <label class="form-label">Файл с именами (по одному на строку)</label>
+                                                    <input type="file" class="form-control" id="firstNamesFile" accept=".txt">
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label">Файл с фамилиями (по одному на строку)</label>
+                                                    <input type="file" class="form-control" id="lastNamesFile" accept=".txt">
+                                                </div>
+                                                <button type="submit" class="btn btn-secondary">
+                                                    <i class="fas fa-upload me-2"></i>Загрузить
+                                                </button>
+                                            </form>
                                         </div>
-                                        <button type="submit" class="btn btn-primary">
-                                            <i class="fas fa-upload me-2"></i>Загрузить
-                                        </button>
-                                    </form>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="card">
-                                <div class="card-header">
-                                    <h5><i class="fas fa-random me-2"></i>Автоматическое назначение</h5>
-                                </div>
-                                <div class="card-body">
-                                    <button class="btn btn-success" onclick="autoAssignGenders()">
-                                        <i class="fas fa-magic me-2"></i>Назначить гендеры и имена
-                                    </button>
-                                    <p class="text-muted mt-2">Автоматически назначит случайные имена и фамилии аккаунтам по их гендеру</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Список аккаунтов для редактирования -->
-                    <div class="card">
-                        <div class="card-header">
-                            <h5><i class="fas fa-users me-2"></i>Аккаунты</h5>
-                        </div>
-                        <div class="card-body">
+                            <!-- Список аккаунтов -->
                             <div class="table-responsive">
                                 <table class="table table-striped">
                                     <thead>
                                         <tr>
-                                            <th>ID</th>
                                             <th>Телефон</th>
+                                            <th>Текущее имя</th>
                                             <th>Имя</th>
                                             <th>Фамилия</th>
+                                            <th>Био</th>
                                             <th>Гендер</th>
-                                            <th>Bio</th>
+                                            <th>Фото профиля</th>
                                             <th>Действия</th>
                                         </tr>
                                     </thead>
-                                    <tbody id="accountsTableBody">
+                                    <tbody>
                                         {% for account in accounts %}
-                                        <tr>
-                                            <td>{{ account.id }}</td>
+                                        <tr id="account-{{ account.id }}">
                                             <td>{{ account.phone }}</td>
+                                            <td>{{ account.name or '-' }}</td>
                                             <td>
                                                 <input type="text" class="form-control form-control-sm" 
                                                        value="{{ account.first_name or '' }}" 
@@ -112,22 +114,29 @@
                                                        onchange="updateAccountField({{ account.id }}, 'last_name', this.value)">
                                             </td>
                                             <td>
+                                                <textarea class="form-control form-control-sm" rows="2" 
+                                                          onchange="updateAccountField({{ account.id }}, 'bio', this.value)">{{ account.bio or '' }}</textarea>
+                                            </td>
+                                            <td>
                                                 <select class="form-select form-select-sm" 
                                                         onchange="updateAccountField({{ account.id }}, 'gender', this.value)">
-                                                    <option value="">Не указан</option>
+                                                    <option value="">Не выбран</option>
                                                     <option value="male" {% if account.gender == 'male' %}selected{% endif %}>Мужской</option>
                                                     <option value="female" {% if account.gender == 'female' %}selected{% endif %}>Женский</option>
                                                 </select>
                                             </td>
                                             <td>
-                                                <textarea class="form-control form-control-sm" rows="2" 
-                                                          onchange="updateAccountField({{ account.id }}, 'bio', this.value)">{{ account.bio or '' }}</textarea>
+                                                <input type="file" class="form-control form-control-sm" 
+                                                       accept="image/*" 
+                                                       onchange="uploadProfilePhoto({{ account.id }}, this)">
+                                                {% if account.profile_photo_path %}
+                                                    <small class="text-success">Загружено</small>
+                                                {% endif %}
                                             </td>
                                             <td>
-                                                <button class="btn btn-sm btn-primary" onclick="editProfile({{ account.id }})">
-                                                    <i class="fas fa-edit"></i>
-                                                </button>
-                                                <button class="btn btn-sm btn-success" onclick="updateProfile({{ account.id }})">
+                                                <button class="btn btn-success btn-sm" 
+                                                        onclick="updateTelegramProfile({{ account.id }})" 
+                                                        title="Обновить профиль в Telegram">
                                                     <i class="fas fa-sync"></i>
                                                 </button>
                                             </td>
@@ -137,166 +146,167 @@
                                 </table>
                             </div>
                         </div>
-                    </div>
-                </div>
 
-                <!-- Вкладка комментариев -->
-                <div class="tab-pane fade" id="comments-pane" role="tabpanel">
-                    <div class="row">
-                        <div class="col-md-8">
+                        <!-- Вкладка реакций -->
+                        <div class="tab-pane fade" id="reactions-pane" role="tabpanel">
                             <div class="card">
                                 <div class="card-header">
-                                    <h5><i class="fas fa-comment-alt me-2"></i>Создать кампанию комментирования</h5>
+                                    <h5><i class="fas fa-thumbs-up me-2"></i>Кампания реакций</h5>
                                 </div>
                                 <div class="card-body">
-                                    <form id="commentCampaignForm">
-                                        <div class="mb-3">
-                                            <label for="campaignName" class="form-label">Название кампании</label>
-                                            <input type="text" class="form-control" id="campaignName" required>
-                                        </div>
-                                        
-                                        <div class="mb-3">
-                                            <label for="postUrl" class="form-label">URL поста</label>
-                                            <input type="url" class="form-control" id="postUrl" 
-                                                   placeholder="https://t.me/channel/message_id" required>
-                                        </div>
-
+                                    <form id="reactionForm">
                                         <div class="row">
                                             <div class="col-md-6">
                                                 <div class="mb-3">
-                                                    <label for="maleComments" class="form-label">Мужские комментарии</label>
-                                                    <textarea class="form-control" id="maleComments" rows="10" 
-                                                              placeholder="Комментарий 1&#10;Комментарий 2&#10;Комментарий 3"></textarea>
+                                                    <label for="reactionPostUrl" class="form-label">Ссылка на пост</label>
+                                                    <input type="url" class="form-control" id="reactionPostUrl" 
+                                                           placeholder="https://t.me/channel/123" required>
                                                 </div>
+                                                
+                                                <div class="mb-3">
+                                                    <label for="reactionEmoji" class="form-label">Эмодзи реакции</label>
+                                                    <select class="form-select" id="reactionEmoji" required>
+                                                        <option value="">Выберите реакцию</option>
+                                                        <option value="👍">👍 Лайк</option>
+                                                        <option value="❤️">❤️ Сердце</option>
+                                                        <option value="🔥">🔥 Огонь</option>
+                                                        <option value="👏">👏 Аплодисменты</option>
+                                                        <option value="😍">😍 Влюблен</option>
+                                                        <option value="😱">😱 Шок</option>
+                                                        <option value="😢">😢 Грусть</option>
+                                                        <option value="😡">😡 Злость</option>
+                                                    </select>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="reactionDelay" class="form-label">Задержка между реакциями (сек)</label>
+                                                    <input type="number" class="form-control" id="reactionDelay" value="10" min="1">
+                                                </div>
+
+                                                <button type="submit" class="btn btn-primary">
+                                                    <i class="fas fa-play me-2"></i>Запустить кампанию реакций
+                                                </button>
                                             </div>
                                             <div class="col-md-6">
-                                                <div class="mb-3">
-                                                    <label for="femaleComments" class="form-label">Женские комментарии</label>
-                                                    <textarea class="form-control" id="femaleComments" rows="10" 
-                                                              placeholder="Комментарий 1&#10;Комментарий 2&#10;Комментарий 3"></textarea>
+                                                <div class="alert alert-info">
+                                                    <h6><i class="fas fa-info-circle me-2"></i>Информация</h6>
+                                                    <p>Все активные аккаунты будут отправлять выбранную реакцию на указанный пост с заданной задержкой.</p>
                                                 </div>
                                             </div>
                                         </div>
-
-                                        <div class="mb-3">
-                                            <label for="commentDelay" class="form-label">Задержка между комментариями (секунды)</label>
-                                            <input type="number" class="form-control" id="commentDelay" value="60" min="1">
-                                        </div>
-
-                                        <button type="submit" class="btn btn-primary">
-                                            <i class="fas fa-play me-2"></i>Создать кампанию
-                                        </button>
                                     </form>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="col-md-4">
+                        <!-- Вкладка просмотров -->
+                        <div class="tab-pane fade" id="views-pane" role="tabpanel">
                             <div class="card">
                                 <div class="card-header">
-                                    <h5><i class="fas fa-list me-2"></i>Активные кампании</h5>
+                                    <h5><i class="fas fa-eye me-2"></i>Кампания просмотров</h5>
                                 </div>
                                 <div class="card-body">
-                                    <div id="commentCampaignsList">
-                                        <!-- Будет загружено через AJAX -->
-                                    </div>
+                                    <form id="viewForm">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="mb-3">
+                                                    <label for="viewPostUrl" class="form-label">Ссылка на пост</label>
+                                                    <input type="url" class="form-control" id="viewPostUrl" 
+                                                           placeholder="https://t.me/channel/123" required>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="viewDelay" class="form-label">Задержка между просмотрами (сек)</label>
+                                                    <input type="number" class="form-control" id="viewDelay" value="10" min="1">
+                                                </div>
+
+                                                <button type="submit" class="btn btn-primary">
+                                                    <i class="fas fa-play me-2"></i>Запустить кампанию просмотров
+                                                </button>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="alert alert-info">
+                                                    <h6><i class="fas fa-info-circle me-2"></i>Информация</h6>
+                                                    <p>Кампания просмотров поможет увеличить статистику просмотров поста, используя ваши аккаунты.</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </form>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </div>
 
-                <!-- Вкладка реакций -->
-                <div class="tab-pane fade" id="reactions-pane" role="tabpanel">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5><i class="fas fa-thumbs-up me-2"></i>Кампания реакций</h5>
-                        </div>
-                        <div class="card-body">
-                            <form id="reactionCampaignForm">
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label for="reactionCampaignName" class="form-label">Название кампании</label>
-                                            <input type="text" class="form-control" id="reactionCampaignName" required>
-                                        </div>
-                                        
-                                        <div class="mb-3">
-                                            <label for="reactionPostUrl" class="form-label">URL поста</label>
-                                            <input type="url" class="form-control" id="reactionPostUrl" required>
-                                        </div>
-
-                                        <div class="mb-3">
-                                            <label for="reactionEmoji" class="form-label">Реакция</label>
-                                            <select class="form-select" id="reactionEmoji" required>
-                                                <option value="👍">👍 Лайк</option>
-                                                <option value="❤️">❤️ Сердце</option>
-                                                <option value="🔥">🔥 Огонь</option>
-                                                <option value="🥰">🥰 Влюбленность</option>
-                                                <option value="👎">👎 Дизлайк</option>
-                                                <option value="😢">😢 Грусть</option>
-                                                <option value="😡">😡 Злость</option>
-                                            </select>
-                                        </div>
-
-                                        <div class="mb-3">
-                                            <label for="reactionDelay" class="form-label">Задержка между реакциями (секунды)</label>
-                                            <input type="number" class="form-control" id="reactionDelay" value="30" min="1">
-                                        </div>
-
-                                        <button type="submit" class="btn btn-primary">
-                                            <i class="fas fa-play me-2"></i>Запустить кампанию реакций
-                                        </button>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="alert alert-info">
-                                            <h6><i class="fas fa-info-circle me-2"></i>Информация</h6>
-                                            <p>Кампания реакций автоматически выберет активные аккаунты и поставит указанную реакцию на пост с заданными интервалами.</p>
-                                        </div>
-                                    </div>
+                        <!-- Вкладка комментирования -->
+                        <div class="tab-pane fade" id="comments-pane" role="tabpanel">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5><i class="fas fa-comments me-2"></i>Кампания комментирования</h5>
                                 </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
+                                <div class="card-body">
+                                    <form id="commentForm">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="mb-3">
+                                                    <label for="commentPostUrl" class="form-label">Ссылка на пост</label>
+                                                    <input type="url" class="form-control" id="commentPostUrl" 
+                                                           placeholder="https://t.me/channel/123" required>
+                                                </div>
 
-                <!-- Вкладка просмотров -->
-                <div class="tab-pane fade" id="views-pane" role="tabpanel">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5><i class="fas fa-eye me-2"></i>Кампания просмотров</h5>
-                        </div>
-                        <div class="card-body">
-                            <form id="viewCampaignForm">
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label for="viewCampaignName" class="form-label">Название кампании</label>
-                                            <input type="text" class="form-control" id="viewCampaignName" required>
-                                        </div>
-                                        
-                                        <div class="mb-3">
-                                            <label for="viewPostUrl" class="form-label">URL поста</label>
-                                            <input type="url" class="form-control" id="viewPostUrl" required>
-                                        </div>
+                                                <div class="mb-3">
+                                                    <label for="maleComments" class="form-label">Мужские комментарии (по одному на строку)</label>
+                                                    <textarea class="form-control" id="maleComments" rows="5" 
+                                                              placeholder="Отличный пост!&#10;Согласен&#10;Интересно"></textarea>
+                                                </div>
 
-                                        <div class="mb-3">
-                                            <label for="viewDelay" class="form-label">Задержка между просмотрами (секунды)</label>
-                                            <input type="number" class="form-control" id="viewDelay" value="10" min="1">
-                                        </div>
+                                                <div class="mb-3">
+                                                    <label for="femaleComments" class="form-label">Женские комментарии (по одному на строку)</label>
+                                                    <textarea class="form-control" id="femaleComments" rows="5" 
+                                                              placeholder="Очень красиво!&#10;Мне нравится&#10;Супер!"></textarea>
+                                                </div>
 
-                                        <button type="submit" class="btn btn-primary">
-                                            <i class="fas fa-play me-2"></i>Запустить кампанию просмотров
-                                        </button>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="alert alert-info">
-                                            <h6><i class="fas fa-info-circle me-2"></i>Информация</h6>
-                                            <p>Кампания просмотров поможет увеличить статистику просмотров поста, используя ваши аккаунты.</p>
+                                                <div class="mb-3">
+                                                    <label for="commentDelay" class="form-label">Задержка между комментариями (сек)</label>
+                                                    <input type="number" class="form-control" id="commentDelay" value="60" min="1">
+                                                </div>
+
+                                                <button type="submit" class="btn btn-primary">
+                                                    <i class="fas fa-play me-2"></i>Запустить комментирование
+                                                </button>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="alert alert-info">
+                                                    <h6><i class="fas fa-info-circle me-2"></i>Как это работает</h6>
+                                                    <p>1. Загрузите мужские и женские комментарии</p>
+                                                    <p>2. Система выберет аккаунты по гендерам</p>
+                                                    <p>3. Каждый аккаунт напишет свой комментарий с задержкой</p>
+                                                    <p>4. Мужские аккаунты используют мужские комментарии</p>
+                                                    <p>5. Женские аккаунты используют женские комментарии</p>
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
+                                    </form>
                                 </div>
-                            </form>
+                            </div>
+
+                            <!-- История кампаний -->
+                            <div class="mt-4">
+                                <h6>История кампаний комментирования</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Название</th>
+                                                <th>Статус</th>
+                                                <th>Создана</th>
+                                                <th>Действия</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="commentCampaignsTable">
+                                            <!-- Динамически загружается -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -323,15 +333,18 @@ async function updateAccountField(accountId, field, value) {
         });
 
         const result = await response.json();
-        if (!result.success) {
+        if (result.success) {
+            console.log(`Поле ${field} обновлено для аккаунта ${accountId}`);
+        } else {
             alert('Ошибка обновления: ' + result.message);
         }
     } catch (error) {
         console.error('Ошибка:', error);
+        alert('Ошибка обновления поля');
     }
 }
 
-// Автоматическое назначение гендеров и имен
+// Автоматическое назначение гендеров
 async function autoAssignGenders() {
     try {
         const response = await fetch('/api/accounts/auto_assign_genders', {
@@ -340,18 +353,19 @@ async function autoAssignGenders() {
 
         const result = await response.json();
         if (result.success) {
-            alert('Гендеры и имена успешно назначены!');
+            alert(result.message);
             location.reload();
         } else {
             alert('Ошибка: ' + result.message);
         }
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        console.error('Ошибка:', error);
+        alert('Ошибка автоназначения');
     }
 }
 
 // Обновление профиля в Telegram
-async function updateProfile(accountId) {
+async function updateTelegramProfile(accountId) {
     try {
         const response = await fetch(`/api/accounts/${accountId}/update_telegram_profile`, {
             method: 'POST'
@@ -364,50 +378,42 @@ async function updateProfile(accountId) {
             alert('Ошибка обновления профиля: ' + result.message);
         }
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        console.error('Ошибка:', error);
+        alert('Ошибка обновления профиля в Telegram');
     }
 }
 
-// Создание кампании комментирования
-document.getElementById('commentCampaignForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
+// Загрузка фото профиля
+async function uploadProfilePhoto(accountId, input) {
+    if (!input.files || !input.files[0]) return;
 
-    const formData = {
-        name: document.getElementById('campaignName').value,
-        post_url: document.getElementById('postUrl').value,
-        male_comments: document.getElementById('maleComments').value,
-        female_comments: document.getElementById('femaleComments').value,
-        delay_seconds: parseInt(document.getElementById('commentDelay').value)
-    };
+    const formData = new FormData();
+    formData.append('photo', input.files[0]);
 
     try {
-        const response = await fetch('/api/comment_campaigns', {
+        const response = await fetch(`/api/accounts/${accountId}/upload_photo`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(formData)
+            body: formData
         });
 
         const result = await response.json();
         if (result.success) {
-            alert('Кампания комментирования создана!');
-            this.reset();
-            loadCommentCampaigns();
+            alert('Фото загружено успешно!');
         } else {
-            alert('Ошибка: ' + result.message);
+            alert('Ошибка загрузки фото: ' + result.message);
         }
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        console.error('Ошибка:', error);
+        alert('Ошибка загрузки фото');
     }
-});
+}
 
-// Создание кампании реакций
-document.getElementById('reactionCampaignForm').addEventListener('submit', async function(e) {
+// Обработчики форм
+document.getElementById('reactionForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-
-    const formData = {
-        name: document.getElementById('reactionCampaignName').value,
+    
+    const data = {
+        name: `Реакции на ${document.getElementById('reactionPostUrl').value}`,
         post_url: document.getElementById('reactionPostUrl').value,
         reaction_emoji: document.getElementById('reactionEmoji').value,
         delay_seconds: parseInt(document.getElementById('reactionDelay').value)
@@ -416,30 +422,27 @@ document.getElementById('reactionCampaignForm').addEventListener('submit', async
     try {
         const response = await fetch('/api/reaction_campaigns', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(formData)
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
         });
 
         const result = await response.json();
         if (result.success) {
             alert('Кампания реакций запущена!');
-            this.reset();
+            document.getElementById('reactionForm').reset();
         } else {
             alert('Ошибка: ' + result.message);
         }
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        alert('Ошибка запуска кампании: ' + error.message);
     }
 });
 
-// Создание кампании просмотров
-document.getElementById('viewCampaignForm').addEventListener('submit', async function(e) {
+document.getElementById('viewForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-
-    const formData = {
-        name: document.getElementById('viewCampaignName').value,
+    
+    const data = {
+        name: `Просмотры ${document.getElementById('viewPostUrl').value}`,
         post_url: document.getElementById('viewPostUrl').value,
         delay_seconds: parseInt(document.getElementById('viewDelay').value)
     };
@@ -447,62 +450,86 @@ document.getElementById('viewCampaignForm').addEventListener('submit', async fun
     try {
         const response = await fetch('/api/view_campaigns', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(formData)
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
         });
 
         const result = await response.json();
         if (result.success) {
             alert('Кампания просмотров запущена!');
-            this.reset();
+            document.getElementById('viewForm').reset();
         } else {
             alert('Ошибка: ' + result.message);
         }
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        alert('Ошибка запуска кампании: ' + error.message);
     }
 });
 
-// Загрузка списка кампаний комментирования
+document.getElementById('commentForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const data = {
+        name: `Комментарии на ${document.getElementById('commentPostUrl').value}`,
+        post_url: document.getElementById('commentPostUrl').value,
+        male_comments: document.getElementById('maleComments').value,
+        female_comments: document.getElementById('femaleComments').value,
+        delay_seconds: parseInt(document.getElementById('commentDelay').value)
+    };
+
+    try {
+        const response = await fetch('/api/comment_campaigns', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            alert('Кампания комментирования создана!');
+            document.getElementById('commentForm').reset();
+            loadCommentCampaigns();
+        } else {
+            alert('Ошибка: ' + result.message);
+        }
+    } catch (error) {
+        alert('Ошибка создания кампании: ' + error.message);
+    }
+});
+
+// Загрузка истории кампаний комментирования
 async function loadCommentCampaigns() {
     try {
         const response = await fetch('/api/comment_campaigns');
         const result = await response.json();
         
-        const container = document.getElementById('commentCampaignsList');
-        container.innerHTML = '';
-        
-        result.campaigns.forEach(campaign => {
-            const campaignDiv = document.createElement('div');
-            campaignDiv.className = 'mb-3 p-3 border rounded';
-            campaignDiv.innerHTML = `
-                <h6>${campaign.name}</h6>
-                <p class="small text-muted">${campaign.post_url}</p>
-                <span class="badge bg-${campaign.status === 'running' ? 'success' : 'secondary'}">${campaign.status}</span>
-                ${campaign.status === 'created' ? 
-                    `<button class="btn btn-sm btn-primary ms-2" onclick="startCommentCampaign(${campaign.id})">Запустить</button>` : 
-                    ''}
-                ${campaign.status === 'running' ? 
-                    `<button class="btn btn-sm btn-danger ms-2" onclick="stopCommentCampaign(${campaign.id})">Остановить</button>` : 
-                    ''}
-            `;
-            container.appendChild(campaignDiv);
-        });
+        const tbody = document.getElementById('commentCampaignsTable');
+        if (result.campaigns) {
+            tbody.innerHTML = result.campaigns.map(campaign => `
+                <tr>
+                    <td>${campaign.name}</td>
+                    <td><span class="badge bg-${campaign.status === 'running' ? 'success' : campaign.status === 'completed' ? 'primary' : 'secondary'}">${campaign.status}</span></td>
+                    <td>${new Date(campaign.created_at).toLocaleString()}</td>
+                    <td>
+                        ${campaign.status === 'pending' ? `<button class="btn btn-success btn-sm" onclick="startCommentCampaign(${campaign.id})">Запустить</button>` : ''}
+                        ${campaign.status === 'running' ? `<button class="btn btn-danger btn-sm" onclick="stopCommentCampaign(${campaign.id})">Остановить</button>` : ''}
+                    </td>
+                </tr>
+            `).join('');
+        }
     } catch (error) {
         console.error('Ошибка загрузки кампаний:', error);
     }
 }
 
-// Запуск кампании комментирования
+// Управление кампаниями комментирования
 async function startCommentCampaign(campaignId) {
     try {
         const response = await fetch(`/api/comment_campaigns/${campaignId}/start`, {
             method: 'POST'
         });
-
         const result = await response.json();
+        
         if (result.success) {
             alert('Кампания запущена!');
             loadCommentCampaigns();
@@ -510,18 +537,17 @@ async function startCommentCampaign(campaignId) {
             alert('Ошибка: ' + result.message);
         }
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        alert('Ошибка запуска кампании: ' + error.message);
     }
 }
 
-// Остановка кампании комментирования
 async function stopCommentCampaign(campaignId) {
     try {
         const response = await fetch(`/api/comment_campaigns/${campaignId}/stop`, {
             method: 'POST'
         });
-
         const result = await response.json();
+        
         if (result.success) {
             alert('Кампания остановлена!');
             loadCommentCampaigns();
@@ -529,7 +555,7 @@ async function stopCommentCampaign(campaignId) {
             alert('Ошибка: ' + result.message);
         }
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        alert('Ошибка остановки кампании: ' + error.message);
     }
 }
 

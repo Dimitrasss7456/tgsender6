@@ -1342,6 +1342,33 @@ async def auto_assign_genders(db: Session = Depends(get_db)):
     except Exception as e:
         return {"success": False, "message": str(e)}
 
+@app.post("/api/accounts/{account_id}/upload_photo")
+async def upload_profile_photo(account_id: int, photo: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Загрузка фото профиля"""
+    try:
+        account = db.query(Account).filter(Account.id == account_id).first()
+        if not account:
+            return {"success": False, "message": "Аккаунт не найден"}
+
+        # Сохраняем фото
+        import uuid
+        file_extension = os.path.splitext(photo.filename)[1]
+        unique_filename = f"profile_{account_id}_{uuid.uuid4().hex[:8]}{file_extension}"
+        photo_path = os.path.join(UPLOADS_DIR, unique_filename)
+
+        with open(photo_path, "wb") as f:
+            content = await photo.read()
+            f.write(content)
+
+        # Обновляем путь в БД
+        account.profile_photo_path = photo_path
+        db.commit()
+
+        return {"success": True, "message": "Фото загружено успешно"}
+
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
 @app.post("/api/accounts/{account_id}/update_telegram_profile")
 async def update_telegram_profile(account_id: int, db: Session = Depends(get_db)):
     """Обновление профиля в Telegram"""
@@ -1350,21 +1377,19 @@ async def update_telegram_profile(account_id: int, db: Session = Depends(get_db)
         if not account:
             return {"success": False, "message": "Аккаунт не найден"}
 
-        # Получаем клиент для аккаунта
-        client = await telegram_manager.get_client(account_id)
-        if not client:
-            return {"success": False, "message": "Не удалось подключиться к аккаунту"}
-
         # Обновляем профиль в Telegram
-        try:
-            await client.update_profile(
-                first_name=account.first_name or "",
-                last_name=account.last_name or "",
-                bio=account.bio or ""
-            )
+        result = await telegram_manager.update_profile(
+            account_id=account_id,
+            first_name=account.first_name or "",
+            last_name=account.last_name or "",
+            bio=account.bio or "",
+            profile_photo_path=account.profile_photo_path
+        )
+
+        if result["status"] == "success":
             return {"success": True, "message": "Профиль обновлен в Telegram"}
-        except Exception as tg_error:
-            return {"success": False, "message": f"Ошибка Telegram: {str(tg_error)}"}
+        else:
+            return {"success": False, "message": result["message"]}
 
     except Exception as e:
         return {"success": False, "message": str(e)}

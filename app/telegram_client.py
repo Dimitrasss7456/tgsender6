@@ -1768,7 +1768,7 @@ class TelegramManager:
         """Вспомогательная функция для получения клиента (переименована для соответствия изменениям)"""
         return await self._get_client_for_account(account_id)
 
-    async def update_profile(self, account_id: int, first_name: str = None, last_name: str = None, bio: str = None) -> Dict:
+    async def update_profile(self, account_id: int, first_name: str = None, last_name: str = None, bio: str = None, profile_photo_path: str = None) -> Dict:
         """Обновление профиля аккаунта в Telegram"""
         try:
             client = await self._get_client_for_account(account_id)
@@ -1778,14 +1778,29 @@ class TelegramManager:
             if not client.is_connected:
                 await client.connect()
 
-            # Обновляем профиль
-            await client.update_profile(
-                first_name=first_name or "",
-                last_name=last_name or "",
-                bio=bio or ""
-            )
+            # Обновляем текстовые данные профиля
+            try:
+                await client.update_profile(
+                    first_name=first_name or "",
+                    last_name=last_name or "",
+                    bio=bio or ""
+                )
+                print(f"✅ Профиль текстовые данные обновлены: {first_name} {last_name}")
+            except Exception as profile_error:
+                print(f"❌ Ошибка обновления текстовых данных профиля: {profile_error}")
+                return {"status": "error", "message": f"Ошибка обновления данных профиля: {str(profile_error)}"}
 
-            return {"status": "success", "message": "Профиль успешно обновлен"}
+            # Обновляем фото профиля если предоставлено
+            if profile_photo_path and os.path.exists(profile_photo_path):
+                try:
+                    await client.set_profile_photo(photo=profile_photo_path)
+                    print(f"✅ Фото профиля обновлено: {profile_photo_path}")
+                except Exception as photo_error:
+                    print(f"❌ Ошибка обновления фото профиля: {photo_error}")
+                    # Не возвращаем ошибку, так как основные данные уже обновлены
+                    return {"status": "success", "message": f"Профиль обновлен, но не удалось установить фото: {str(photo_error)}"}
+
+            return {"status": "success", "message": "Профиль успешно обновлен в Telegram"}
 
         except Exception as e:
             return {"status": "error", "message": f"Ошибка обновления профиля: {str(e)}"}
