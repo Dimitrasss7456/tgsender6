@@ -1713,6 +1713,80 @@ class TelegramManager:
         except Exception as e:
             print(f"⚠️ Ошибка обновления статуса аккаунта {account_id}: {e}")
 
+    async def _convert_pyrogram_to_telethon_session(self, pyrogram_path: str, telethon_path: str):
+        """Конвертация сессии Pyrogram в формат Telethon"""
+        try:
+            import sqlite3
+            import shutil
+            
+            print(f"🔄 Конвертируем сессию Pyrogram -> Telethon")
+            
+            # Копируем файл сессии как основу
+            shutil.copy2(pyrogram_path, f"{telethon_path}.session")
+            
+            # Подключаемся к скопированной базе данных
+            conn = sqlite3.connect(f"{telethon_path}.session")
+            cursor = conn.cursor()
+            
+            try:
+                # Проверяем существующие таблицы
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                tables = [row[0] for row in cursor.fetchall()]
+                
+                # Создаем недостающие таблицы для Telethon
+                if 'version' not in tables:
+                    cursor.execute("CREATE TABLE version (version INTEGER)")
+                    cursor.execute("INSERT INTO version VALUES (1)")
+                    print("✅ Добавлена таблица version")
+                
+                if 'entities' not in tables:
+                    cursor.execute("""
+                        CREATE TABLE entities (
+                            id INTEGER PRIMARY KEY,
+                            hash INTEGER NOT NULL,
+                            username TEXT,
+                            phone INTEGER,
+                            name TEXT,
+                            date INTEGER
+                        )
+                    """)
+                    print("✅ Добавлена таблица entities")
+                
+                if 'sent_files' not in tables:
+                    cursor.execute("""
+                        CREATE TABLE sent_files (
+                            md5_digest BLOB,
+                            file_size INTEGER,
+                            type INTEGER,
+                            id INTEGER,
+                            hash INTEGER,
+                            PRIMARY KEY(md5_digest, file_size, type)
+                        )
+                    """)
+                    print("✅ Добавлена таблица sent_files")
+                
+                if 'update_state' not in tables:
+                    cursor.execute("""
+                        CREATE TABLE update_state (
+                            id INTEGER PRIMARY KEY,
+                            pts INTEGER,
+                            qts INTEGER,
+                            date INTEGER,
+                            seq INTEGER
+                        )
+                    """)
+                    print("✅ Добавлена таблица update_state")
+                
+                conn.commit()
+                print("✅ Сессия успешно конвертирована для Telethon")
+                
+            finally:
+                conn.close()
+                
+        except Exception as e:
+            print(f"❌ Ошибка конвертации сессии: {e}")
+            raise e
+
     async def auto_delete_after_campaign(self, campaign_id: int, delay_seconds: int = 5) -> Dict:
         """Автоматическое удаление аккаунтов после завершения кампании"""
         try:
@@ -2105,6 +2179,7 @@ class TelegramManager:
                 try:
                     from telethon import TelegramClient
                     from telethon.sessions import StringSession
+                    import sqlite3
                     print(f"✅ Telethon библиотека импортирована")
                 except ImportError:
                     print(f"❌ Telethon не установлен")
@@ -2112,12 +2187,39 @@ class TelegramManager:
 
                 # Определяем путь к файлу сессии для Telethon
                 phone_clean = account.phone.replace('+', '').replace(' ', '').replace('(', '').replace(')', '').replace('-', '')
-                session_file = os.path.join(SESSIONS_DIR, f"session_{phone_clean}")
+                pyrogram_session_file = os.path.join(SESSIONS_DIR, f"session_{phone_clean}.session")
+                telethon_session_file = os.path.join(SESSIONS_DIR, f"telethon_{phone_clean}")
                 
-                print(f"🔗 Telethon: Используем файл сессии: {session_file}.session")
+                print(f"🔗 Telethon: Создаем совместимый файл сессии: {telethon_session_file}.session")
 
-                # Создаем Telethon клиент с файловой сессией
-                telethon_client = TelegramClient(session_file, API_ID, API_HASH)
+                # Проверяем существует ли уже Telethon сессия
+                if not os.path.exists(f"{telethon_session_file}.session"):
+                    # Создаем новую Telethon сессию на основе данных аккаунта
+                    try:
+                        # Расшифровываем данные сессии Pyrogram
+                        if account.session_data:
+                            decrypted_session = self.decrypt_session(account.session_data)
+                            
+                            # Создаем временную Telethon сессию с номером телефона
+                            temp_client = TelegramClient(telethon_session_file, API_ID, API_HASH)
+                            await temp_client.start(phone=account.phone)
+                            await temp_client.disconnect()
+                            print(f"✅ Telethon: Создана новая сессия для {account.phone}")
+                        else:
+                            print(f"❌ Telethon: Нет данных сессии для создания Telethon сессии")
+                            return {"status": "error", "message": "Telethon: Нет данных сессии"}
+                    except Exception as session_create_error:
+                        print(f"❌ Telethon: Ошибка создания сессии: {session_create_error}")
+                        # Если не можем создать новую сессию, попробуем конвертировать Pyrogram сессию
+                        if os.path.exists(pyrogram_session_file):
+                            try:
+                                await self._convert_pyrogram_to_telethon_session(pyrogram_session_file, telethon_session_file)
+                            except Exception as convert_error:
+                                print(f"❌ Telethon: Ошибка конвертации: {convert_error}")
+                                return {"status": "error", "message": f"Telethon: Не удалось создать совместимую сессию: {str(convert_error)}"}
+
+                # Создаем Telethon клиент с правильным файлом сессии
+                telethon_client = TelegramClient(telethon_session_file, API_ID, API_HASH)
                 
                 try:
                     print(f"🔌 Telethon: Подключаемся к Telegram...")
