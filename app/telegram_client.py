@@ -1713,6 +1713,118 @@ class TelegramManager:
         except Exception as e:
             print(f"⚠️ Ошибка обновления статуса аккаунта {account_id}: {e}")
 
+    async def _create_clean_telethon_session(self, pyrogram_path: str, telethon_path: str):
+        """Создание чистой Telethon сессии без конфликтов таблиц"""
+        try:
+            import sqlite3
+            
+            print(f"🔄 Создаем чистую Telethon сессию")
+            
+            # Создаем новую базу данных для Telethon с нуля
+            telethon_session_file = f"{telethon_path}.session"
+            
+            # Удаляем старый файл если существует
+            if os.path.exists(telethon_session_file):
+                os.remove(telethon_session_file)
+            
+            # Читаем данные из Pyrogram сессии для получения auth_key
+            pyrogram_conn = sqlite3.connect(pyrogram_path)
+            pyrogram_cursor = pyrogram_conn.cursor()
+            
+            try:
+                # Получаем данные сессии из Pyrogram
+                pyrogram_cursor.execute("SELECT dc_id, auth_key FROM sessions LIMIT 1")
+                session_data = pyrogram_cursor.fetchone()
+                if session_data:
+                    dc_id, auth_key = session_data
+                    # Используем стандартные значения
+                    server_address = "149.154.167.51" if dc_id == 2 else "149.154.175.53"
+                    port = 443
+                else:
+                    raise Exception("Не найдены данные сессии в Pyrogram файле")
+                
+                print(f"📋 Получены данные сессии: DC{dc_id}")
+                
+            finally:
+                pyrogram_conn.close()
+            
+            # Создаем новую минимальную базу данных для Telethon
+            conn = sqlite3.connect(telethon_session_file)
+            cursor = conn.cursor()
+            
+            try:
+                # Создаем только необходимые таблицы без update_state
+                print("🔨 Создаем минимальную структуру базы данных Telethon...")
+                
+                # Таблица version (обязательная для Telethon)
+                cursor.execute("CREATE TABLE version (version INTEGER)")
+                cursor.execute("INSERT INTO version VALUES (1)")
+                print("✅ Создана таблица version")
+                
+                # Таблица sessions (основная таблица с данными авторизации)
+                cursor.execute("""
+                    CREATE TABLE sessions (
+                        dc_id INTEGER PRIMARY KEY,
+                        server_address TEXT,
+                        port INTEGER,
+                        auth_key BLOB,
+                        takeout_id INTEGER
+                    )
+                """)
+                print("✅ Создана таблица sessions")
+                
+                # Вставляем данные сессии
+                cursor.execute("""
+                    INSERT INTO sessions (dc_id, server_address, port, auth_key, takeout_id) 
+                    VALUES (?, ?, ?, ?, NULL)
+                """, (dc_id, server_address, port, auth_key))
+                print("✅ Данные авторизации добавлены в таблицу sessions")
+                
+                # Таблица entities (для кеша пользователей/чатов)
+                cursor.execute("""
+                    CREATE TABLE entities (
+                        id INTEGER PRIMARY KEY,
+                        hash INTEGER NOT NULL,
+                        username TEXT,
+                        phone INTEGER,
+                        name TEXT,
+                        date INTEGER
+                    )
+                """)
+                print("✅ Создана таблица entities")
+                
+                # Таблица sent_files (для кеша отправленных файлов)
+                cursor.execute("""
+                    CREATE TABLE sent_files (
+                        md5_digest BLOB,
+                        file_size INTEGER,
+                        type INTEGER,
+                        id INTEGER,
+                        hash INTEGER,
+                        PRIMARY KEY(md5_digest, file_size, type)
+                    )
+                """)
+                print("✅ Создана таблица sent_files")
+                
+                # НЕ создаем таблицу update_state - это источник конфликтов
+                print("⚠️ Таблица update_state пропущена для избежания конфликтов")
+                
+                conn.commit()
+                print("✅ Чистая сессия успешно создана для Telethon")
+                
+            finally:
+                conn.close()
+                
+        except Exception as e:
+            print(f"❌ Ошибка создания чистой Telethon сессии: {e}")
+            # Если не удалось создать сессию, удаляем поврежденный файл
+            try:
+                if os.path.exists(f"{telethon_path}.session"):
+                    os.remove(f"{telethon_path}.session")
+            except:
+                pass
+            raise e
+
     async def _convert_pyrogram_to_telethon_session(self, pyrogram_path: str, telethon_path: str):
         """Конвертация сессии Pyrogram в формат Telethon с полной совместимостью"""
         try:
@@ -2074,37 +2186,220 @@ class TelegramManager:
             return {"status": "error", "message": f"Ошибка просмотра сообщения: {str(e)}"}
 
     async def send_comment(self, account_id: int, chat_id: str, message_id: int, comment: str) -> Dict:
-        """Отправка комментария под пост с приоритетом Telethon"""
+        """Отправка комментария под пост используя только Telethon"""
         try:
             print(f"🔄 Отправка комментария от аккаунта {account_id} в чат {chat_id}, к сообщению {message_id}")
             print(f"📝 Комментарий: {comment}")
             
-            # Метод 1: Сначала пробуем Telethon (приоритетный метод)
+            # Используем только Telethon для отправки комментариев
             print(f"📱 Используем Telethon для отправки комментария...")
-            telethon_result = await self._send_comment_telethon(account_id, chat_id, message_id, comment)
+            result = await self._send_comment_telethon_only(account_id, chat_id, message_id, comment)
             
-            # Если Telethon сработал успешно, возвращаем результат
-            if telethon_result["status"] == "success":
+            if result["status"] == "success":
                 print(f"✅ Комментарий отправлен через Telethon аккаунтом {account_id}")
-                return telethon_result
+            else:
+                print(f"❌ Ошибка Telethon аккаунта {account_id}: {result.get('message', 'неизвестная ошибка')}")
             
-            # Метод 2: Если Telethon не сработал, пробуем Pyrogram как запасной вариант
-            print(f"🔄 Telethon не удался, пробуем Pyrogram как запасной вариант...")
-            pyrogram_result = await self._send_comment_pyrogram(account_id, chat_id, message_id, comment)
-            
-            if pyrogram_result["status"] == "success":
-                print(f"✅ Комментарий отправлен через Pyrogram аккаунтом {account_id}")
-                return pyrogram_result
-            
-            # Если оба метода не сработали, возвращаем последнюю ошибку
-            return {
-                "status": "error", 
-                "message": f"Не удалось отправить комментарий ни через Telethon, ни через Pyrogram. Telethon: {telethon_result.get('message', 'неизвестная ошибка')}, Pyrogram: {pyrogram_result.get('message', 'неизвестная ошибка')}"
-            }
+            return result
 
         except Exception as e:
             print(f"❌ Общая ошибка отправки комментария: {e}")
             return {"status": "error", "message": f"Ошибка отправки комментария: {str(e)}"}
+
+    async def _send_comment_telethon_only(self, account_id: int, chat_id: str, message_id: int, comment: str) -> Dict:
+        """Отправка комментария используя только Telethon с правильной обработкой сессий"""
+        try:
+            print(f"📱 Telethon: Начинаем отправку комментария...")
+            
+            # Получаем данные аккаунта
+            db = next(get_db())
+            try:
+                account = db.query(Account).filter(Account.id == account_id).first()
+                if not account:
+                    return {"status": "error", "message": "Telethon: Аккаунт не найден"}
+
+                # Импортируем telethon
+                try:
+                    from telethon import TelegramClient
+                    from telethon.sessions import StringSession
+                    print(f"✅ Telethon библиотека импортирована")
+                except ImportError:
+                    print(f"❌ Telethon не установлен")
+                    return {"status": "error", "message": "Telethon не установлен. Установите: pip install telethon"}
+
+                # Создаем уникальную сессию для Telethon
+                phone_clean = account.phone.replace('+', '').replace(' ', '').replace('(', '').replace(')', '').replace('-', '')
+                pyrogram_session_file = os.path.join(SESSIONS_DIR, f"session_{phone_clean}.session")
+                
+                # Создаем новую чистую сессию для каждого запроса
+                import uuid
+                unique_session_name = f"telethon_comment_{uuid.uuid4().hex[:8]}"
+                telethon_session_file = os.path.join(SESSIONS_DIR, unique_session_name)
+                
+                print(f"🔗 Telethon: Создаем уникальную сессию: {telethon_session_file}.session")
+
+                # Проверяем существует ли Pyrogram сессия для конвертации
+                if not os.path.exists(pyrogram_session_file):
+                    print(f"❌ Telethon: Файл Pyrogram сессии не найден: {pyrogram_session_file}")
+                    return {"status": "error", "message": "Telethon: Pyrogram сессия не найдена"}
+
+                # Создаем новую чистую сессию для Telethon
+                try:
+                    await self._create_clean_telethon_session(pyrogram_session_file, telethon_session_file)
+                except Exception as convert_error:
+                    print(f"❌ Telethon: Ошибка создания сессии: {convert_error}")
+                    return {"status": "error", "message": f"Telethon: Не удалось создать сессию: {str(convert_error)}"}
+
+                # Создаем Telethon клиент
+                try:
+                    print(f"✅ Telethon: Создаем клиент...")
+                    telethon_client = TelegramClient(telethon_session_file, API_ID, API_HASH)
+                    
+                except Exception as client_create_error:
+                    print(f"❌ Telethon: Ошибка создания клиента: {client_create_error}")
+                    return {"status": "error", "message": f"Telethon: Ошибка создания клиента: {str(client_create_error)}"}
+                
+                try:
+                    print(f"🔌 Telethon: Подключаемся к Telegram...")
+                    await telethon_client.start()
+                    
+                    # Проверяем авторизацию
+                    me = await telethon_client.get_me()
+                    print(f"✅ Telethon: Авторизован как {me.first_name} ({me.phone})")
+                    
+                    # Нормализуем chat_id для Telethon
+                    if chat_id.startswith('@'):
+                        target_entity = chat_id
+                        print(f"🎯 Telethon: Цель по username: {target_entity}")
+                    elif chat_id.isdigit() or (chat_id.startswith('-') and chat_id[1:].isdigit()):
+                        target_entity = int(chat_id)
+                        print(f"🎯 Telethon: Цель по ID: {target_entity}")
+                    else:
+                        target_entity = chat_id
+                        print(f"🎯 Telethon: Цель как есть: {target_entity}")
+
+                    # Получаем информацию о целевом чате/канале
+                    try:
+                        entity = await telethon_client.get_entity(target_entity)
+                        print(f"📍 Telethon: Получена сущность - {type(entity).__name__}")
+                        
+                        # Если это канал, используем GetDiscussionMessage для поиска треда обсуждения
+                        if hasattr(entity, 'broadcast') and entity.broadcast:
+                            print(f"📺 Telethon: Обнаружен канал, ищем тред обсуждения...")
+                            
+                            try:
+                                # Используем GetDiscussionMessage для поиска связанного сообщения в треде
+                                from telethon.tl.functions.messages import GetDiscussionMessageRequest
+                                
+                                discussion_result = await telethon_client(GetDiscussionMessageRequest(
+                                    peer=entity,
+                                    msg_id=message_id
+                                ))
+                                
+                                # Проверяем результат
+                                if discussion_result and hasattr(discussion_result, 'messages') and len(discussion_result.messages) >= 2:
+                                    # res.messages[0] — сам пост канала
+                                    # res.messages[1] — "голова" треда в связанном чате
+                                    discussion_head = discussion_result.messages[1]
+                                    discussion_chat = discussion_result.chats[0] if discussion_result.chats else None
+                                    
+                                    if discussion_chat and discussion_head:
+                                        print(f"📢 Telethon: Найден тред обсуждения в чате {discussion_chat.id}")
+                                        print(f"💬 Telethon: ID головы треда: {discussion_head.id}")
+                                        
+                                        # Отправляем комментарий в discussion_chat с reply_to на головное сообщение
+                                        await asyncio.sleep(2)  # Имитация человеческого поведения
+                                        
+                                        sent_message = await telethon_client.send_message(
+                                            entity=discussion_chat,
+                                            message=comment,
+                                            reply_to=discussion_head.id
+                                        )
+                                        
+                                        print(f"✅ Telethon: Комментарий отправлен в тред обсуждения! ID: {sent_message.id}")
+                                        return {
+                                            "status": "success",
+                                            "message": "Комментарий отправлен в тред обсуждения",
+                                            "message_id": sent_message.id
+                                        }
+                                    else:
+                                        print(f"❌ Telethon: Не найден связанный чат или голова треда")
+                                        return {"status": "error", "message": "Telethon: Для поста нет обсуждения или комментарии отключены"}
+                                else:
+                                    print(f"❌ Telethon: GetDiscussionMessage не вернул достаточно сообщений")
+                                    return {"status": "error", "message": "Telethon: Для поста нет обсуждения или комментарии отключены"}
+                                    
+                            except Exception as discussion_error:
+                                error_str = str(discussion_error)
+                                print(f"❌ Telethon: Ошибка GetDiscussionMessage: {error_str}")
+                                
+                                # Обрабатываем специфические ошибки
+                                if "MSG_ID_INVALID" in error_str:
+                                    return {"status": "error", "message": "Telethon: Неверный ID сообщения или сообщение не найдено"}
+                                elif "DISCUSSION_DISABLED" in error_str:
+                                    return {"status": "error", "message": "Telethon: Обсуждения отключены для этого канала"}
+                                elif "CHANNEL_PRIVATE" in error_str:
+                                    return {"status": "error", "message": "Telethon: Канал приватный или недоступен"}
+                                else:
+                                    return {"status": "error", "message": f"Telethon: Ошибка треда обсуждения - {error_str}"}
+                        else:
+                            # Это обычная группа или приватный чат
+                            print(f"💬 Telethon: Отправляем комментарий в обычный чат/группу...")
+                            
+                            await asyncio.sleep(2)  # Имитация человеческого поведения
+                            
+                            sent_message = await telethon_client.send_message(
+                                entity=entity,
+                                message=comment,
+                                reply_to=message_id
+                            )
+                            
+                            print(f"✅ Telethon: Комментарий отправлен в чат! ID: {sent_message.id}")
+                            return {
+                                "status": "success",
+                                "message": "Комментарий отправлен",
+                                "message_id": sent_message.id
+                            }
+                            
+                    except Exception as entity_error:
+                        error_str = str(entity_error)
+                        print(f"❌ Telethon: Ошибка получения сущности: {error_str}")
+                        
+                        # Обрабатываем специфические ошибки Telethon
+                        if "USERNAME_INVALID" in error_str:
+                            return {"status": "error", "message": "Telethon: Неверное имя пользователя/канала"}
+                        elif "CHAT_ADMIN_REQUIRED" in error_str:
+                            return {"status": "error", "message": "Telethon: Требуются права администратора"}
+                        elif "MESSAGE_ID_INVALID" in error_str:
+                            return {"status": "error", "message": "Telethon: Неверный ID сообщения"}
+                        elif "PEER_ID_INVALID" in error_str:
+                            return {"status": "error", "message": "Telethon: Чат/канал не найден или недоступен"}
+                        elif "USER_BANNED_IN_CHANNEL" in error_str:
+                            return {"status": "error", "message": "Telethon: Аккаунт заблокирован в канале"}
+                        else:
+                            return {"status": "error", "message": f"Telethon: {error_str}"}
+                            
+                finally:
+                    print(f"🔌 Telethon: Отключаемся от клиента...")
+                    await telethon_client.disconnect()
+                    
+                    # Удаляем временную сессию
+                    try:
+                        session_file_path = f"{telethon_session_file}.session"
+                        if os.path.exists(session_file_path):
+                            os.remove(session_file_path)
+                            print(f"🗑️ Telethon: Временная сессия удалена")
+                    except Exception as cleanup_error:
+                        print(f"⚠️ Telethon: Ошибка очистки сессии: {cleanup_error}")
+                    
+            finally:
+                db.close()
+
+        except Exception as e:
+            print(f"❌ Telethon: Общая ошибка комментария: {e}")
+            import traceback
+            print(f"🔍 Telethon: Стек ошибки: {traceback.format_exc()}")
+            return {"status": "error", "message": f"Telethon: {str(e)}"}
 
     async def _send_comment_pyrogram(self, account_id: int, chat_id: str, message_id: int, comment: str) -> Dict:
         """Отправка комментария через Pyrogram"""
