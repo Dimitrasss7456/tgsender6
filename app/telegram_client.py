@@ -1779,7 +1779,7 @@ class TelegramManager:
         try:
             print(f"🔄 Обновление профиля аккаунта {account_id}")
             print(f"📝 Данные: имя={first_name}, фамилия={last_name}, био={bio}")
-            
+
             client = await self._get_client_for_account(account_id)
             if not client:
                 return {"status": "error", "message": "Не удалось подключиться к аккаунту"}
@@ -1802,28 +1802,28 @@ class TelegramManager:
                 first_name_clean = (first_name or "").strip()[:64] if first_name else ""
                 last_name_clean = (last_name or "").strip()[:64] if last_name else ""
                 bio_clean = (bio or "").strip()[:70] if bio else ""  # Telegram ограничивает био до 70 символов
-                
+
                 if not first_name_clean:
                     first_name_clean = "User"  # Telegram требует непустое имя
-                
+
                 print(f"🔄 Отправляем обновление профиля...")
                 print(f"   Имя: '{first_name_clean}'")
                 print(f"   Фамилия: '{last_name_clean}'")
                 print(f"   Био: '{bio_clean}'")
-                
+
                 await client.update_profile(
                     first_name=first_name_clean,
                     last_name=last_name_clean,
                     bio=bio_clean
                 )
-                
+
                 print(f"✅ Профиль успешно обновлен в Telegram")
                 update_success = True
-                
+
             except Exception as profile_error:
                 error_str = str(profile_error).lower()
                 print(f"❌ Ошибка обновления профиля: {profile_error}")
-                
+
                 # Обработка специфических ошибок Telegram
                 if "firstname_invalid" in error_str:
                     return {"status": "error", "message": "Неверный формат имени. Используйте только буквы и пробелы"}
@@ -1850,7 +1850,7 @@ class TelegramManager:
                 await asyncio.sleep(1)  # Даем время на синхронизацию
                 updated_me = await client.get_me()
                 print(f"🔍 Проверка обновления: {updated_me.first_name} {updated_me.last_name or ''}")
-                
+
                 if update_success:
                     if profile_photo_path and not photo_success:
                         return {"status": "success", "message": "Профиль обновлен, но не удалось установить фото"}
@@ -1858,7 +1858,7 @@ class TelegramManager:
                         return {"status": "success", "message": "Профиль успешно обновлен в Telegram"}
                 else:
                     return {"status": "error", "message": "Не удалось обновить профиль"}
-                    
+
             except Exception as check_error:
                 print(f"⚠️ Не удалось проверить обновление: {check_error}")
                 if update_success:
@@ -1916,7 +1916,7 @@ class TelegramManager:
             return {"status": "error", "message": f"Ошибка просмотра сообщения: {str(e)}"}
 
     async def send_comment(self, account_id: int, chat_id: str, message_id: int, comment: str) -> Dict:
-        """Отправка комментария (ответа на сообщение)"""
+        """Отправка комментария с улучшенной обработкой каналов"""
         try:
             client = await self._get_client_for_account(account_id)
             if not client:
@@ -1925,22 +1925,84 @@ class TelegramManager:
             if not client.is_connected:
                 await client.connect()
 
-            # Отправляем комментарий как ответ на сообщение
-            sent_message = await client.send_message(
-                chat_id=chat_id,
-                text=comment,
-                reply_to_message_id=message_id
-            )
+            # Проверяем что client.me установлен
+            if not hasattr(client, 'me') or client.me is None:
+                try:
+                    me = await client.get_me()
+                    client.me = me
+                except Exception:
+                    # Создаем заглушку если не удается получить информацию
+                    from types import SimpleNamespace
+                    client.me = SimpleNamespace(
+                        id=account_id,
+                        first_name="User",
+                        is_premium=False,
+                        is_verified=False,
+                        is_bot=False
+                    )
 
-            return {
-                "status": "success", 
-                "message": "Комментарий отправлен",
-                "message_id": sent_message.id
-            }
+            print(f"🔄 Отправка комментария от аккаунта {account_id} в чат {chat_id}, сообщение {message_id}")
+            print(f"📝 Комментарий: {comment}")
+
+            try:
+                # Пытаемся отправить комментарий напрямую
+                sent_message = await client.send_message(
+                    chat_id=chat_id,
+                    text=comment,
+                    reply_to_message_id=message_id
+                )
+
+                print(f"✅ Комментарий отправлен напрямую аккаунтом {account_id}")
+                return {
+                    "status": "success",
+                    "message": "Комментарий отправлен",
+                    "message_id": sent_message.id
+                }
+
+            except Exception as send_error:
+                error_str = str(send_error)
+                print(f"❌ Ошибка отправки комментария аккаунтом {account_id}: {error_str}")
+
+                # Если это канал и нужны права администратора, пробуем найти группу обсуждений
+                if "CHAT_ADMIN_REQUIRED" in error_str and isinstance(chat_id, str) and chat_id.startswith('@'):
+                    print(f"🔄 Пробуем найти группу обсуждений для канала {chat_id}")
+
+                    try:
+                        # Получаем информацию о канале
+                        channel = await client.get_chat(chat_id)
+
+                        # Ищем связанную группу обсуждений
+                        if hasattr(channel, 'linked_chat_id') and channel.linked_chat_id:
+                            discussion_group_id = channel.linked_chat_id
+                            print(f"📢 Найдена группа обсуждений: {discussion_group_id}")
+
+                            # Отправляем комментарий в группу обсуждений
+                            sent_message = await client.send_message(
+                                chat_id=discussion_group_id,
+                                text=comment,
+                                reply_to_message_id=message_id
+                            )
+
+                            print(f"✅ Комментарий отправлен в группу обсуждений аккаунтом {account_id}")
+                            return {
+                                "status": "success",
+                                "message": "Комментарий отправлен в группу обсуждений",
+                                "message_id": sent_message.id
+                            }
+                        else:
+                            print(f"❌ У канала {chat_id} нет группы обсуждений")
+                            return {"status": "error", "message": "У канала нет группы обсуждений"}
+
+                    except Exception as discussion_error:
+                        print(f"❌ Ошибка поиска группы обсуждений: {discussion_error}")
+                        return {"status": "error", "message": f"Не удалось найти группу обсуждений: {str(discussion_error)}"}
+
+                # Возвращаем исходную ошибку
+                return {"status": "error", "message": f"Ошибка отправки комментария: {error_str}"}
 
         except Exception as e:
-            return {"status": "error", "message": f"Ошибка отправки комментария: {str(e)}"}
-
+            print(f"❌ Общая ошибка отправки комментария: {e}")
+            return {"status": "error", "message": f"Ошибка отправки комментария: {str(e)}}
 
 # Глобальный экземпляр менеджера
 telegram_manager = TelegramManager()

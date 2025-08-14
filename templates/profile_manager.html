@@ -214,6 +214,48 @@
         </div>
     </div>
 
+    <!-- Модальное окно для редактирования профиля -->
+    <div class="modal fade" id="editProfileModal" tabindex="-1" aria-labelledby="editProfileModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editProfileModalLabel">Редактировать профиль</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editProfileForm">
+                        <input type="hidden" id="edit-account-id">
+                        <div class="mb-3">
+                            <label for="edit-first-name" class="form-label">Имя</label>
+                            <input type="text" class="form-control" id="edit-first-name">
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit-last-name" class="form-label">Фамилия</label>
+                            <input type="text" class="form-control" id="edit-last-name">
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit-bio" class="form-label">О себе</label>
+                            <textarea class="form-control" id="edit-bio" rows="3"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit-gender" class="form-label">Гендер</label>
+                            <select class="form-control" id="edit-gender">
+                                <option value="">Не указан</option>
+                                <option value="male">Мужской</option>
+                                <option value="female">Женский</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" onclick="saveEditedProfile()">Сохранить изменения</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
@@ -233,10 +275,10 @@
             }, 5000);
         }
 
-        // Функция редактирования профиля
+        // Функция редактирования профиля (теперь вызывается через модальное окно)
         function editProfile(accountId) {
             console.log('Editing profile for account:', accountId);
-            // Этот код был заменен
+            // Эта функция больше не используется напрямую, вместо нее openEditProfileModal
         }
 
         // Функция обновления поля аккаунта
@@ -524,6 +566,61 @@
                 btn.innerHTML = '<i class="fas fa-play"></i> Запустить просмотры';
             }
         }
+
+        // Функция для сохранения изменений из модального окна
+        async function saveEditedProfile() {
+            const accountId = document.getElementById('edit-account-id').value;
+            const firstName = document.getElementById('edit-first-name').value;
+            const lastName = document.getElementById('edit-last-name').value;
+            const bio = document.getElementById('edit-bio').value;
+            const gender = document.getElementById('edit-gender').value;
+
+            await updateField(accountId, 'first_name', firstName);
+            await updateField(accountId, 'last_name', lastName);
+            await updateField(accountId, 'bio', bio);
+            await updateField(accountId, 'gender', gender);
+
+            // Обновляем значения в отображаемых карточках
+            const accountCard = document.getElementById(`account-${accountId}`);
+            if (accountCard) {
+                const firstNameInput = accountCard.querySelector('input[onchange*="first_name"]');
+                const lastNameInput = accountCard.querySelector('input[onchange*="last_name"]');
+                const bioTextarea = accountCard.querySelector('textarea[onchange*="bio"]');
+                const genderSelect = accountCard.querySelector('select[onchange*="gender"]');
+
+                if (firstNameInput) firstNameInput.value = firstName;
+                if (lastNameInput) lastNameInput.value = lastName;
+                if (bioTextarea) bioTextarea.value = bio;
+                if (genderSelect) genderSelect.value = gender;
+            }
+
+            const modal = bootstrap.Modal.getInstance(document.getElementById('editProfileModal'));
+            modal.hide();
+            showAlert('info', 'Изменения сохранены. Не забудьте нажать "Обновить в Telegram".');
+        }
+
+        // Функция для открытия модального окна редактирования профиля
+        function openEditProfileModal(accountId) {
+            fetch(`/api/accounts/${accountId}`)
+                .then(response => response.json())
+                .then(account => {
+                    document.getElementById('edit-account-id').value = accountId;
+                    document.getElementById('edit-first-name').value = account.first_name || '';
+                    document.getElementById('edit-last-name').value = account.last_name || '';
+                    document.getElementById('edit-bio').value = account.bio || '';
+                    document.getElementById('edit-gender').value = account.gender || '';
+
+                    const modal = new bootstrap.Modal(document.getElementById('editProfileModal'));
+                    modal.show();
+                })
+                .catch(error => {
+                    console.error('Ошибка получения данных аккаунта:', error);
+                    showAlert('danger', 'Ошибка получения данных аккаунта');
+                });
+        }
+
+        // Изначальная загрузка аккаунтов при старте страницы (если есть такой функционал)
+        // document.addEventListener('DOMContentLoaded', loadAccounts); // Закомментировано, так как loadAccounts не используется в текущей версии
     </script>
 </body>
 </html>
