@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -133,7 +132,7 @@
             <!-- Основной контент -->
             <div class="col-md-9 p-4">
                 <h2><i class="fas fa-users"></i> Аккаунты</h2>
-                
+
                 <div id="alerts"></div>
 
                 <div class="row">
@@ -216,7 +215,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
+
     <script>
         // Функция для показа уведомлений
         function showAlert(type, message) {
@@ -256,7 +255,7 @@
         // Функция обновления профиля в Telegram
         async function updateTelegramProfile(accountId) {
             try {
-                const button = document.querySelector(`button[onclick="updateTelegramProfile(${accountId})"]`);
+                const button = document.querySelector(`#account-${accountId} .btn-group .btn-outline-primary`);
                 if (button) {
                     button.disabled = true;
                     button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Обновляю...';
@@ -267,12 +266,12 @@
                 });
 
                 const result = await response.json();
-                
+
                 if (button) {
                     button.disabled = false;
                     button.innerHTML = '<i class="fas fa-sync"></i>';
                 }
-                
+
                 if (result.success) {
                     showAlert('success', 'Профиль успешно обновлен в Telegram!');
                 } else {
@@ -281,8 +280,8 @@
             } catch (error) {
                 console.error('Ошибка:', error);
                 showAlert('danger', 'Ошибка обновления профиля в Telegram');
-                
-                const button = document.querySelector(`button[onclick="updateTelegramProfile(${accountId})"]`);
+
+                const button = document.querySelector(`#account-${accountId} .btn-group .btn-outline-primary`);
                 if (button) {
                     button.disabled = false;
                     button.innerHTML = '<i class="fas fa-sync"></i>';
@@ -290,22 +289,45 @@
             }
         }
 
-        // Функция редактирования профиля (исправляет ошибку editProfile is not defined)
-        async function editProfile(accountId) {
-            const firstNameInput = document.querySelector(`#account-${accountId} input[onchange*="first_name"]`);
-            const lastNameInput = document.querySelector(`#account-${accountId} input[onchange*="last_name"]`);
-            const bioTextarea = document.querySelector(`#account-${accountId} textarea[onchange*="bio"]`);
-            
-            const first_name = firstNameInput ? firstNameInput.value : '';
-            const last_name = lastNameInput ? lastNameInput.value : '';
-            const bio = bioTextarea ? bioTextarea.value : '';
-            
-            if (!first_name.trim() && !last_name.trim()) {
-                showAlert('warning', 'Укажите хотя бы имя или фамилию перед обновлением профиля');
-                return;
-            }
-            
-            await updateTelegramProfile(accountId);
+        // Функция показа модального окна для редактирования профиля
+        function showEditProfileModal(accountId) {
+            const accountCard = document.getElementById(`account-${accountId}`);
+            const firstNameInput = accountCard.querySelector('input[onchange*="first_name"]');
+            const lastNameInput = accountCard.querySelector('input[onchange*="last_name"]');
+            const bioTextarea = accountCard.querySelector('textarea[onchange*="bio"]');
+            const genderSelect = accountCard.querySelector('select[onchange*="gender"]');
+
+            const currentFirstName = firstNameInput ? firstNameInput.value : '';
+            const currentLastName = lastNameInput ? lastNameInput.value : '';
+            const currentBio = bioTextarea ? bioTextarea.value : '';
+            const currentGender = genderSelect ? genderSelect.value : '';
+
+            const newFirstName = prompt('Введите новое имя:', currentFirstName);
+            if (newFirstName === null) return;
+
+            const newLastName = prompt('Введите новую фамилию:', currentLastName);
+            if (newLastName === null) return;
+
+            const newBio = prompt('Введите новое описание (био):', currentBio);
+            if (newBio === null) return;
+
+            const newGender = prompt('Введите новый пол (male/female/):', currentGender);
+            if (newGender === null) return;
+
+
+            updateField(accountId, 'first_name', newFirstName);
+            updateField(accountId, 'last_name', newLastName);
+            updateField(accountId, 'bio', newBio);
+            updateField(accountId, 'gender', newGender);
+
+            // Обновляем значения в инпутах на странице, чтобы они соответствовали введенным
+            if (firstNameInput) firstNameInput.value = newFirstName;
+            if (lastNameInput) lastNameInput.value = newLastName;
+            if (bioTextarea) bioTextarea.value = newBio;
+            if (genderSelect) genderSelect.value = newGender;
+
+
+            showAlert('info', 'Изменения в профиле сохранены. Нажмите "Обновить в Telegram" для синхронизации.');
         }
 
         // Загрузка фото профиля
@@ -338,7 +360,7 @@
             const btn = event.target;
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Назначение...';
-            
+
             try {
                 const response = await fetch('/api/accounts/auto_assign_genders', {
                     method: 'POST',
@@ -366,16 +388,16 @@
             const maleComments = document.getElementById('maleComments').value;
             const femaleComments = document.getElementById('femaleComments').value;
             const delay = document.getElementById('commentDelay').value;
-            
+
             if (!postUrl || (!maleComments && !femaleComments)) {
                 showAlert('warning', 'Заполните ссылку на пост и комментарии');
                 return;
             }
-            
+
             const btn = event.target;
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Создание...';
-            
+
             try {
                 // Сначала создаем кампанию
                 const response = await fetch('/api/comment_campaigns', {
@@ -420,16 +442,16 @@
             const postUrl = document.getElementById('reactionPost').value;
             const emoji = document.getElementById('reactionEmoji').value;
             const delay = document.getElementById('reactionDelay').value;
-            
+
             if (!postUrl) {
                 showAlert('warning', 'Заполните ссылку на пост');
                 return;
             }
-            
+
             const btn = event.target;
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Запуск...';
-            
+
             try {
                 const response = await fetch('/api/reaction_campaigns', {
                     method: 'POST',
@@ -461,16 +483,16 @@
         async function startViewCampaign() {
             const postUrl = document.getElementById('viewPost').value;
             const delay = document.getElementById('viewDelay').value;
-            
+
             if (!postUrl) {
                 showAlert('warning', 'Заполните ссылку на пост');
                 return;
             }
-            
+
             const btn = event.target;
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Запуск...';
-            
+
             try {
                 const response = await fetch('/api/view_campaigns', {
                     method: 'POST',

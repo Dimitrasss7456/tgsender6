@@ -1643,7 +1643,7 @@ async def send_comment_to_post(account_id: int, chat_id: str, message_id: int, c
         if not client.is_connected:
             await client.connect()
 
-        # Отправляем комментарий (reply to message)
+        # Отправляем комментарий в чат, а не как reply
         try:
             # Преобразуем chat_id к правильному формату
             if isinstance(chat_id, str) and chat_id.startswith('@'):
@@ -1655,10 +1655,10 @@ async def send_comment_to_post(account_id: int, chat_id: str, message_id: int, c
 
             print(f"🎯 Целевой чат: {target_chat}")
 
+            # Вместо reply отправляем обычное сообщение в чат
             sent_message = await client.send_message(
                 chat_id=target_chat,
-                text=comment,
-                reply_to_message_id=message_id
+                text=comment
             )
 
             # Логируем успешную отправку
@@ -1677,11 +1677,48 @@ async def send_comment_to_post(account_id: int, chat_id: str, message_id: int, c
             error_msg = str(send_error)
             print(f"❌ Ошибка отправки комментария аккаунтом {account_id}: {error_msg}")
             
+            # Если нет прав в основном чате, попробуем найти группу обсуждений
+            if "CHAT_ADMIN_REQUIRED" in error_msg or "CHAT_WRITE_FORBIDDEN" in error_msg:
+                print(f"🔄 Пробуем найти группу обсуждений для канала {chat_id}")
+                try:
+                    # Получаем информацию о канале
+                    chat_info = await client.get_chat(target_chat)
+                    
+                    # Проверяем есть ли linked_chat (группа обсуждений)
+                    if hasattr(chat_info, 'linked_chat') and chat_info.linked_chat:
+                        discussion_group_id = chat_info.linked_chat.id
+                        print(f"📢 Найдена группа обсуждений: {discussion_group_id}")
+                        
+                        # Отправляем комментарий в группу обсуждений
+                        sent_message = await client.send_message(
+                            chat_id=discussion_group_id,
+                            text=comment,
+                            reply_to_message_id=message_id
+                        )
+                        
+                        # Логируем успешную отправку
+                        log = CommentLog(
+                            campaign_id=campaign_id,
+                            account_id=account_id,
+                            comment_text=comment,
+                            status="sent"
+                        )
+                        db.add(log)
+                        db.commit()
+                        
+                        print(f"✅ Комментарий отправлен в группу обсуждений аккаунтом {account_id}")
+                        return
+                        
+                except Exception as discussion_error:
+                    print(f"❌ Ошибка отправки в группу обсуждений: {discussion_error}")
+            
             # Более детальная обработка ошибок
             if "PEER_ID_INVALID" in error_msg:
                 print(f"❌ Чат {chat_id} не найден или нет доступа")
             elif "MESSAGE_ID_INVALID" in error_msg:
                 print(f"❌ Сообщение {message_id} не найдено")
+            elif "CHAT_ADMIN_REQUIRED" in error_msg:
+                print(f"❌ Требуются права администратора для отправки в {chat_id}")
             elif "CHAT_WRITE_FORBIDDEN" in error_msg:
                 print(f"❌ Нет прав для записи в чат {chat_id}")
 
