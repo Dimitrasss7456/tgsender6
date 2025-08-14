@@ -1733,15 +1733,36 @@ class TelegramManager:
             pyrogram_cursor = pyrogram_conn.cursor()
             
             try:
-                # Получаем данные сессии из Pyrogram
-                pyrogram_cursor.execute("SELECT dc_id, server_address, port, auth_key, user_id FROM sessions LIMIT 1")
-                session_data = pyrogram_cursor.fetchone()
+                # Сначала проверяем структуру таблицы sessions в Pyrogram
+                pyrogram_cursor.execute("PRAGMA table_info(sessions)")
+                columns_info = pyrogram_cursor.fetchall()
+                column_names = [col[1] for col in columns_info]
+                print(f"📋 Структура таблицы Pyrogram sessions: {column_names}")
                 
-                if not session_data:
-                    raise Exception("Не найдены данные сессии в Pyrogram файле")
+                # Получаем данные сессии из Pyrogram с правильными полями
+                if 'server_address' in column_names:
+                    query = "SELECT dc_id, server_address, port, auth_key, user_id FROM sessions LIMIT 1"
+                    pyrogram_cursor.execute(query)
+                    session_data = pyrogram_cursor.fetchone()
+                    if session_data:
+                        dc_id, server_address, port, auth_key, user_id = session_data
+                    else:
+                        raise Exception("Не найдены данные сессии в Pyrogram файле")
+                else:
+                    # Альтернативный способ чтения с базовыми полями
+                    query = "SELECT dc_id, auth_key FROM sessions LIMIT 1"
+                    pyrogram_cursor.execute(query)
+                    session_data = pyrogram_cursor.fetchone()
+                    if session_data:
+                        dc_id, auth_key = session_data
+                        # Используем стандартные значения для отсутствующих полей
+                        server_address = "149.154.167.51" if dc_id == 2 else "149.154.175.53"
+                        port = 443
+                        user_id = 0
+                    else:
+                        raise Exception("Не найдены данные сессии в Pyrogram файле")
                 
-                dc_id, server_address, port, auth_key, user_id = session_data
-                print(f"📋 Получены данные сессии: DC{dc_id}, User ID: {user_id}")
+                print(f"📋 Получены данные сессии: DC{dc_id}, Server: {server_address}:{port}")
                 
             finally:
                 pyrogram_conn.close()
@@ -2251,10 +2272,32 @@ class TelegramManager:
 
                 # Создаем Telethon клиент с правильным файлом сессии
                 try:
+                    # Проверяем существование файла сессии перед созданием клиента
+                    session_file_path = f"{telethon_session_file}.session"
+                    if not os.path.exists(session_file_path):
+                        print(f"❌ Telethon: Файл сессии не найден: {session_file_path}")
+                        return {"status": "error", "message": "Telethon: Файл сессии не создан"}
+                    
+                    print(f"✅ Telethon: Файл сессии найден, создаем клиент...")
                     telethon_client = TelegramClient(telethon_session_file, API_ID, API_HASH)
+                    
                 except Exception as client_create_error:
                     print(f"❌ Telethon: Ошибка создания клиента: {client_create_error}")
-                    return {"status": "error", "message": f"Telethon: Ошибка создания клиента: {str(client_create_error)}"}
+                    # Если ошибка связана с версией сессии, пробуем пересоздать
+                    if "no such column: version" in str(client_create_error):
+                        print(f"🔄 Telethon: Пересоздаем сессию из-за проблемы с версией...")
+                        try:
+                            # Удаляем поврежденный файл
+                            if os.path.exists(f"{telethon_session_file}.session"):
+                                os.remove(f"{telethon_session_file}.session")
+                            # Пересоздаем сессию
+                            await self._convert_pyrogram_to_telethon_session(pyrogram_session_file, telethon_session_file)
+                            telethon_client = TelegramClient(telethon_session_file, API_ID, API_HASH)
+                        except Exception as retry_error:
+                            print(f"❌ Telethon: Повторная попытка не удалась: {retry_error}")
+                            return {"status": "error", "message": f"Telethon: Не удалось создать совместимую сессию: {str(retry_error)}"}
+                    else:
+                        return {"status": "error", "message": f"Telethon: Ошибка создания клиента: {str(client_create_error)}"}
                 
                 try:
                     print(f"🔌 Telethon: Подключаемся к Telegram...")
