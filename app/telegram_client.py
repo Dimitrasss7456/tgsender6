@@ -1780,14 +1780,8 @@ class TelegramManager:
                 existing_tables = [row[0] for row in cursor.fetchall()]
                 print(f"📋 Существующие таблицы: {existing_tables}")
                 
-                # Всегда пересоздаем все таблицы для гарантии совместимости
-                print("🔄 Удаляем все существующие таблицы для чистого старта...")
-                for table in existing_tables:
-                    try:
-                        cursor.execute(f"DROP TABLE IF EXISTS {table}")
-                        print(f"🗑️ Удалена таблица {table}")
-                    except Exception as drop_error:
-                        print(f"⚠️ Не удалось удалить таблицу {table}: {drop_error}")
+                # Проверяем какие таблицы нужно создать
+                print(f"📋 Проверяем существующие таблицы: {existing_tables}")
                 
                 # Таблица version (обязательная для Telethon)
                 cursor.execute("CREATE TABLE IF NOT EXISTS version (version INTEGER)")
@@ -1839,23 +1833,17 @@ class TelegramManager:
                 """)
                 print("✅ Создана таблица sent_files")
                 
-                # Таблица update_state (для состояния обновлений)
-                if 'update_state' not in existing_tables:
-                    cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS update_state (
-                            id INTEGER PRIMARY KEY,
-                            pts INTEGER,
-                            qts INTEGER,
-                            date INTEGER,
-                            seq INTEGER
-                        )
-                    """)
-                    print("✅ Создана таблица update_state")
-                else:
-                    print("ℹ️ Таблица update_state уже существует")
-                    # Очищаем существующую таблицу для свежего старта
-                    cursor.execute("DELETE FROM update_state")
-                    print("🧹 Очищена существующая таблица update_state")
+                # Таблица update_state (для состояния обновлений) - создаем только если не существует
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS update_state (
+                        id INTEGER PRIMARY KEY,
+                        pts INTEGER,
+                        qts INTEGER,
+                        date INTEGER,
+                        seq INTEGER
+                    )
+                """)
+                print("✅ Создана/проверена таблица update_state")
                 
                 conn.commit()
                 print("✅ Сессия успешно создана для Telethon с полной совместимостью")
@@ -2283,18 +2271,20 @@ class TelegramManager:
                     print(f"❌ Telethon: Файл Pyrogram сессии не найден: {pyrogram_session_file}")
                     return {"status": "error", "message": "Telethon: Pyrogram сессия не найдена"}
 
-                # Всегда пересоздаем Telethon сессию для избежания проблем совместимости
-                try:
-                    print(f"🔄 Telethon: Конвертируем Pyrogram сессию в формат Telethon...")
-                    await self._convert_pyrogram_to_telethon_session(pyrogram_session_file, telethon_session_file)
-                except Exception as convert_error:
-                    print(f"❌ Telethon: Ошибка конвертации: {convert_error}")
-                    return {"status": "error", "message": f"Telethon: Не удалось создать совместимую сессию: {str(convert_error)}"}
+                # Проверяем нужно ли пересоздать сессию
+                session_file_path = f"{telethon_session_file}.session"
+                
+                # Пересоздаем сессию только если файла нет или если предыдущая попытка создания клиента не удалась
+                if not os.path.exists(session_file_path):
+                    try:
+                        print(f"🔄 Telethon: Создаем новую сессию...")
+                        await self._convert_pyrogram_to_telethon_session(pyrogram_session_file, telethon_session_file)
+                    except Exception as convert_error:
+                        print(f"❌ Telethon: Ошибка конвертации: {convert_error}")
+                        return {"status": "error", "message": f"Telethon: Не удалось создать совместимую сессию: {str(convert_error)}"}
 
                 # Создаем Telethon клиент с правильным файлом сессии
                 try:
-                    # Проверяем существование файла сессии перед созданием клиента
-                    session_file_path = f"{telethon_session_file}.session"
                     if not os.path.exists(session_file_path):
                         print(f"❌ Telethon: Файл сессии не найден: {session_file_path}")
                         return {"status": "error", "message": "Telethon: Файл сессии не создан"}
@@ -2303,22 +2293,27 @@ class TelegramManager:
                     telethon_client = TelegramClient(telethon_session_file, API_ID, API_HASH)
                     
                 except Exception as client_create_error:
-                    print(f"❌ Telethon: Ошибка создания клиента: {client_create_error}")
-                    # Если ошибка связана с версией сессии, пробуем пересоздать
-                    if "no such column: version" in str(client_create_error):
-                        print(f"🔄 Telethon: Пересоздаем сессию из-за проблемы с версией...")
+                    error_str = str(client_create_error)
+                    print(f"❌ Telethon: Ошибка создания клиента: {error_str}")
+                    
+                    # Обрабатываем известные ошибки и пересоздаем сессию
+                    if any(error in error_str for error in ["table", "already exists", "no such column", "version"]):
+                        print(f"🔄 Telethon: Пересоздаем сессию из-за проблемы с базой данных...")
                         try:
                             # Удаляем поврежденный файл
-                            if os.path.exists(f"{telethon_session_file}.session"):
-                                os.remove(f"{telethon_session_file}.session")
-                            # Пересоздаем сессию
+                            if os.path.exists(session_file_path):
+                                os.remove(session_file_path)
+                                print(f"🗑️ Telethon: Удален поврежденный файл сессии")
+                            
+                            # Пересоздаем сессию с новой логикой
                             await self._convert_pyrogram_to_telethon_session(pyrogram_session_file, telethon_session_file)
                             telethon_client = TelegramClient(telethon_session_file, API_ID, API_HASH)
+                            print(f"✅ Telethon: Сессия пересоздана успешно")
                         except Exception as retry_error:
                             print(f"❌ Telethon: Повторная попытка не удалась: {retry_error}")
-                            return {"status": "error", "message": f"Telethon: Не удалось создать совместимую сессию: {str(retry_error)}"}
+                            return {"status": "error", "message": f"Telethon: Критическая ошибка сессии: {str(retry_error)}"}
                     else:
-                        return {"status": "error", "message": f"Telethon: Ошибка создания клиента: {str(client_create_error)}"}
+                        return {"status": "error", "message": f"Telethon: Ошибка создания клиента: {error_str}"}
                 
                 try:
                     print(f"🔌 Telethon: Подключаемся к Telegram...")
