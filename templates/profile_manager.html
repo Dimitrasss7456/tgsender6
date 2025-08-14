@@ -134,11 +134,13 @@
                                                 {% endif %}
                                             </td>
                                             <td>
-                                                <button class="btn btn-success btn-sm" 
-                                                        onclick="updateTelegramProfile({{ account.id }})" 
-                                                        title="Обновить профиль в Telegram">
-                                                    <i class="fas fa-sync"></i>
-                                                </button>
+                                                <div class="btn-group" role="group">
+                                                    <button class="btn btn-success btn-sm" 
+                                                            onclick="updateTelegramProfile({{ account.id }})" 
+                                                            title="Применить изменения в Telegram">
+                                                        <i class="fas fa-save"></i>
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                         {% endfor %}
@@ -367,11 +369,23 @@ async function autoAssignGenders() {
 // Обновление профиля в Telegram
 async function updateTelegramProfile(accountId) {
     try {
+        const button = document.querySelector(`button[onclick="updateTelegramProfile(${accountId})"]`);
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Обновляю...';
+        }
+
         const response = await fetch(`/api/accounts/${accountId}/update_telegram_profile`, {
             method: 'POST'
         });
 
         const result = await response.json();
+        
+        if (button) {
+            button.disabled = false;
+            button.innerHTML = '<i class="fas fa-sync"></i>';
+        }
+        
         if (result.success) {
             alert('Профиль успешно обновлен в Telegram!');
         } else {
@@ -380,7 +394,27 @@ async function updateTelegramProfile(accountId) {
     } catch (error) {
         console.error('Ошибка:', error);
         alert('Ошибка обновления профиля в Telegram');
+        
+        const button = document.querySelector(`button[onclick="updateTelegramProfile(${accountId})"]`);
+        if (button) {
+            button.disabled = false;
+            button.innerHTML = '<i class="fas fa-sync"></i>';
+        }
     }
+}
+
+// Функция редактирования профиля (исправляет ошибку editProfile is not defined)
+async function editProfile(accountId) {
+    const first_name = document.querySelector(`#account-${accountId} input[onchange*="first_name"]`).value;
+    const last_name = document.querySelector(`#account-${accountId} input[onchange*="last_name"]`).value;
+    const bio = document.querySelector(`#account-${accountId} textarea[onchange*="bio"]`).value;
+    
+    if (!first_name.trim() && !last_name.trim()) {
+        alert('Укажите хотя бы имя или фамилию перед обновлением профиля');
+        return;
+    }
+    
+    await updateTelegramProfile(accountId);
 }
 
 // Загрузка фото профиля

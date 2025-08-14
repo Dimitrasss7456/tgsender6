@@ -1771,6 +1771,9 @@ class TelegramManager:
     async def update_profile(self, account_id: int, first_name: str = None, last_name: str = None, bio: str = None, profile_photo_path: str = None) -> Dict:
         """Обновление профиля аккаунта в Telegram"""
         try:
+            print(f"🔄 Обновление профиля аккаунта {account_id}")
+            print(f"📝 Данные: имя={first_name}, фамилия={last_name}, био={bio}")
+            
             client = await self._get_client_for_account(account_id)
             if not client:
                 return {"status": "error", "message": "Не удалось подключиться к аккаунту"}
@@ -1778,32 +1781,88 @@ class TelegramManager:
             if not client.is_connected:
                 await client.connect()
 
-            # Обновляем текстовые данные профиля
+            # Получаем текущую информацию о пользователе
             try:
+                me = await client.get_me()
+                print(f"👤 Текущий профиль: {me.first_name} {me.last_name or ''}")
+            except Exception as me_error:
+                print(f"⚠️ Не удалось получить текущую информацию: {me_error}")
+                me = None
+
+            # Обновляем текстовые данные профиля
+            update_success = False
+            try:
+                # Убираем пустые значения и используем разумные ограничения
+                first_name_clean = (first_name or "").strip()[:64] if first_name else ""
+                last_name_clean = (last_name or "").strip()[:64] if last_name else ""
+                bio_clean = (bio or "").strip()[:70] if bio else ""  # Telegram ограничивает био до 70 символов
+                
+                if not first_name_clean:
+                    first_name_clean = "User"  # Telegram требует непустое имя
+                
+                print(f"🔄 Отправляем обновление профиля...")
+                print(f"   Имя: '{first_name_clean}'")
+                print(f"   Фамилия: '{last_name_clean}'")
+                print(f"   Био: '{bio_clean}'")
+                
                 await client.update_profile(
-                    first_name=first_name or "",
-                    last_name=last_name or "",
-                    bio=bio or ""
+                    first_name=first_name_clean,
+                    last_name=last_name_clean,
+                    bio=bio_clean
                 )
-                print(f"✅ Профиль текстовые данные обновлены: {first_name} {last_name}")
+                
+                print(f"✅ Профиль успешно обновлен в Telegram")
+                update_success = True
+                
             except Exception as profile_error:
-                print(f"❌ Ошибка обновления текстовых данных профиля: {profile_error}")
-                return {"status": "error", "message": f"Ошибка обновления данных профиля: {str(profile_error)}"}
+                error_str = str(profile_error).lower()
+                print(f"❌ Ошибка обновления профиля: {profile_error}")
+                
+                # Обработка специфических ошибок Telegram
+                if "firstname_invalid" in error_str:
+                    return {"status": "error", "message": "Неверный формат имени. Используйте только буквы и пробелы"}
+                elif "about_too_long" in error_str:
+                    return {"status": "error", "message": "Описание слишком длинное (максимум 70 символов)"}
+                elif "flood" in error_str:
+                    return {"status": "error", "message": "Слишком частые изменения профиля. Попробуйте позже"}
+                else:
+                    return {"status": "error", "message": f"Ошибка обновления профиля: {str(profile_error)}"}
 
             # Обновляем фото профиля если предоставлено
+            photo_success = True
             if profile_photo_path and os.path.exists(profile_photo_path):
                 try:
+                    print(f"🖼️ Обновляем фото профиля: {profile_photo_path}")
                     await client.set_profile_photo(photo=profile_photo_path)
-                    print(f"✅ Фото профиля обновлено: {profile_photo_path}")
+                    print(f"✅ Фото профиля обновлено")
                 except Exception as photo_error:
                     print(f"❌ Ошибка обновления фото профиля: {photo_error}")
-                    # Не возвращаем ошибку, так как основные данные уже обновлены
-                    return {"status": "success", "message": f"Профиль обновлен, но не удалось установить фото: {str(photo_error)}"}
+                    photo_success = False
 
-            return {"status": "success", "message": "Профиль успешно обновлен в Telegram"}
+            # Проверяем результат обновления
+            try:
+                await asyncio.sleep(1)  # Даем время на синхронизацию
+                updated_me = await client.get_me()
+                print(f"🔍 Проверка обновления: {updated_me.first_name} {updated_me.last_name or ''}")
+                
+                if update_success:
+                    if profile_photo_path and not photo_success:
+                        return {"status": "success", "message": "Профиль обновлен, но не удалось установить фото"}
+                    else:
+                        return {"status": "success", "message": "Профиль успешно обновлен в Telegram"}
+                else:
+                    return {"status": "error", "message": "Не удалось обновить профиль"}
+                    
+            except Exception as check_error:
+                print(f"⚠️ Не удалось проверить обновление: {check_error}")
+                if update_success:
+                    return {"status": "success", "message": "Профиль вероятно обновлен (не удалось проверить)"}
+                else:
+                    return {"status": "error", "message": "Ошибка при проверке обновления профиля"}
 
         except Exception as e:
-            return {"status": "error", "message": f"Ошибка обновления профиля: {str(e)}"}
+            print(f"❌ Общая ошибка обновления профиля: {e}")
+            return {"status": "error", "message": f"Общая ошибка: {str(e)}"}
 
     async def send_reaction(self, account_id: int, chat_id: str, message_id: int, emoji: str) -> Dict:
         """Отправка реакции на сообщение"""

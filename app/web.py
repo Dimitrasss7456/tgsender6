@@ -1370,12 +1370,30 @@ async def upload_profile_photo(account_id: int, photo: UploadFile = File(...), d
         return {"success": False, "message": str(e)}
 
 @app.post("/api/accounts/{account_id}/update_telegram_profile")
-async def update_telegram_profile(account_id: int, db: Session = Depends(get_db)):
+async def update_telegram_profile(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Обновление профиля в Telegram"""
     try:
-        account = db.query(Account).filter(Account.id == account_id).first()
+        # Проверяем права доступа
+        if not current_user.is_admin:
+            account = db.query(Account).filter(
+                Account.id == account_id,
+                Account.user_id == current_user.id
+            ).first()
+        else:
+            account = db.query(Account).filter(Account.id == account_id).first()
+
         if not account:
-            return {"success": False, "message": "Аккаунт не найден"}
+            return {"success": False, "message": "Аккаунт не найден или нет прав доступа"}
+
+        if not account.is_active:
+            return {"success": False, "message": "Аккаунт неактивен"}
+
+        # Проверяем что есть данные для обновления
+        if not account.first_name and not account.last_name:
+            return {"success": False, "message": "Укажите имя и/или фамилию перед обновлением"}
+
+        print(f"🔄 API: Обновление профиля аккаунта {account_id}")
+        print(f"📝 Данные из БД: {account.first_name}, {account.last_name}, {account.bio}")
 
         # Обновляем профиль в Telegram
         result = await telegram_manager.update_profile(
@@ -1386,13 +1404,19 @@ async def update_telegram_profile(account_id: int, db: Session = Depends(get_db)
             profile_photo_path=account.profile_photo_path
         )
 
+        print(f"📊 Результат обновления: {result}")
+
         if result["status"] == "success":
-            return {"success": True, "message": "Профиль обновлен в Telegram"}
+            # Обновляем статус аккаунта после успешного изменения
+            account.last_activity = datetime.utcnow()
+            db.commit()
+            return {"success": True, "message": result["message"]}
         else:
             return {"success": False, "message": result["message"]}
 
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        print(f"❌ Ошибка API обновления профиля: {e}")
+        return {"success": False, "message": f"Ошибка сервера: {str(e)}"}
 
 # API для кампаний комментирования
 @app.post("/api/comment_campaigns")
