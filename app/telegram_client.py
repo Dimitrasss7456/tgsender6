@@ -1976,19 +1976,55 @@ class TelegramManager:
                             discussion_group_id = channel.linked_chat_id
                             print(f"📢 Найдена группа обсуждений: {discussion_group_id}")
 
-                            # Отправляем комментарий в группу обсуждений
-                            sent_message = await client.send_message(
-                                chat_id=discussion_group_id,
-                                text=comment,
-                                reply_to_message_id=message_id
-                            )
+                            try:
+                                # Пытаемся вступить в группу обсуждений если не состоим
+                                try:
+                                    await client.join_chat(discussion_group_id)
+                                    print(f"✅ Вступили в группу обсуждений {discussion_group_id}")
+                                    # Небольшая задержка после вступления
+                                    await asyncio.sleep(2)
+                                except Exception as join_error:
+                                    print(f"⚠️ Не удалось вступить в группу: {join_error}")
 
-                            print(f"✅ Комментарий отправлен в группу обсуждений аккаунтом {account_id}")
-                            return {
-                                "status": "success",
-                                "message": "Комментарий отправлен в группу обсуждений",
-                                "message_id": sent_message.id
-                            }
+                                # Отправляем комментарий в группу обсуждений
+                                sent_message = await client.send_message(
+                                    chat_id=discussion_group_id,
+                                    text=comment,
+                                    reply_to_message_id=message_id
+                                )
+
+                                print(f"✅ Комментарий отправлен в группу обсуждений аккаунтом {account_id}")
+                                return {
+                                    "status": "success",
+                                    "message": "Комментарий отправлен в группу обсуждений",
+                                    "message_id": sent_message.id
+                                }
+
+                            except Exception as discussion_send_error:
+                                discussion_error_str = str(discussion_send_error)
+                                print(f"❌ Ошибка отправки в группу обсуждений: {discussion_error_str}")
+                                
+                                # Обрабатываем специфические ошибки группы обсуждений
+                                if "CHAT_GUEST_SEND_FORBIDDEN" in discussion_error_str:
+                                    return {
+                                        "status": "error",
+                                        "message": "Аккаунт не имеет прав для отправки в группу обсуждений канала. Необходимо быть участником с правами отправки сообщений"
+                                    }
+                                elif "USER_BANNED_IN_CHANNEL" in discussion_error_str:
+                                    return {
+                                        "status": "error",
+                                        "message": "Аккаунт заблокирован в канале или группе обсуждений"
+                                    }
+                                elif "CHAT_WRITE_FORBIDDEN" in discussion_error_str:
+                                    return {
+                                        "status": "error", 
+                                        "message": "Запрещена отправка сообщений в группу обсуждений канала"
+                                    }
+                                else:
+                                    return {
+                                        "status": "error",
+                                        "message": f"Ошибка отправки в группу обсуждений: {discussion_error_str}"
+                                    }
                         else:
                             print(f"❌ У канала {chat_id} нет группы обсуждений")
                             return {"status": "error", "message": "У канала нет группы обсуждений"}
@@ -1997,8 +2033,18 @@ class TelegramManager:
                         print(f"❌ Ошибка поиска группы обсуждений: {discussion_error}")
                         return {"status": "error", "message": f"Не удалось найти группу обсуждений: {str(discussion_error)}"}
 
-                # Возвращаем исходную ошибку
-                return {"status": "error", "message": f"Ошибка отправки комментария: {error_str}"}
+                # Обрабатываем другие специфические ошибки
+                elif "USERNAME_INVALID" in error_str:
+                    return {"status": "error", "message": f"Неверное имя пользователя или канала: {chat_id}"}
+                elif "PEER_ID_INVALID" in error_str:
+                    return {"status": "error", "message": f"Канал/чат {chat_id} не найден или недоступен"}
+                elif "USER_BANNED_IN_CHANNEL" in error_str:
+                    return {"status": "error", "message": "Аккаунт заблокирован в этом канале"}
+                elif "CHAT_WRITE_FORBIDDEN" in error_str:
+                    return {"status": "error", "message": "Запрещена отправка сообщений в этот канал"}
+                else:
+                    # Возвращаем исходную ошибку
+                    return {"status": "error", "message": f"Ошибка отправки комментария: {error_str}"}
 
         except Exception as e:
             print(f"❌ Общая ошибка отправки комментария: {e}")
