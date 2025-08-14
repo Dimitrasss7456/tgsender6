@@ -1485,6 +1485,131 @@ async def start_comment_campaign(campaign_id: int, db: Session = Depends(get_db)
     except Exception as e:
         return {"success": False, "message": str(e)}
 
+async def run_comment_campaign(campaign_id: int):
+    """Выполнение кампании комментирования"""
+    from app.database import CommentCampaign, CommentLog, Account
+    import re
+    import random
+    
+    db = next(get_db())
+    try:
+        campaign = db.query(CommentCampaign).filter(CommentCampaign.id == campaign_id).first()
+        if not campaign:
+            print(f"❌ Кампания комментирования {campaign_id} не найдена")
+            return
+
+        print(f"🔄 Запуск кампании комментирования {campaign_id}: {campaign.name}")
+        
+        # Парсим URL поста
+        url_match = re.search(r't\.me/([^/]+)/(\d+)', campaign.post_url)
+        if not url_match:
+            print(f"❌ Неверный формат URL: {campaign.post_url}")
+            campaign.status = "failed"
+            db.commit()
+            return
+            
+        chat_id = f"@{url_match.group(1)}"
+        message_id = int(url_match.group(2))
+        
+        print(f"📍 Цель: {chat_id}, сообщение: {message_id}")
+        
+        # Получаем активные аккаунты
+        accounts = db.query(Account).filter(Account.is_active == True).all()
+        if not accounts:
+            print("❌ Нет активных аккаунтов для комментирования")
+            campaign.status = "failed"
+            db.commit()
+            return
+            
+        print(f"👥 Найдено {len(accounts)} активных аккаунтов")
+        
+        # Парсим комментарии
+        male_comments = [c.strip() for c in (campaign.comments_male or "").split('\n') if c.strip()]
+        female_comments = [c.strip() for c in (campaign.comments_female or "").split('\n') if c.strip()]
+        
+        if not male_comments and not female_comments:
+            print("❌ Нет комментариев для отправки")
+            campaign.status = "failed"
+            db.commit()
+            return
+            
+        print(f"💬 Мужских комментариев: {len(male_comments)}, женских: {len(female_comments)}")
+        
+        success_count = 0
+        for account in accounts:
+            try:
+                # Выбираем комментарий по гендеру аккаунта
+                if account.gender == 'male' and male_comments:
+                    comment = random.choice(male_comments)
+                elif account.gender == 'female' and female_comments:
+                    comment = random.choice(female_comments)
+                elif male_comments:
+                    comment = random.choice(male_comments)
+                elif female_comments:
+                    comment = random.choice(female_comments)
+                else:
+                    continue
+                    
+                print(f"🔄 Отправка комментария от аккаунта {account.id} в чат {chat_id}, reply к сообщению {message_id}")
+                print(f"📝 Комментарий: {comment}")
+                
+                # Отправляем комментарий
+                result = await telegram_manager.send_comment(
+                    account_id=account.id,
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    comment=comment
+                )
+                
+                # Логируем результат с правильными полями
+                try:
+                    log_entry = CommentLog(
+                        campaign_id=campaign_id,
+                        account_id=account.id,
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        comment=comment,
+                        status=result["status"],
+                        error_message=result.get("message") if result["status"] == "error" else None
+                    )
+                    db.add(log_entry)
+                    db.commit()
+                    
+                    if result["status"] == "success":
+                        success_count += 1
+                        print(f"✅ Комментарий отправлен от аккаунта {account.id}")
+                    else:
+                        print(f"❌ Ошибка от аккаунта {account.id}: {result.get('message', 'Неизвестная ошибка')}")
+                        
+                except Exception as log_error:
+                    print(f"❌ Исключение при отправке комментария: {log_error}")
+                    db.rollback()
+                    
+                # Задержка между комментариями
+                if campaign.delay_seconds > 0:
+                    await asyncio.sleep(campaign.delay_seconds)
+                    
+            except Exception as account_error:
+                print(f"❌ Ошибка с аккаунтом {account.id}: {account_error}")
+                continue
+                
+        # Обновляем статус кампании
+        campaign.status = "completed"
+        campaign.completed_at = datetime.utcnow()
+        db.commit()
+        
+        print(f"🎉 Кампания комментирования завершена. Успешно: {success_count}/{len(accounts)}")
+        
+    except Exception as e:
+        print(f"❌ Ошибка в кампании комментирования {campaign_id}: {e}")
+        try:
+            campaign.status = "failed"
+            db.commit()
+        except:
+            pass
+    finally:
+        db.close()
+
 @app.post("/api/comment_campaigns/{campaign_id}/stop")
 async def stop_comment_campaign(campaign_id: int, db: Session = Depends(get_db)):
     """Остановка кампании комментирования"""

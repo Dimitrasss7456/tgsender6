@@ -3,20 +3,15 @@ import sqlite3
 import os
 
 def migrate_comment_tables():
-    """Создание таблиц для кампаний комментирования"""
-    db_path = "telegram_sender.db"
-    
+    """Миграция таблиц для кампаний комментирования с обновлением существующих"""
     print("🔄 Запуск миграции таблиц кампаний...")
     
-    if not os.path.exists(db_path):
-        print("❌ База данных не найдена")
-        return False
+    db_path = "telegram_sender.db"
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
     
     try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        # Создаем таблицу кампаний комментирования
+        # Создаем таблицу comment_campaigns если не существует
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS comment_campaigns (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,9 +26,24 @@ def migrate_comment_tables():
                 completed_at DATETIME
             )
         """)
-        print("✅ Создана таблица: comment_campaigns")
+        print("✅ Создана/проверена таблица: comment_campaigns")
         
-        # Создаем таблицу логов комментариев
+        # Проверяем существующую структуру comment_logs
+        cursor.execute("PRAGMA table_info(comment_logs)")
+        existing_columns = [row[1] for row in cursor.fetchall()]
+        print(f"📋 Существующие столбцы в comment_logs: {existing_columns}")
+        
+        # Если таблица comment_logs существует, но не имеет нужных столбцов - пересоздаем её
+        if existing_columns and 'chat_id' not in existing_columns:
+            print("🔄 Пересоздаем таблицу comment_logs с новой структурой...")
+            
+            # Сохраняем старые данные если есть
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='comment_logs'")
+            if cursor.fetchone():
+                cursor.execute("ALTER TABLE comment_logs RENAME TO comment_logs_old")
+                print("📦 Старая таблица переименована в comment_logs_old")
+        
+        # Создаем новую таблицу comment_logs с правильной структурой
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS comment_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,7 +61,24 @@ def migrate_comment_tables():
         """)
         print("✅ Создана таблица: comment_logs")
         
-        # Создаем таблицу кампаний реакций
+        # Мигрируем данные из старой таблицы если она существует
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='comment_logs_old'")
+        if cursor.fetchone():
+            try:
+                cursor.execute("""
+                    INSERT INTO comment_logs (campaign_id, account_id, chat_id, message_id, comment, status, error_message, sent_at)
+                    SELECT campaign_id, account_id, '', 0, comment_text, status, error_message, sent_at
+                    FROM comment_logs_old
+                """)
+                print("📦 Данные мигрированы из старой таблицы")
+                
+                # Удаляем старую таблицу
+                cursor.execute("DROP TABLE comment_logs_old")
+                print("🗑️ Старая таблица удалена")
+            except Exception as migrate_error:
+                print(f"⚠️ Ошибка миграции данных: {migrate_error}")
+        
+        # Создаем таблицу reaction_campaigns если не существует
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS reaction_campaigns (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,7 +92,7 @@ def migrate_comment_tables():
         """)
         print("✅ Создана таблица: reaction_campaigns")
         
-        # Создаем таблицу кампаний просмотров
+        # Создаем таблицу view_campaigns если не существует
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS view_campaigns (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,14 +106,14 @@ def migrate_comment_tables():
         print("✅ Создана таблица: view_campaigns")
         
         conn.commit()
-        conn.close()
-        
         print("🎉 Миграция завершена успешно!")
-        return True
         
     except Exception as e:
+        conn.rollback()
         print(f"❌ Ошибка миграции: {e}")
-        return False
+        raise e
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
     migrate_comment_tables()
