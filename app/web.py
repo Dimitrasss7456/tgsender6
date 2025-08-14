@@ -744,7 +744,7 @@ async def profile_manager_page(request: Request, db: Session = Depends(get_db), 
         accounts = db.query(Account).all()
     else:
         accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
-    
+
     return templates.TemplateResponse("profile_manager.html", {
         "request": request,
         "accounts": accounts,
@@ -1625,174 +1625,52 @@ async def run_comment_campaign(campaign_id: int):
     except Exception as e:
         print(f"❌ Ошибка в кампании комментирования {campaign_id}: {e}")
 
-async def send_comment_to_post(account_id: int, chat_id: str, message_id: int, comment: str, campaign_id: int, db):
-    """Отправка комментария к посту"""
-    try:
-        from app.database import CommentLog
+async def send_comment_to_post(account_id: int, chat_id: str, message_id: int, comment: str, campaign_id: int, db: Session):
+    """Отправка комментария под пост с правильной обработкой ошибок"""
+    from app.database import CommentLog
 
-        print(f"🔄 Отправка комментария от аккаунта {account_id} в чат {chat_id}, сообщение {message_id}")
+    try:
+        print(f"🔄 Отправка комментария от аккаунта {account_id} в чат {chat_id}, reply к сообщению {message_id}")
         print(f"📝 Комментарий: {comment}")
 
-        # Проверяем валидность аккаунта в БД
-        account = db.query(Account).filter(Account.id == account_id).first()
-        if not account or not account.is_active:
-            print(f"❌ Аккаунт {account_id} неактивен или не найден")
-            # Логируем ошибку
-            log = CommentLog(
-                campaign_id=campaign_id,
-                account_id=account_id,
-                comment_text=comment,
-                status="failed",
-                error_message="Аккаунт неактивен"
-            )
-            db.add(log)
-            db.commit()
-            return
+        # Используем telegram_manager для отправки комментария
+        result = await telegram_manager.send_comment(account_id, chat_id, message_id, comment)
 
-        # Получаем клиент
-        client = await telegram_manager.get_client(account_id)
-        if not client:
-            print(f"❌ Не удалось получить клиент для аккаунта {account_id}")
-            # Деактивируем аккаунт с проблемной сессией
-            account.is_active = False
-            account.status = "error"
-            db.commit()
-            
-            # Логируем ошибку
-            log = CommentLog(
-                campaign_id=campaign_id,
-                account_id=account_id,
-                comment_text=comment,
-                status="failed",
-                error_message="Не удалось подключиться к аккаунту"
-            )
-            db.add(log)
-            db.commit()
-            return
+        # Логируем результат
+        log_entry = CommentLog(
+            campaign_id=campaign_id,
+            account_id=account_id,
+            chat_id=chat_id,
+            message_id=message_id,
+            comment=comment,
+            status=result.get("status", "unknown"),
+            error_message=result.get("message") if result.get("status") == "error" else None
+        )
 
-        # Проверяем подключение
-        if not client.is_connected:
-            await client.connect()
+        db.add(log_entry)
+        db.commit()
 
-        # Отправляем комментарий в чат, а не как reply
-        try:
-            # Преобразуем chat_id к правильному формату
-            if isinstance(chat_id, str) and chat_id.startswith('@'):
-                target_chat = chat_id
-            elif isinstance(chat_id, str) and chat_id.startswith('-'):
-                target_chat = int(chat_id)
-            else:
-                target_chat = chat_id
-
-            print(f"🎯 Целевой чат: {target_chat}")
-
-            # Вместо reply отправляем обычное сообщение в чат
-            sent_message = await client.send_message(
-                chat_id=target_chat,
-                text=comment
-            )
-
-            # Логируем успешную отправку
-            log = CommentLog(
-                campaign_id=campaign_id,
-                account_id=account_id,
-                comment_text=comment,
-                status="sent"
-            )
-            db.add(log)
-            db.commit()
-
-            print(f"✅ Комментарий отправлен аккаунтом {account_id}: {comment[:50]}...")
-
-        except Exception as send_error:
-            error_msg = str(send_error)
-            print(f"❌ Ошибка отправки комментария аккаунтом {account_id}: {error_msg}")
-            
-            # Обработка AUTH_KEY_UNREGISTERED
-            if "AUTH_KEY_UNREGISTERED" in error_msg:
-                print(f"🔧 Деактивируем аккаунт {account_id} с недействительной сессией")
-                account.is_active = False
-                account.status = "session_invalid"
-                db.commit()
-                
-                # Удаляем клиент из памяти
-                await telegram_manager.disconnect_client(account_id)
-            
-            # Обработка USERNAME_INVALID
-            elif "USERNAME_INVALID" in error_msg:
-                print(f"❌ Неверный username: {chat_id}")
-                error_msg = f"Неверный username канала: {chat_id}. Проверьте правильность URL"
-            
-            # Если нет прав в основном чате, попробуем найти группу обсуждений
-            elif "CHAT_ADMIN_REQUIRED" in error_msg or "CHAT_WRITE_FORBIDDEN" in error_msg:
-                print(f"🔄 Пробуем найти группу обсуждений для канала {chat_id}")
-                try:
-                    # Получаем информацию о канале
-                    chat_info = await client.get_chat(target_chat)
-                    
-                    # Проверяем есть ли linked_chat (группа обсуждений)
-                    if hasattr(chat_info, 'linked_chat') and chat_info.linked_chat:
-                        discussion_group_id = chat_info.linked_chat.id
-                        print(f"📢 Найдена группа обсуждений: {discussion_group_id}")
-                        
-                        # Отправляем комментарий в группу обсуждений
-                        sent_message = await client.send_message(
-                            chat_id=discussion_group_id,
-                            text=comment,
-                            reply_to_message_id=message_id
-                        )
-                        
-                        # Логируем успешную отправку
-                        log = CommentLog(
-                            campaign_id=campaign_id,
-                            account_id=account_id,
-                            comment_text=comment,
-                            status="sent"
-                        )
-                        db.add(log)
-                        db.commit()
-                        
-                        print(f"✅ Комментарий отправлен в группу обсуждений аккаунтом {account_id}")
-                        return
-                        
-                except Exception as discussion_error:
-                    print(f"❌ Ошибка отправки в группу обсуждений: {discussion_error}")
-            
-            # Более детальная обработка ошибок
-            elif "PEER_ID_INVALID" in error_msg:
-                print(f"❌ Чат {chat_id} не найден или нет доступа")
-                error_msg = f"Канал {chat_id} не найден или нет доступа"
-            elif "MESSAGE_ID_INVALID" in error_msg:
-                print(f"❌ Сообщение {message_id} не найдено")
-                error_msg = f"Сообщение {message_id} не найдено в канале"
-
-            # Логируем ошибку
-            log = CommentLog(
-                campaign_id=campaign_id,
-                account_id=account_id,
-                comment_text=comment,
-                status="failed",
-                error_message=error_msg
-            )
-            db.add(log)
-            db.commit()
+        if result.get("status") == "success":
+            print(f"✅ Комментарий отправлен под пост аккаунтом {account_id}")
+        else:
+            print(f"❌ Не удалось отправить комментарий аккаунтом {account_id}: {result.get('message')}")
 
     except Exception as e:
-        print(f"❌ Общая ошибка отправки комментария: {e}")
-        
-        # Логируем общую ошибку
-        try:
-            log = CommentLog(
-                campaign_id=campaign_id,
-                account_id=account_id,
-                comment_text=comment,
-                status="failed",
-                error_message=f"Общая ошибка: {str(e)}"
-            )
-            db.add(log)
-            db.commit()
-        except:
-            pass
+        print(f"❌ Исключение при отправке комментария: {e}")
+
+        # Логируем ошибку
+        log_entry = CommentLog(
+            campaign_id=campaign_id,
+            account_id=account_id,
+            chat_id=chat_id,
+            message_id=message_id,
+            comment=comment,
+            status="error",
+            error_message=str(e)
+        )
+
+        db.add(log_entry)
+        db.commit()
 
 async def run_reaction_campaign(campaign_id: int):
     """Выполнение кампании реакций"""
