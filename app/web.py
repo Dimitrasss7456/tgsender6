@@ -1633,10 +1633,41 @@ async def send_comment_to_post(account_id: int, chat_id: str, message_id: int, c
         print(f"🔄 Отправка комментария от аккаунта {account_id} в чат {chat_id}, сообщение {message_id}")
         print(f"📝 Комментарий: {comment}")
 
+        # Проверяем валидность аккаунта в БД
+        account = db.query(Account).filter(Account.id == account_id).first()
+        if not account or not account.is_active:
+            print(f"❌ Аккаунт {account_id} неактивен или не найден")
+            # Логируем ошибку
+            log = CommentLog(
+                campaign_id=campaign_id,
+                account_id=account_id,
+                comment_text=comment,
+                status="failed",
+                error_message="Аккаунт неактивен"
+            )
+            db.add(log)
+            db.commit()
+            return
+
         # Получаем клиент
         client = await telegram_manager.get_client(account_id)
         if not client:
             print(f"❌ Не удалось получить клиент для аккаунта {account_id}")
+            # Деактивируем аккаунт с проблемной сессией
+            account.is_active = False
+            account.status = "error"
+            db.commit()
+            
+            # Логируем ошибку
+            log = CommentLog(
+                campaign_id=campaign_id,
+                account_id=account_id,
+                comment_text=comment,
+                status="failed",
+                error_message="Не удалось подключиться к аккаунту"
+            )
+            db.add(log)
+            db.commit()
             return
 
         # Проверяем подключение
@@ -1648,7 +1679,7 @@ async def send_comment_to_post(account_id: int, chat_id: str, message_id: int, c
             # Преобразуем chat_id к правильному формату
             if isinstance(chat_id, str) and chat_id.startswith('@'):
                 target_chat = chat_id
-            elif chat_id.startswith('-'):
+            elif isinstance(chat_id, str) and chat_id.startswith('-'):
                 target_chat = int(chat_id)
             else:
                 target_chat = chat_id
@@ -1677,8 +1708,23 @@ async def send_comment_to_post(account_id: int, chat_id: str, message_id: int, c
             error_msg = str(send_error)
             print(f"❌ Ошибка отправки комментария аккаунтом {account_id}: {error_msg}")
             
+            # Обработка AUTH_KEY_UNREGISTERED
+            if "AUTH_KEY_UNREGISTERED" in error_msg:
+                print(f"🔧 Деактивируем аккаунт {account_id} с недействительной сессией")
+                account.is_active = False
+                account.status = "session_invalid"
+                db.commit()
+                
+                # Удаляем клиент из памяти
+                await telegram_manager.disconnect_client(account_id)
+            
+            # Обработка USERNAME_INVALID
+            elif "USERNAME_INVALID" in error_msg:
+                print(f"❌ Неверный username: {chat_id}")
+                error_msg = f"Неверный username канала: {chat_id}. Проверьте правильность URL"
+            
             # Если нет прав в основном чате, попробуем найти группу обсуждений
-            if "CHAT_ADMIN_REQUIRED" in error_msg or "CHAT_WRITE_FORBIDDEN" in error_msg:
+            elif "CHAT_ADMIN_REQUIRED" in error_msg or "CHAT_WRITE_FORBIDDEN" in error_msg:
                 print(f"🔄 Пробуем найти группу обсуждений для канала {chat_id}")
                 try:
                     # Получаем информацию о канале
@@ -1713,14 +1759,12 @@ async def send_comment_to_post(account_id: int, chat_id: str, message_id: int, c
                     print(f"❌ Ошибка отправки в группу обсуждений: {discussion_error}")
             
             # Более детальная обработка ошибок
-            if "PEER_ID_INVALID" in error_msg:
+            elif "PEER_ID_INVALID" in error_msg:
                 print(f"❌ Чат {chat_id} не найден или нет доступа")
+                error_msg = f"Канал {chat_id} не найден или нет доступа"
             elif "MESSAGE_ID_INVALID" in error_msg:
                 print(f"❌ Сообщение {message_id} не найдено")
-            elif "CHAT_ADMIN_REQUIRED" in error_msg:
-                print(f"❌ Требуются права администратора для отправки в {chat_id}")
-            elif "CHAT_WRITE_FORBIDDEN" in error_msg:
-                print(f"❌ Нет прав для записи в чат {chat_id}")
+                error_msg = f"Сообщение {message_id} не найдено в канале"
 
             # Логируем ошибку
             log = CommentLog(
@@ -1735,6 +1779,20 @@ async def send_comment_to_post(account_id: int, chat_id: str, message_id: int, c
 
     except Exception as e:
         print(f"❌ Общая ошибка отправки комментария: {e}")
+        
+        # Логируем общую ошибку
+        try:
+            log = CommentLog(
+                campaign_id=campaign_id,
+                account_id=account_id,
+                comment_text=comment,
+                status="failed",
+                error_message=f"Общая ошибка: {str(e)}"
+            )
+            db.add(log)
+            db.commit()
+        except:
+            pass
 
 async def run_reaction_campaign(campaign_id: int):
     """Выполнение кампании реакций"""
@@ -1857,20 +1915,28 @@ def parse_telegram_url(url: str):
         patterns = [
             r'https://t\.me/([^/]+)/(\d+)',  # https://t.me/channel/123
             r'https://telegram\.me/([^/]+)/(\d+)',  # https://telegram.me/channel/123
+            r't\.me/([^/]+)/(\d+)',  # t.me/channel/123
         ]
 
         for pattern in patterns:
-            match = re.match(pattern, url)
+            match = re.search(pattern, url)
             if match:
                 chat_username = match.group(1)
                 message_id = int(match.group(2))
 
+                # Проверяем что это не одиночная буква (как @c)
+                if len(chat_username) < 5:
+                    print(f"⚠️ Подозрительно короткое имя канала: {chat_username}")
+                    return None, None
+
                 # Если это username, добавляем @
-                if not chat_username.startswith('@'):
+                if not chat_username.startswith('@') and not chat_username.startswith('-'):
                     chat_username = f"@{chat_username}"
 
                 return chat_username, message_id
 
+        # Если URL не распознан, попробуем извлечь вручную
+        print(f"❌ Не удалось распарсить URL: {url}")
         return None, None
 
     except Exception as e:
