@@ -1915,7 +1915,7 @@ class TelegramManager:
             return {"status": "error", "message": f"Ошибка просмотра сообщения: {str(e)}"}
 
     async def send_comment(self, account_id: int, chat_id: str, message_id: int, comment: str) -> Dict:
-        """Отправка комментария под пост (reply) с правильной обработкой каналов"""
+        """Отправка комментария под пост через raw API для полноценного комментирования"""
         try:
             client = await self._get_client_for_account(account_id)
             if not client:
@@ -1940,7 +1940,7 @@ class TelegramManager:
                         is_bot=False
                     )
 
-            print(f"🔄 Отправка комментария от аккаунта {account_id} в чат {chat_id}, reply к сообщению {message_id}")
+            print(f"🔄 Отправка комментария от аккаунта {account_id} в чат {chat_id}, к сообщению {message_id}")
             print(f"📝 Комментарий: {comment}")
 
             # Нормализуем chat_id
@@ -1950,81 +1950,158 @@ class TelegramManager:
             elif isinstance(chat_id, str) and chat_id.startswith('-'):
                 target_chat = int(chat_id)
 
+            # Сначала пытаемся использовать raw API для отправки комментария
             try:
-                # Основная попытка - отправляем комментарий как reply к посту
-                sent_message = await client.send_message(
-                    chat_id=target_chat,
-                    text=comment,
-                    reply_to_message_id=message_id
+                from pyrogram.raw import functions, types
+                
+                # Получаем peer объект для канала
+                peer = await client.resolve_peer(target_chat)
+                
+                # Пытаемся отправить комментарий напрямую через raw API
+                result = await client.invoke(
+                    functions.messages.SendMessage(
+                        peer=peer,
+                        message=comment,
+                        reply_to=types.InputReplyToMessage(reply_to_msg_id=message_id),
+                        random_id=client.rnd_id()
+                    )
                 )
+                
+                if result:
+                    print(f"✅ Комментарий отправлен напрямую под пост аккаунтом {account_id}")
+                    return {
+                        "status": "success",
+                        "message": "Комментарий отправлен под пост",
+                        "message_id": getattr(result.updates[0], 'id', None) if hasattr(result, 'updates') and result.updates else None
+                    }
 
-                print(f"✅ Комментарий отправлен под пост аккаунтом {account_id}")
-                return {
-                    "status": "success",
-                    "message": "Комментарий отправлен под пост",
-                    "message_id": sent_message.id
-                }
+            except Exception as raw_error:
+                error_str = str(raw_error)
+                print(f"❌ Raw API ошибка: {error_str}")
+                
+                # Если raw API не сработал, пробуем обычный способ
+                try:
+                    sent_message = await client.send_message(
+                        chat_id=target_chat,
+                        text=comment,
+                        reply_to_message_id=message_id
+                    )
 
-            except Exception as send_error:
-                error_str = str(send_error)
-                print(f"❌ Ошибка отправки комментария под пост аккаунтом {account_id}: {error_str}")
+                    print(f"✅ Комментарий отправлен через обычный API аккаунтом {account_id}")
+                    return {
+                        "status": "success",
+                        "message": "Комментарий отправлен под пост",
+                        "message_id": sent_message.id
+                    }
 
-                # Специальная обработка для каналов с закрытыми комментариями
-                if "CHAT_ADMIN_REQUIRED" in error_str:
-                    print(f"🔄 Пробуем найти группу обсуждений для канала {chat_id}")
-                    
-                    # Пытаемся найти группу обсуждений канала
-                    try:
-                        channel = await client.get_chat(chat_id)
-                        if hasattr(channel, 'linked_chat') and channel.linked_chat:
-                            discussion_group_id = channel.linked_chat.id
-                            print(f"📢 Найдена группа обсуждений: {discussion_group_id}")
-                            
-                            # Пытаемся отправить комментарий в группу обсуждений
-                            try:
-                                sent_message = await client.send_message(
-                                    chat_id=discussion_group_id,
-                                    text=comment,
-                                    reply_to_message_id=message_id
-                                )
-                                print(f"✅ Комментарий отправлен в группу обсуждений аккаунтом {account_id}")
+                except Exception as send_error:
+                    error_str = str(send_error)
+                    print(f"❌ Ошибка отправки комментария под пост аккаунтом {account_id}: {error_str}")
+
+                    # Специальная обработка для каналов с закрытыми комментариями
+                    if "CHAT_ADMIN_REQUIRED" in error_str or "CHAT_WRITE_FORBIDDEN" in error_str:
+                        print(f"🔄 Пробуем найти группу обсуждений для канала {chat_id}")
+                        
+                        # Пытаемся найти группу обсуждений канала
+                        try:
+                            channel = await client.get_chat(chat_id)
+                            if hasattr(channel, 'linked_chat') and channel.linked_chat:
+                                discussion_group_id = channel.linked_chat.id
+                                print(f"📢 Найдена группа обсуждений: {discussion_group_id}")
+                                
+                                # Пытаемся отправить комментарий в группу обсуждений через raw API
+                                try:
+                                    discussion_peer = await client.resolve_peer(discussion_group_id)
+                                    
+                                    result = await client.invoke(
+                                        functions.messages.SendMessage(
+                                            peer=discussion_peer,
+                                            message=comment,
+                                            reply_to=types.InputReplyToMessage(reply_to_msg_id=message_id),
+                                            random_id=client.rnd_id()
+                                        )
+                                    )
+                                    
+                                    if result:
+                                        print(f"✅ Комментарий отправлен в группу обсуждений через raw API аккаунтом {account_id}")
+                                        return {
+                                            "status": "success",
+                                            "message": "Комментарий отправлен в группу обсуждений канала",
+                                            "message_id": getattr(result.updates[0], 'id', None) if hasattr(result, 'updates') and result.updates else None
+                                        }
+                                        
+                                except Exception as raw_discussion_error:
+                                    # Если raw API для группы обсуждений не сработал, пробуем обычный
+                                    try:
+                                        sent_message = await client.send_message(
+                                            chat_id=discussion_group_id,
+                                            text=comment,
+                                            reply_to_message_id=message_id
+                                        )
+                                        print(f"✅ Комментарий отправлен в группу обсуждений аккаунтом {account_id}")
+                                        return {
+                                            "status": "success",
+                                            "message": "Комментарий отправлен в группу обсуждений канала",
+                                            "message_id": sent_message.id
+                                        }
+                                    except Exception as discussion_error:
+                                        print(f"❌ Ошибка отправки в группу обсуждений: {discussion_error}")
+                                        return {"status": "error", "message": f"Ошибка отправки в группу обсуждений: {str(discussion_error)}"}
+                            else:
+                                # Попробуем найти группу обсуждений альтернативным способом
+                                try:
+                                    full_channel = await client.invoke(
+                                        functions.channels.GetFullChannel(channel=peer)
+                                    )
+                                    
+                                    if hasattr(full_channel, 'linked_chat_id') and full_channel.linked_chat_id:
+                                        discussion_group_id = -int(f"100{full_channel.linked_chat_id}")
+                                        print(f"📢 Альтернативно найдена группа обсуждений: {discussion_group_id}")
+                                        
+                                        try:
+                                            sent_message = await client.send_message(
+                                                chat_id=discussion_group_id,
+                                                text=comment,
+                                                reply_to_message_id=message_id
+                                            )
+                                            print(f"✅ Комментарий отправлен в альтернативную группу обсуждений аккаунтом {account_id}")
+                                            return {
+                                                "status": "success",
+                                                "message": "Комментарий отправлен в группу обсуждений канала",
+                                                "message_id": sent_message.id
+                                            }
+                                        except:
+                                            pass
+                                            
+                                except Exception as alt_error:
+                                    print(f"❌ Альтернативный поиск группы обсуждений не удался: {alt_error}")
+                                
                                 return {
-                                    "status": "success",
-                                    "message": "Комментарий отправлен в группу обсуждений канала",
-                                    "message_id": sent_message.id
+                                    "status": "error", 
+                                    "message": f"У канала {chat_id} нет группы обсуждений или комментарии отключены"
                                 }
-                            except Exception as discussion_error:
-                                print(f"❌ Ошибка отправки в группу обсуждений: {discussion_error}")
-                                return {"status": "error", "message": f"Ошибка отправки в группу обсуждений: {str(discussion_error)}"}
-                        else:
+                        except Exception as channel_error:
                             return {
-                                "status": "error", 
-                                "message": f"У канала {chat_id} нет группы обсуждений. Комментарии недоступны для обычных пользователей"
+                                "status": "error",
+                                "message": f"Для отправки комментариев в {chat_id} требуются права администратора: {str(channel_error)}"
                             }
-                    except Exception as channel_error:
-                        return {
-                            "status": "error",
-                            "message": f"Для отправки комментариев в {chat_id} требуются права администратора"
-                        }
 
-                # Обрабатываем другие специфические ошибки Telegram
-                elif "USERNAME_INVALID" in error_str:
-                    return {"status": "error", "message": f"Неверное имя пользователя или канала: {chat_id}"}
-                elif "PEER_ID_INVALID" in error_str:
-                    return {"status": "error", "message": f"Канал/чат {chat_id} не найден или недоступен"}
-                elif "MESSAGE_ID_INVALID" in error_str:
-                    return {"status": "error", "message": f"Сообщение с ID {message_id} не найдено или недоступно"}
-                elif "USER_BANNED_IN_CHANNEL" in error_str:
-                    return {"status": "error", "message": "Аккаунт заблокирован в этом канале"}
-                elif "CHAT_WRITE_FORBIDDEN" in error_str:
-                    return {"status": "error", "message": "Запрещена отправка сообщений в этот канал"}
-                elif "REPLY_MESSAGE_INVALID" in error_str:
-                    return {"status": "error", "message": "Нельзя ответить на это сообщение"}
-                elif "COMMENTS_DISABLED" in error_str:
-                    return {"status": "error", "message": "Комментарии отключены для этого поста"}
-                else:
-                    # Возвращаем исходную ошибку
-                    return {"status": "error", "message": f"Ошибка отправки комментария: {error_str}"}
+                    # Обрабатываем другие специфические ошибки Telegram
+                    elif "USERNAME_INVALID" in error_str:
+                        return {"status": "error", "message": f"Неверное имя пользователя или канала: {chat_id}"}
+                    elif "PEER_ID_INVALID" in error_str:
+                        return {"status": "error", "message": f"Канал/чат {chat_id} не найден или недоступен"}
+                    elif "MESSAGE_ID_INVALID" in error_str:
+                        return {"status": "error", "message": f"Сообщение с ID {message_id} не найдено или недоступно"}
+                    elif "USER_BANNED_IN_CHANNEL" in error_str:
+                        return {"status": "error", "message": "Аккаунт заблокирован в этом канале"}
+                    elif "REPLY_MESSAGE_INVALID" in error_str:
+                        return {"status": "error", "message": "Нельзя ответить на это сообщение"}
+                    elif "COMMENTS_DISABLED" in error_str:
+                        return {"status": "error", "message": "Комментарии отключены для этого поста"}
+                    else:
+                        # Возвращаем исходную ошибку
+                        return {"status": "error", "message": f"Ошибка отправки комментария: {error_str}"}
 
         except Exception as e:
             print(f"❌ Общая ошибка отправки комментария: {e}")
