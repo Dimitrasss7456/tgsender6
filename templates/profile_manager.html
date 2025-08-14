@@ -282,23 +282,37 @@
         }
 
         // Функция обновления поля аккаунта
-        async function updateField(accountId, field, value) {
-            try {
-                const response = await fetch(`/api/accounts/${accountId}/update_field`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({field: field, value: value})
-                });
+        function updateField(accountId, field, value) {
+        fetch(`/api/accounts/${accountId}/profile`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({[field]: value})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showNotification('success', 'Профиль обновлен');
+            } else {
+                showNotification('error', data.message || 'Ошибка обновления');
+            }
+        })
+        .catch(error => {
+            showNotification('error', 'Ошибка соединения');
+        });
+    }
 
-                const result = await response.json();
-                if (!result.success) {
-                    showAlert('danger', 'Ошибка сохранения: ' + result.message);
-                }
-            } catch (error) {
-                console.error('Ошибка:', error);
-                showAlert('danger', 'Ошибка сохранения поля');
+    function editProfile(accountId) {
+        // Функция редактирования профиля
+        const row = document.querySelector(`tr[data-account-id="${accountId}"]`);
+        if (row) {
+            const editButton = row.querySelector('.btn-warning');
+            if (editButton) {
+                editButton.click();
             }
         }
+    }
 
         // Функция обновления профиля в Telegram
         async function updateTelegramProfile(accountId) {

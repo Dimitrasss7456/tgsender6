@@ -2002,7 +2002,7 @@ class TelegramManager:
 
         except Exception as e:
             print(f"❌ Общая ошибка отправки комментария: {e}")
-            return {"status": "error", "message": f"Ошибка отправки комментария: {str(e)}}
+            return {"status": "error", "message": f"Ошибка отправки комментария: {str(e)}"}
 
 # Глобальный экземпляр менеджера
 telegram_manager = TelegramManager()
