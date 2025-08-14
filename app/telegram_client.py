@@ -1860,21 +1860,8 @@ class TelegramManager:
                 """)
                 print("✅ Создана таблица sent_files")
                 
-                # 5. Создаем минимальную таблицу update_state если нужно
-                try:
-                    cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS update_state (
-                            id INTEGER PRIMARY KEY,
-                            pts INTEGER,
-                            qts INTEGER,
-                            seq INTEGER,
-                            date_value INTEGER
-                        )
-                    """)
-                    print("✅ Создана минимальная таблица update_state")
-                except Exception as update_state_error:
-                    print(f"⚠️ Пропускаем update_state из-за ошибки: {update_state_error}")
-                    # Не критично, Telethon может работать без неё
+                # 5. Пропускаем создание update_state - Telethon создаст её сам
+                print("⚠️ Таблица update_state пропущена для избежания конфликтов")
                 
                 conn.commit()
                 print("✅ Чистая минимальная сессия создана для Telethon")
@@ -1882,7 +1869,7 @@ class TelegramManager:
                 # Проверяем финальную структуру
                 cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
                 final_tables = [t[0] for t in cursor.fetchall()]
-                print(f"📋 Финальные таблицы: {final_tables}")
+                print(f"📋 Финальные таблицы (без update_state): {final_tables}")
                 
             finally:
                 conn.close()
