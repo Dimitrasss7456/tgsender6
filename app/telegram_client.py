@@ -1816,22 +1816,21 @@ class TelegramManager:
                 print("✅ Создана таблица version")
                 
                 # 2. Таблица sessions (основная таблица с данными авторизации)
-                # Создаем минимальную структуру для Telethon без дублирования столбцов
+                # Создаем базовую структуру без takeout_id - Telethon добавит его сам
                 cursor.execute("""
                     CREATE TABLE sessions (
                         dc_id INTEGER PRIMARY KEY,
                         server_address TEXT,
                         port INTEGER,
-                        auth_key BLOB,
-                        takeout_id INTEGER
+                        auth_key BLOB
                     )
                 """)
-                print("✅ Создана таблица sessions с правильной структурой")
+                print("✅ Создана таблица sessions без takeout_id")
                 
-                # Вставляем данные сессии с NULL для takeout_id
+                # Вставляем данные сессии без takeout_id
                 cursor.execute("""
-                    INSERT INTO sessions (dc_id, server_address, port, auth_key, takeout_id) 
-                    VALUES (?, ?, ?, ?, NULL)
+                    INSERT INTO sessions (dc_id, server_address, port, auth_key) 
+                    VALUES (?, ?, ?, ?)
                 """, (dc_id, server_address, port, auth_key))
                 print("✅ Данные авторизации добавлены в таблицу sessions")
                 
