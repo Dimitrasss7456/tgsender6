@@ -1833,14 +1833,14 @@ class TelegramManager:
                 """)
                 print("✅ Создана таблица sent_files")
                 
-                # Таблица update_state (для состояния обновлений) - проверяем и создаем безопасно
+                # Таблица update_state (для состояния обновлений) - создаем только если не существует
                 try:
                     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='update_state'")
                     table_exists = cursor.fetchone()
                     
                     if not table_exists:
                         cursor.execute("""
-                            CREATE TABLE update_state (
+                            CREATE TABLE IF NOT EXISTS update_state (
                                 id INTEGER PRIMARY KEY,
                                 pts INTEGER,
                                 qts INTEGER,
@@ -1848,15 +1848,13 @@ class TelegramManager:
                                 seq INTEGER
                             )
                         """)
-                        print("✅ Создана таблица update_state")
+                        print("✅ Создана/проверена таблица update_state")
                     else:
                         print("✅ Таблица update_state уже существует")
                 except Exception as table_error:
-                    # Если таблица уже существует или другая ошибка, просто игнорируем
-                    if "already exists" in str(table_error):
-                        print("✅ Таблица update_state уже существует (обнаружено через исключение)")
-                    else:
-                        print(f"⚠️ Предупреждение при создании update_state: {table_error}")
+                    # Если ошибка создания таблицы, пропускаем - Telethon все равно работает без неё
+                    print(f"⚠️ Предупреждение при создании update_state: {table_error}")
+                    print("📝 Продолжаем создание сессии без update_state")
                 
                 conn.commit()
                 print("✅ Сессия успешно создана для Telethon с полной совместимостью")
