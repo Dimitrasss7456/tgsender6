@@ -736,6 +736,21 @@ async def campaign_stats_page(request: Request, current_user: User = Depends(get
         "current_user": current_user
     })
 
+@app.get("/profile_manager", response_class=HTMLResponse)
+async def profile_manager_page(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Страница управления профилями"""
+    # Фильтруем аккаунты по пользователю (админ видит все)
+    if current_user.is_admin:
+        accounts = db.query(Account).all()
+    else:
+        accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
+    
+    return templates.TemplateResponse("profile_manager.html", {
+        "request": request,
+        "accounts": accounts,
+        "current_user": current_user
+    })
+
 @app.get("/api/campaign-stats")
 async def get_campaign_stats(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """API для получения статистики кампаний"""
