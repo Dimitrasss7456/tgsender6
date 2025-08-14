@@ -1723,64 +1723,101 @@ class TelegramManager:
             # Создаем новую базу данных для Telethon с нуля
             telethon_session_file = f"{telethon_path}.session"
             
-            # Удаляем старый файл если существует
+            # Полностью удаляем старый файл если существует
             if os.path.exists(telethon_session_file):
                 os.remove(telethon_session_file)
+                print(f"🗑️ Удален старый файл сессии")
             
             # Читаем данные из Pyrogram сессии для получения auth_key
+            if not os.path.exists(pyrogram_path):
+                raise Exception(f"Pyrogram сессия не найдена: {pyrogram_path}")
+                
             pyrogram_conn = sqlite3.connect(pyrogram_path)
             pyrogram_cursor = pyrogram_conn.cursor()
             
             try:
-                # Получаем данные сессии из Pyrogram
-                pyrogram_cursor.execute("SELECT dc_id, auth_key FROM sessions LIMIT 1")
-                session_data = pyrogram_cursor.fetchone()
-                if session_data:
-                    dc_id, auth_key = session_data
-                    # Используем стандартные значения
-                    server_address = "149.154.167.51" if dc_id == 2 else "149.154.175.53"
-                    port = 443
-                else:
-                    raise Exception("Не найдены данные сессии в Pyrogram файле")
+                # Сначала проверяем структуру таблицы Pyrogram
+                pyrogram_cursor.execute("PRAGMA table_info(sessions)")
+                columns_info = pyrogram_cursor.fetchall()
+                column_names = [col[1] for col in columns_info]
+                print(f"📋 Столбцы Pyrogram sessions: {column_names}")
                 
-                print(f"📋 Получены данные сессии: DC{dc_id}")
+                # Получаем данные сессии из Pyrogram с проверкой доступных столбцов
+                if 'server_address' in column_names and 'port' in column_names:
+                    query = "SELECT dc_id, server_address, port, auth_key FROM sessions LIMIT 1"
+                    pyrogram_cursor.execute(query)
+                    session_data = pyrogram_cursor.fetchone()
+                    if session_data:
+                        dc_id, server_address, port, auth_key = session_data
+                    else:
+                        raise Exception("Не найдены данные сессии в Pyrogram файле")
+                else:
+                    # Базовая структура без server_address/port
+                    query = "SELECT dc_id, auth_key FROM sessions LIMIT 1"
+                    pyrogram_cursor.execute(query)
+                    session_data = pyrogram_cursor.fetchone()
+                    if session_data:
+                        dc_id, auth_key = session_data
+                        # Используем стандартные значения для DC
+                        dc_to_server = {
+                            1: ("149.154.175.53", 443),
+                            2: ("149.154.167.51", 443),
+                            3: ("149.154.175.100", 443),
+                            4: ("149.154.167.91", 443),
+                            5: ("91.108.56.130", 443)
+                        }
+                        server_address, port = dc_to_server.get(dc_id, ("149.154.175.53", 443))
+                    else:
+                        raise Exception("Не найдены данные сессии в Pyrogram файле")
+                
+                print(f"📋 Получены данные сессии: DC{dc_id}, Server: {server_address}:{port}")
                 
             finally:
                 pyrogram_conn.close()
             
-            # Создаем новую минимальную базу данных для Telethon
+            # Создаем новую пустую базу данных для Telethon
             conn = sqlite3.connect(telethon_session_file)
             cursor = conn.cursor()
             
             try:
-                # Создаем только необходимые таблицы без update_state
-                print("🔨 Создаем минимальную структуру базы данных Telethon...")
+                print("🔨 Создаем структуру базы данных Telethon с нуля...")
                 
-                # Таблица version (обязательная для Telethon)
+                # Проверяем что база пустая
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                existing_tables = cursor.fetchall()
+                if existing_tables:
+                    print(f"⚠️ База данных не пустая, найдены таблицы: {[t[0] for t in existing_tables]}")
+                    # Удаляем все существующие таблицы
+                    for table_name, in existing_tables:
+                        cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
+                        print(f"🗑️ Удалена таблица: {table_name}")
+                
+                # Создаем таблицы заново
+                # 1. Таблица version (обязательная для Telethon)
                 cursor.execute("CREATE TABLE version (version INTEGER)")
                 cursor.execute("INSERT INTO version VALUES (1)")
                 print("✅ Создана таблица version")
                 
-                # Таблица sessions (основная таблица с данными авторизации)
+                # 2. Таблица sessions (основная таблица с данными авторизации)
+                # Создаем только необходимые столбцы для Telethon
                 cursor.execute("""
                     CREATE TABLE sessions (
                         dc_id INTEGER PRIMARY KEY,
                         server_address TEXT,
                         port INTEGER,
-                        auth_key BLOB,
-                        takeout_id INTEGER
+                        auth_key BLOB
                     )
                 """)
-                print("✅ Создана таблица sessions")
+                print("✅ Создана таблица sessions (без takeout_id)")
                 
-                # Вставляем данные сессии
+                # Вставляем данные сессии БЕЗ takeout_id
                 cursor.execute("""
-                    INSERT INTO sessions (dc_id, server_address, port, auth_key, takeout_id) 
-                    VALUES (?, ?, ?, ?, NULL)
+                    INSERT INTO sessions (dc_id, server_address, port, auth_key) 
+                    VALUES (?, ?, ?, ?)
                 """, (dc_id, server_address, port, auth_key))
                 print("✅ Данные авторизации добавлены в таблицу sessions")
                 
-                # Таблица entities (для кеша пользователей/чатов)
+                # 3. Таблица entities (для кеша пользователей/чатов)
                 cursor.execute("""
                     CREATE TABLE entities (
                         id INTEGER PRIMARY KEY,
@@ -1793,7 +1830,7 @@ class TelegramManager:
                 """)
                 print("✅ Создана таблица entities")
                 
-                # Таблица sent_files (для кеша отправленных файлов)
+                # 4. Таблица sent_files (для кеша отправленных файлов)
                 cursor.execute("""
                     CREATE TABLE sent_files (
                         md5_digest BLOB,
@@ -1806,21 +1843,27 @@ class TelegramManager:
                 """)
                 print("✅ Создана таблица sent_files")
                 
-                # НЕ создаем таблицу update_state - это источник конфликтов
-                print("⚠️ Таблица update_state пропущена для избежания конфликтов")
+                # НЕ создаем таблицы update_state и другие проблемные таблицы
+                print("⚠️ Проблемные таблицы (update_state, etc.) пропущены")
                 
                 conn.commit()
-                print("✅ Чистая сессия успешно создана для Telethon")
+                print("✅ Чистая минимальная сессия создана для Telethon")
+                
+                # Проверяем финальную структуру
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                final_tables = [t[0] for t in cursor.fetchall()]
+                print(f"📋 Финальные таблицы: {final_tables}")
                 
             finally:
                 conn.close()
                 
         except Exception as e:
             print(f"❌ Ошибка создания чистой Telethon сессии: {e}")
-            # Если не удалось создать сессию, удаляем поврежденный файл
+            # При ошибке полностью удаляем поврежденный файл
             try:
                 if os.path.exists(f"{telethon_path}.session"):
                     os.remove(f"{telethon_path}.session")
+                    print(f"🗑️ Поврежденный файл сессии удален")
             except:
                 pass
             raise e

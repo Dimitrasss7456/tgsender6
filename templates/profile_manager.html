@@ -591,6 +591,95 @@
             modal.hide();
             showAlert('Изменения сохранены. Не забудьте нажать "Обновить в Telegram".', 'info');
         }
+        
+        // Новые функции для редактирования профиля (добавлены)
+        function editProfile(accountId) {
+            // Создаем модальное окно для редактирования профиля
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <h3>Редактировать профиль</h3>
+                    <form id="editProfileForm" onsubmit="submitProfileEdit(event, ${accountId})">
+                        <div class="form-group">
+                            <label for="firstName">Имя:</label>
+                            <input type="text" id="firstName" name="firstName" maxlength="64" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="lastName">Фамилия:</label>
+                            <input type="text" id="lastName" name="lastName" maxlength="64">
+                        </div>
+                        <div class="form-group">
+                            <label for="bio">О себе:</label>
+                            <textarea id="bio" name="bio" maxlength="70" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="profilePhoto">Фото профиля:</label>
+                            <input type="file" id="profilePhoto" name="profilePhoto" accept="image/*">
+                        </div>
+                        <div class="form-buttons">
+                            <button type="submit">Сохранить</button>
+                            <button type="button" onclick="closeModal()">Отмена</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            // Добавляем обработчик для закрытия по клику вне модального окна
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    closeModal();
+                }
+            });
+        }
+
+        function closeModal() {
+            const modal = document.querySelector('.modal');
+            if (modal) {
+                modal.remove();
+            }
+        }
+
+        async function submitProfileEdit(event, accountId) {
+            event.preventDefault();
+
+            const form = event.target;
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch(`/api/accounts/${accountId}/update_profile`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    showMessage('Профиль успешно обновлен!', 'success');
+                    closeModal();
+                    loadAccounts(); // Перезагружаем список аккаунтов
+                } else {
+                    showMessage(result.message || 'Ошибка обновления профиля', 'error');
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                showMessage('Произошла ошибка при обновлении профиля', 'error');
+            }
+        }
+
+        function showMessage(message, type) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            messageDiv.textContent = message;
+
+            document.body.appendChild(messageDiv);
+
+            setTimeout(() => {
+                messageDiv.remove();
+            }, 5000);
+        }
     </script>
 </body>
 </html>
