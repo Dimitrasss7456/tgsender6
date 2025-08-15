@@ -195,7 +195,20 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Обновляем счетчик при изменении выбора
-    accountSelect.addEventListener('change', updateSelectedCount);
+    accountSelect.addEventListener('change', function() {
+        updateSelectedCount();
+        
+        // Добавляем визуальные индикаторы выбранных элементов
+        Array.from(accountSelect.options).forEach(option => {
+            if (option.selected && option.value !== '') {
+                option.style.backgroundColor = '#007bff';
+                option.style.color = 'white';
+            } else {
+                option.style.backgroundColor = option.disabled ? '#ffeeee' : (option.value === '' ? '' : '#e8f5e8');
+                option.style.color = option.disabled ? '#999' : 'black';
+            }
+        });
+    });
 
     // Обработчики кнопок выбора аккаунтов
     document.getElementById('selectAllAccounts').addEventListener('click', function() {
@@ -375,17 +388,25 @@ document.addEventListener('DOMContentLoaded', function() {
         // Получаем выбранные аккаунты
         const selectedOptions = Array.from(accountSelect.selectedOptions);
         const selectedAccounts = selectedOptions
-            .map(option => parseInt(option.value))
-            .filter(value => !isNaN(value) && value > 0);
+            .map(option => option.value)
+            .filter(value => value && value !== '' && !isNaN(parseInt(value)))
+            .map(value => parseInt(value));
 
-        console.log('Все опции:', selectedOptions.map(o => ({value: o.value, text: o.text})));
-        console.log('Выбранные аккаунты:', selectedAccounts);
+        console.log('Все опции в select:', Array.from(accountSelect.options).map(o => ({value: o.value, text: o.text, selected: o.selected})));
+        console.log('Выбранные опции:', selectedOptions.map(o => ({value: o.value, text: o.text})));
+        console.log('Выбранные аккаунты (ID):', selectedAccounts);
         console.log('Сообщение:', document.getElementById('message').value);
         console.log('Автоудаление:', document.getElementById('autoDeleteAccount').checked);
 
         // Проверяем данные
         if (selectedAccounts.length === 0) {
-            showResult('error', '❌ Выберите хотя бы один аккаунт для рассылки. Убедитесь что вы кликнули на аккаунты в списке.');
+            showResult('error', '❌ Выберите хотя бы один аккаунт для рассылки. Убедитесь что вы кликнули на аккаунты в списке и они выделились синим цветом.');
+            
+            // Дополнительная отладочная информация
+            const allOptions = Array.from(accountSelect.options);
+            const enabledOptions = allOptions.filter(o => !o.disabled);
+            console.log(`Всего опций в списке: ${allOptions.length}, доступных: ${enabledOptions.length}, выбранных: ${selectedOptions.length}`);
+            
             return;
         }
 
@@ -402,14 +423,21 @@ document.addEventListener('DOMContentLoaded', function() {
         // Создаем FormData
         const formData = new FormData();
         formData.append('message', message.trim());
-        formData.append('delay_seconds', delaySeconds); // Используем значение из поля
+        formData.append('delay_seconds', delaySeconds);
         formData.append('auto_delete_account', autoDeleteAccount ? 'true' : 'false');
         formData.append('delete_delay_minutes', deleteDelayMinutes);
 
-        // Добавляем выбранные аккаунты
+        // Добавляем выбранные аккаунты разными способами для совместимости
+        formData.append('selected_accounts', selectedAccounts.join(','));
         selectedAccounts.forEach(accountId => {
             formData.append(`account_${accountId}`, 'on');
+            formData.append('selected_accounts[]', accountId.toString());
         });
+        
+        console.log('Данные FormData:');
+        for (let [key, value] of formData.entries()) {
+            console.log(`${key}: ${value}`);
+        }
 
         // Добавляем файл если выбран
         const fileInput = document.getElementById('fileUpload');
