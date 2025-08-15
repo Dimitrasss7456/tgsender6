@@ -1712,6 +1712,114 @@ class TelegramManager:
         except Exception as e:
             print(f"⚠️ Ошибка обновления статуса аккаунта {account_id}: {e}")
 
+    async def send_post_comment(self, account_id: int, chat_id: str, message_id: int, comment: str) -> Dict:
+        """Отправка комментария к посту канала в секцию 'Leave a comment'"""
+        try:
+            print(f"📝 Отправляем комментарий к посту канала в секцию 'Leave a comment'...")
+            
+            client = await self._get_client_for_account(account_id)
+            if not client:
+                return {"status": "error", "message": "Не удалось получить клиент"}
+
+            if not client.is_connected:
+                await client.connect()
+
+            # Проверяем авторизацию
+            try:
+                me = await client.get_me()
+                if not me:
+                    return {"status": "error", "message": "Ошибка авторизации"}
+                
+                print(f"👤 Отправляем от имени: {me.first_name}")
+            except Exception as auth_error:
+                return {"status": "error", "message": f"Ошибка авторизации: {str(auth_error)}"}
+
+            print(f"🎯 Канал: {chat_id}, пост ID: {message_id}")
+            print(f"💬 Комментарий: {comment}")
+
+            # Пробуем разные методы отправки комментария
+            try:
+                # Метод 1: Стандартная отправка сообщения с reply_to_message_id
+                print("🔄 Пробуем стандартный метод отправки...")
+                sent_message = await client.send_message(
+                    chat_id=chat_id,
+                    text=comment,
+                    reply_to_message_id=message_id
+                )
+                
+                if sent_message:
+                    print(f"✅ Комментарий отправлен стандартным методом! ID: {sent_message.id}")
+                    return {"status": "success", "message_id": sent_message.id}
+
+            except Exception as e1:
+                error_msg = str(e1)
+                print(f"❌ Стандартный метод не сработал: {error_msg}")
+                
+                # Если ошибка связана с правами, пробуем другие методы
+                if "CHAT_WRITE_FORBIDDEN" in error_msg or "CHAT_ADMIN_REQUIRED" in error_msg:
+                    try:
+                        # Метод 2: Попробуем использовать raw API
+                        print("🔄 Пробуем raw API...")
+                        from pyrogram.raw import functions, types
+                        
+                        # Создаем объект InputReplyTo для Pyrogram v2.x
+                        reply_to = types.InputReplyToMessage(
+                            reply_to_msg_id=message_id
+                        )
+                        
+                        result = await client.invoke(
+                            functions.messages.SendMessage(
+                                peer=await client.resolve_peer(chat_id),
+                                message=comment,
+                                reply_to=reply_to,
+                                random_id=client.rnd_id()
+                            )
+                        )
+                        
+                        if result:
+                            message_id = result.id if hasattr(result, 'id') else result.updates[0].id
+                            print(f"✅ Комментарий отправлен через raw API! ID: {message_id}")
+                            return {"status": "success", "message_id": message_id}
+                            
+                    except Exception as e2:
+                        print(f"❌ Raw API тоже не сработал: {str(e2)}")
+                        
+                        # Метод 3: Ищем группу обсуждений канала
+                        try:
+                            print("🔄 Ищем группу обсуждений канала...")
+                            
+                            # Получаем полную информацию о канале
+                            chat = await client.get_chat(chat_id)
+                            
+                            if hasattr(chat, 'linked_chat') and chat.linked_chat:
+                                discussion_group_id = chat.linked_chat.id
+                                print(f"📢 Найдена группа обсуждений: {discussion_group_id}")
+                                
+                                # Отправляем комментарий в группу обсуждений
+                                sent_message = await client.send_message(
+                                    chat_id=discussion_group_id,
+                                    text=comment,
+                                    reply_to_message_id=message_id
+                                )
+                                
+                                if sent_message:
+                                    print(f"✅ Комментарий отправлен в группу обсуждений! ID: {sent_message.id}")
+                                    return {"status": "success", "message_id": sent_message.id}
+                            else:
+                                print("❌ Группа обсуждений не найдена")
+                                return {"status": "error", "message": "У канала нет группы обсуждений"}
+                                
+                        except Exception as e3:
+                            print(f"❌ Ошибка поиска группы обсуждений: {str(e3)}")
+                            return {"status": "error", "message": f"Не удалось отправить комментарий: {str(e3)}"}
+                else:
+                    return {"status": "error", "message": f"Ошибка отправки: {error_msg}"}
+
+        except Exception as general_error:
+            error_msg = str(general_error)
+            print(f"❌ Общая ошибка отправки комментария: {error_msg}")
+            return {"status": "error", "message": f"Общая ошибка: {error_msg}"}
+
     async def _create_clean_telethon_session(self, pyrogram_path: str, telethon_path: str):
         """Создание чистой Telethon сессии без конфликтов таблиц"""
         try:

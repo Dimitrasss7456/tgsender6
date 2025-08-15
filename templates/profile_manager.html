@@ -1,4 +1,3 @@
-
 {% extends "base.html" %}
 
 {% block title %}Управление профилями - Telegram Manager{% endblock %}
@@ -192,7 +191,7 @@
                                     <input type="checkbox" class="form-check-input account-checkbox me-2"
                                            id="checkbox-{{ account.id }}"
                                            onclick="event.stopPropagation()">
-                                    
+
                                     {% if account.gender == 'male' %}
                                         <i class="fas fa-mars text-primary me-2"></i>
                                     {% elif account.gender == 'female' %}
@@ -391,22 +390,19 @@
 
 <script>
 let selectedAccounts = new Set();
-let selectedReactions = new Set();
 
-function showAlert(message, type) {
+function showAlert(message, type = 'info') {
     const alertsContainer = document.getElementById('alerts');
     const alertDiv = document.createElement('div');
     alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
     alertDiv.innerHTML = `
-        <i class="fas fa-${type === 'success' ? 'check' : type === 'danger' ? 'exclamation-triangle' : 'info'} me-2"></i>
         ${message}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
     alertsContainer.appendChild(alertDiv);
+
     setTimeout(() => {
-        if(alertDiv.parentNode) {
-            alertDiv.remove();
-        }
+        alertDiv.remove();
     }, 5000);
 }
 
@@ -414,238 +410,85 @@ function updateSelectedCount() {
     const count = selectedAccounts.size;
     const countElement = document.getElementById('selectedCount');
     if (countElement) {
-        countElement.textContent = `Выбрано: ${count}`;
+        countElement.textContent = `${count} выбрано`;
+        countElement.className = `badge ${count > 0 ? 'bg-primary' : 'bg-secondary'} me-2`;
     }
-}
 
-function toggleAccount(accountId, checkbox) {
-    console.log('🔄 Переключение аккаунта:', accountId, checkbox.checked);
-    
-    const accountCard = document.getElementById(`account-${accountId}`);
-    
-    if (checkbox.checked) {
-        selectedAccounts.add(accountId);
-        if (accountCard) {
-            accountCard.classList.add('selected');
-        }
-    } else {
-        selectedAccounts.delete(accountId);
-        if (accountCard) {
-            accountCard.classList.remove('selected');
-        }
-    }
-    
-    updateSelectedCount();
+    // Обновляем состояние кнопок
+    const actionButtons = document.querySelectorAll('.action-btn');
+    actionButtons.forEach(btn => {
+        btn.disabled = count === 0;
+    });
+
     console.log('📊 Текущие выбранные аккаунты:', Array.from(selectedAccounts));
 }
 
 function toggleAccountSelection(accountId) {
-    const checkbox = document.getElementById(`checkbox-${accountId}`);
-    const card = document.getElementById(`account-${accountId}`);
-
-    checkbox.checked = !checkbox.checked;
+    const checkbox = document.querySelector(`input[data-account-id="${accountId}"]`);
+    if (!checkbox) return;
 
     if (checkbox.checked) {
-        selectedAccounts.add(accountId);
-        card.classList.add('selected');
+        selectedAccounts.add(parseInt(accountId));
     } else {
-        selectedAccounts.delete(accountId);
-        card.classList.remove('selected');
+        selectedAccounts.delete(parseInt(accountId));
     }
-    
+
     updateSelectedCount();
 }
 
-function selectByGender(gender) {
-    const cards = document.querySelectorAll(`.border-${gender === 'male' ? 'primary' : 'danger'}`);
-    cards.forEach(card => {
-        const accountId = parseInt(card.id.replace('account-', ''));
-        const checkbox = document.getElementById(`checkbox-${accountId}`);
-        if (checkbox) {
-            checkbox.checked = true;
+function toggleAllAccounts() {
+    const masterCheckbox = document.getElementById('selectAll');
+    const accountCheckboxes = document.querySelectorAll('input[data-account-id]');
+
+    accountCheckboxes.forEach(checkbox => {
+        checkbox.checked = masterCheckbox.checked;
+        const accountId = parseInt(checkbox.getAttribute('data-account-id'));
+
+        if (masterCheckbox.checked) {
             selectedAccounts.add(accountId);
-            card.classList.add('selected');
-        }
-    });
-    updateSelectedCount();
-}
-
-function selectAll() {
-    const checkboxes = document.querySelectorAll('.account-checkbox');
-    checkboxes.forEach(checkbox => {
-        const accountId = parseInt(checkbox.id.replace('checkbox-', ''));
-        checkbox.checked = true;
-        selectedAccounts.add(accountId);
-        document.getElementById(`account-${accountId}`).classList.add('selected');
-    });
-    updateSelectedCount();
-}
-
-function deselectAll() {
-    const checkboxes = document.querySelectorAll('.account-checkbox');
-    checkboxes.forEach(checkbox => {
-        const accountId = parseInt(checkbox.id.replace('checkbox-', ''));
-        checkbox.checked = false;
-        selectedAccounts.delete(accountId);
-        document.getElementById(`account-${accountId}`).classList.remove('selected');
-    });
-    updateSelectedCount();
-}
-
-// Обработка реакций
-document.getElementById('reactionSelector').addEventListener('click', (e) => {
-    if (e.target.classList.contains('reaction-selector')) {
-        const emoji = e.target.dataset.emoji;
-        if (selectedReactions.has(emoji)) {
-            selectedReactions.delete(emoji);
-            e.target.classList.remove('selected');
         } else {
-            selectedReactions.add(emoji);
-            e.target.classList.add('selected');
+            selectedAccounts.delete(accountId);
         }
+    });
+
+    updateSelectedCount();
+}
+
+async function updateAccountField(accountId, field, value) {
+    try {
+        const response = await fetch(`/api/accounts/${accountId}/update_field`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ field: field, value: value })
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            showAlert('Поле обновлено', 'success');
+        } else {
+            showAlert('Ошибка: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Ошибка сети: ' + error.message, 'danger');
     }
-});
+}
 
 async function autoFillProfiles(gender) {
     try {
         const response = await fetch('/api/accounts/auto_fill_profiles', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({gender: gender})
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ gender: gender })
         });
 
         const result = await response.json();
         if (result.success) {
-            showAlert(`Профили (${gender === 'male' ? 'мужские' : 'женские'}) заполнены!`, 'success');
-            setTimeout(() => location.reload(), 1500);
-        } else {
-            showAlert(result.message, 'danger');
-        }
-    } catch (error) {
-        showAlert('Ошибка: ' + error.message, 'danger');
-    }
-}
-
-async function startSequentialComments() {
-    const postUrl = document.getElementById('commentPostUrl').value;
-    const maleComments = document.getElementById('maleCommentsList').value.split('\n').filter(c => c.trim());
-    const femaleComments = document.getElementById('femaleCommentsList').value.split('\n').filter(c => c.trim());
-    const delay = parseInt(document.getElementById('commentDelay').value);
-    const antispamMode = document.getElementById('antispamMode').value;
-
-    console.log('🔍 Отладка выбранных аккаунтов:', Array.from(selectedAccounts));
-
-    if (!postUrl) {
-        showAlert('Укажите ссылку на пост', 'warning');
-        return;
-    }
-
-    if (selectedAccounts.size === 0) {
-        showAlert('Выберите аккаунты', 'warning');
-        return;
-    }
-
-    if (maleComments.length === 0 && femaleComments.length === 0) {
-        showAlert('Укажите комментарии', 'warning');
-        return;
-    }
-
-    // Получаем первый выбранный аккаунт для комментирования
-    const accountId = Array.from(selectedAccounts)[0];
-
-    console.log('📝 Отправляем запрос с аккаунтом:', accountId);
-
-    try {
-        // Парсим URL поста для извлечения chat_id и message_id
-        const urlMatch = postUrl.match(/t\.me\/([^\/]+)\/(\d+)/);
-        if (!urlMatch) {
-            showAlert('Неверный формат URL поста. Используйте формат: t.me/channel/123', 'danger');
-            return;
-        }
-
-        const chatId = `@${urlMatch[1]}`;
-        const messageId = parseInt(urlMatch[2]);
-
-        // Создаем массив комментариев для отправки
-        const comments = [];
-        
-        // Выбираем комментарии в зависимости от гендера аккаунта или случайно
-        if (maleComments.length > 0) {
-            const randomComment = maleComments[Math.floor(Math.random() * maleComments.length)];
-            comments.push({
-                chat_id: chatId,
-                message_id: messageId,
-                comment: randomComment
-            });
-        } else if (femaleComments.length > 0) {
-            const randomComment = femaleComments[Math.floor(Math.random() * femaleComments.length)];
-            comments.push({
-                chat_id: chatId,
-                message_id: messageId,
-                comment: randomComment
-            });
-        }
-
-        const response = await fetch('/api/sequential_comments', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                account_id: accountId,
-                targets: comments,
-                delay_seconds: delay
-            })
-        });
-
-        const result = await response.json();
-        
-        if (result.success) {
-            showAlert('Комментарий отправлен успешно!', 'success');
-        } else {
-            showAlert(`Ошибка: ${result.message}`, 'danger');
-        }
-
-    } catch (error) {
-        console.error('❌ Ошибка отправки комментария:', error);
-        showAlert('Ошибка отправки комментария: ' + error.message, 'danger');
-    }
-}
-
-async function startMultipleReactions() {
-    const postUrl = document.getElementById('reactionPostUrl').value;
-    const totalReactions = parseInt(document.getElementById('totalReactions').value);
-    const delay = parseInt(document.getElementById('reactionDelay').value);
-
-    if (!postUrl) {
-        showAlert('Укажите ссылку на пост', 'warning');
-        return;
-    }
-
-    if (selectedReactions.size === 0) {
-        showAlert('Выберите реакции', 'warning');
-        return;
-    }
-
-    if (selectedAccounts.size === 0) {
-        showAlert('Выберите аккаунты', 'warning');
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/multiple_reactions', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                post_url: postUrl,
-                reactions: Array.from(selectedReactions),
-                total_count: totalReactions,
-                selected_accounts: Array.from(selectedAccounts),
-                delay_seconds: delay
-            })
-        });
-
-        const result = await response.json();
-        if (result.success) {
-            showAlert('Реакции запущены!', 'success');
+            showAlert(result.message, 'success');
+            setTimeout(() => location.reload(), 1000);
         } else {
             showAlert('Ошибка: ' + result.message, 'danger');
         }
@@ -654,54 +497,32 @@ async function startMultipleReactions() {
     }
 }
 
-async function editAccount(accountId) {
-    try {
-        const response = await fetch(`/api/accounts/${accountId}`);
-        const account = await response.json();
+async function uploadProfilePhoto(accountId) {
+    const fileInput = document.getElementById(`photoUpload${accountId}`);
+    const file = fileInput.files[0];
 
-        document.getElementById('editAccountId').value = accountId;
-        document.getElementById('editFirstName').value = account.first_name || '';
-        document.getElementById('editLastName').value = account.last_name || '';
-        document.getElementById('editGender').value = account.gender || '';
-        document.getElementById('editBio').value = account.bio || '';
-
-        const modal = new bootstrap.Modal(document.getElementById('editAccountModal'));
-        modal.show();
-    } catch (error) {
-        showAlert('Ошибка загрузки данных аккаунта', 'danger');
+    if (!file) {
+        showAlert('Выберите файл', 'warning');
+        return;
     }
-}
 
-async function saveAccountChanges() {
-    const accountId = document.getElementById('editAccountId').value;
     const formData = new FormData();
-
-    formData.append('first_name', document.getElementById('editFirstName').value);
-    formData.append('last_name', document.getElementById('editLastName').value);
-    formData.append('gender', document.getElementById('editGender').value);
-    formData.append('bio', document.getElementById('editBio').value);
-
-    const photoFile = document.getElementById('editPhoto').files[0];
-    if (photoFile) {
-        formData.append('photo', photoFile);
-    }
+    formData.append('photo', file);
 
     try {
-        const response = await fetch(`/api/accounts/${accountId}/update`, {
+        const response = await fetch(`/api/accounts/${accountId}/upload_photo`, {
             method: 'POST',
             body: formData
         });
 
         const result = await response.json();
         if (result.success) {
-            showAlert('Аккаунт обновлен!', 'success');
-            bootstrap.Modal.getInstance(document.getElementById('editAccountModal')).hide();
-            setTimeout(() => location.reload(), 1000);
+            showAlert('Фото загружено', 'success');
         } else {
             showAlert('Ошибка: ' + result.message, 'danger');
         }
     } catch (error) {
-        showAlert('Ошибка сохранения: ' + error.message, 'danger');
+        showAlert('Ошибка: ' + error.message, 'danger');
     }
 }
 
@@ -713,33 +534,7 @@ async function updateTelegramProfile(accountId) {
 
         const result = await response.json();
         if (result.success) {
-            showAlert('Профиль обновлен в Telegram!', 'success');
-        } else {
-            showAlert('Ошибка: ' + result.message, 'danger');
-        }
-    } catch (error) {
-        showAlert('Ошибка обновления: ' + error.message, 'danger');
-    }
-}
-
-async function updateAllTelegramProfiles() {
-    if (selectedAccounts.size === 0) {
-        showAlert('Выберите аккаунты для обновления', 'warning');
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/accounts/update_all_telegram_profiles', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                account_ids: Array.from(selectedAccounts)
-            })
-        });
-
-        const result = await response.json();
-        if (result.success) {
-            showAlert(`Обновлено ${result.updated_count} профилей!`, 'success');
+            showAlert('Профиль обновлен в Telegram', 'success');
         } else {
             showAlert('Ошибка: ' + result.message, 'danger');
         }
@@ -748,17 +543,145 @@ async function updateAllTelegramProfiles() {
     }
 }
 
+async function updateAllTelegramProfiles() {
+    if (selectedAccounts.size === 0) {
+        showAlert('Выберите аккаунты', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/accounts/update_all_telegram_profiles', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                account_ids: Array.from(selectedAccounts)
+            })
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            showAlert(`Обновлено профилей: ${result.updated_count}`, 'success');
+        } else {
+            showAlert('Ошибка: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Ошибка: ' + error.message, 'danger');
+    }
+}
+
+async function autoAssignGenders() {
+    try {
+        const response = await fetch('/api/accounts/auto_assign_genders', {
+            method: 'POST'
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            showAlert(result.message, 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert('Ошибка: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Ошибка: ' + error.message, 'danger');
+    }
+}
+
+// Комментирование постов
+async function startSequentialComments() {
+    console.log('🔍 Отладка выбранных аккаунтов:', Array.from(selectedAccounts));
+
+    if (selectedAccounts.size === 0) {
+        showAlert('Выберите хотя бы один аккаунт', 'warning');
+        return;
+    }
+
+    const postUrl = document.getElementById('commentPostUrl').value;
+    const maleComments = document.getElementById('maleCommentsList').value;
+    const femaleComments = document.getElementById('femaleCommentsList').value;
+    const delaySeconds = parseInt(document.getElementById('commentDelay').value) || 3;
+    const antispamMode = document.getElementById('antispamMode').value;
+
+    if (!postUrl) {
+        showAlert('Введите URL поста', 'warning');
+        return;
+    }
+
+    if (!maleComments && !femaleComments) {
+        showAlert('Введите комментарии', 'warning');
+        return;
+    }
+
+    // Парсим URL поста
+    const urlMatch = postUrl.match(/t\.me\/([^\/]+)\/(\d+)/);
+    if (!urlMatch) {
+        showAlert('Неверный формат URL. Используйте формат: https://t.me/channel/123', 'danger');
+        return;
+    }
+
+    const chatId = `@${urlMatch[1]}`;
+    const messageId = parseInt(urlMatch[2]);
+
+    // Разбиваем комментарии на массивы
+    const maleCommentsArray = maleComments.split('\n').filter(c => c.trim());
+    const femaleCommentsArray = femaleComments.split('\n').filter(c => c.trim());
+
+    console.log('📝 Отправляем запрос с аккаунтом:', Array.from(selectedAccounts)[0]);
+
+    // Формируем цели для комментирования (пока используем первый аккаунт)
+    const targets = [];
+    const selectedAccountsArray = Array.from(selectedAccounts);
+
+    // Берем случайный комментарий из доступных
+    const allComments = [...maleCommentsArray, ...femaleCommentsArray];
+    if (allComments.length > 0) {
+        const randomComment = allComments[Math.floor(Math.random() * allComments.length)];
+        targets.push({
+            chat_id: chatId,
+            message_id: messageId,
+            comment: randomComment
+        });
+    }
+
+    try {
+        const response = await fetch('/api/sequential_comments', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                account_id: selectedAccountsArray[0], // Используем первый выбранный аккаунт
+                targets: targets,
+                delay_seconds: delaySeconds
+            })
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            showAlert(result.message, 'success');
+        } else {
+            showAlert('Ошибка: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        console.error('❌ Ошибка отправки комментария:', error);
+        showAlert('Ошибка отправки комментария: ' + error.message, 'danger');
+    }
+}
+
+
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
     updateSelectedCount();
-    
+
     // Добавляем обработчики для чекбоксов
     document.querySelectorAll('.account-checkbox').forEach(checkbox => {
         checkbox.addEventListener('change', function(e) {
             e.stopPropagation();
             const accountId = parseInt(this.id.replace('checkbox-', ''));
             const card = document.getElementById(`account-${accountId}`);
-            
+
             if (this.checked) {
                 selectedAccounts.add(accountId);
                 card.classList.add('selected');
@@ -766,7 +689,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 selectedAccounts.delete(accountId);
                 card.classList.remove('selected');
             }
-            
+
             updateSelectedCount();
         });
     });
