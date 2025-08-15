@@ -1075,59 +1075,23 @@ async def start_contacts_campaign_api(
 
         # Получаем все данные формы для отладки
         form_data = await request.form()
-        print(f"📋 Все поля формы:")
-        for key, value in form_data.items():
-            print(f"  {key}: {value}")
+        print(f"📋 Обработка формы рассылки по контактам")
 
+        # Простая обработка выбранных аккаунтов
         selected_accounts = []
-
-        print(f"📝 Обрабатываем форму, всего полей: {len(form_data)}")
-
-        # Собираем все выбранные аккаунты - проверяем разные варианты полей
-        for key, value in form_data.items():
-            print(f"🔍 Поле: {key} = {value} (тип: {type(value)})")
-            
-            if key.startswith('account_') and (value == 'on' or value == 'true' or value == '1'):
-                try:
-                    account_id = int(key.replace('account_', ''))
-                    selected_accounts.append(account_id)
-                    print(f"✅ Добавлен аккаунт из поля account_: {account_id}")
-                except ValueError:
-                    print(f"⚠️ Не удалось извлечь ID аккаунта из поля: {key}")
-            elif key == 'selected_accounts[]':
-                # Обрабатываем массив выбранных аккаунтов
-                try:
-                    account_id = int(value)
-                    selected_accounts.append(account_id)
-                    print(f"✅ Добавлен аккаунт из массива: {account_id}")
-                except ValueError:
-                    print(f"⚠️ Не удалось извлечь ID аккаунта из массива: {value}")
-            elif key == 'selected_accounts':
-                # Обрабатываем строку с ID аккаунтов через запятую
-                try:
-                    value_str = str(value).strip()
-                    print(f"🔍 Обрабатываем selected_accounts: '{value_str}'")
-                    
-                    if value_str and value_str != 'None' and value_str != '':
-                        if ',' in value_str:
-                            account_ids = []
-                            for x in value_str.split(','):
-                                x = x.strip()
-                                if x and x.isdigit():
-                                    account_ids.append(int(x))
-                            selected_accounts.extend(account_ids)
-                            print(f"✅ Добавлены аккаунты из строки: {account_ids}")
-                        else:
-                            if value_str.isdigit():
-                                account_id = int(value_str)
-                                selected_accounts.append(account_id)
-                                print(f"✅ Добавлен аккаунт из поля: {account_id}")
-                except (ValueError, AttributeError) as e:
-                    print(f"⚠️ Ошибка извлечения ID аккаунтов из поля selected_accounts: {e}")
-
-        # Удаляем дубликаты и сортируем
-        selected_accounts = list(set(selected_accounts))
-        selected_accounts.sort()
+        selected_accounts_str = form_data.get('selected_accounts', '')
+        
+        print(f"🔍 Получено selected_accounts: '{selected_accounts_str}'")
+        
+        if selected_accounts_str:
+            try:
+                # Парсим строку с ID аккаунтов через запятую
+                account_ids = [int(x.strip()) for x in selected_accounts_str.split(',') if x.strip().isdigit()]
+                selected_accounts = list(set(account_ids))  # Удаляем дубликаты
+                print(f"✅ Распарсены аккаунты: {selected_accounts}")
+            except (ValueError, AttributeError) as e:
+                print(f"❌ Ошибка парсинга аккаунтов: {e}")
+                selected_accounts = []
         
         print(f"📱 Итого найдено уникальных аккаунтов: {len(selected_accounts)} - {selected_accounts}")
         print(f"📝 Сообщение: '{message[:50]}{'...' if len(message) > 50 else ''}'")
