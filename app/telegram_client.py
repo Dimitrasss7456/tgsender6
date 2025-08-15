@@ -141,7 +141,8 @@ class TelegramManager:
 
             if len(clean_code) != 5:
                 return {
-                    "status": "error",
+                    "status":
+                    "error",
                     "message": "Код должен содержать ровно 5 цифр"
                 }
 
@@ -198,10 +199,7 @@ class TelegramManager:
                     "Код истёк. Запросите новый код через форму добавления аккаунта"
                 }
             elif "phone_code_empty" in error_msg or "empty" in error_msg:
-                return {
-                    "status": "error",
-                    "message": "Код не может быть пустым"
-                }
+                return {"status": "error", "message": "Код не может быть пустым"}
             elif "session_password_needed" in error_msg or "password" in error_msg or "2fa" in error_msg:
                 return {
                     "status": "password_required",
@@ -1829,7 +1827,7 @@ class TelegramManager:
 
                 # Вставляем данные сессии без takeout_id
                 cursor.execute("""
-                    INSERT INTO sessions (dc_id, server_address, port, auth_key) 
+                    INSERT INTO sessions (dc_id, server_address, port, auth_key)
                     VALUES (?, ?, ?, ?)
                 """, (dc_id, server_address, port, auth_key))
                 print("✅ Данные авторизации добавлены в таблицу sessions")
@@ -1939,7 +1937,7 @@ class TelegramManager:
                 """)
 
                 cursor.execute("""
-                    INSERT INTO sessions (dc_id, server_address, port, auth_key) 
+                    INSERT INTO sessions (dc_id, server_address, port, auth_key)
                     VALUES (?, ?, ?, ?)
                 """, (dc_id, server_address, port, auth_key))
 
@@ -2052,7 +2050,7 @@ class TelegramManager:
 
                 # Вставляем данные сессии
                 cursor.execute("""
-                    INSERT OR REPLACE INTO sessions (dc_id, server_address, port, auth_key, takeout_id) 
+                    INSERT OR REPLACE INTO sessions (dc_id, server_address, port, auth_key, takeout_id)
                     VALUES (?, ?, ?, ?, NULL)
                 """, (dc_id, server_address, port, auth_key))
                 print("✅ Данные авторизации добавлены в таблицу sessions")
@@ -2328,7 +2326,7 @@ class TelegramManager:
             # Если оба метода не удались
             print(f"❌ Оба метода не удались")
             return {
-                "status": "error", 
+                "status": "error",
                 "message": f"Telethon: {telethon_result.get('message')}, Pyrogram: {pyrogram_result.get('message')}"
             }
 
@@ -2688,7 +2686,7 @@ class TelegramManager:
 
                         # Если группа обсуждений не найдена, вернем ошибку для попытки Telethon
                         return {
-                            "status": "error", 
+                            "status": "error",
                             "message": f"Pyrogram: У канала {chat_id} нет доступной группы обсуждений"
                         }
 
@@ -2747,11 +2745,6 @@ class TelegramManager:
                 telethon_session_file = os.path.join(SESSIONS_DIR, f"telethon_{phone_clean}")
 
                 print(f"🔗 Telethon: Создаем совместимый файл сессии: {telethon_session_file}.session")
-
-                # Проверяем существует ли Pyrogram сессия для конвертации
-                if not os.path.exists(pyrogram_session_file):
-                    print(f"❌ Telethon: Файл Pyrogram сессии не найден: {pyrogram_session_file}")
-                    return {"status": "error", "message": "Telethon: Pyrogram сессия не найдена"}
 
                 # Проверяем нужно ли пересоздать сессию
                 session_file_path = f"{telethon_session_file}.session"
@@ -2902,7 +2895,7 @@ class TelegramManager:
                             print(f"✅ Telethon: Комментарий отправлен в чат! ID: {sent_message.id}")
                             return {
                                 "status": "success",
-                                "message": "Комментарий отправлен через Telethon",
+                                "message": "Комментарий отправлен",
                                 "message_id": sent_message.id
                             }
 
