@@ -444,6 +444,77 @@
 <script>
 let selectedAccounts = new Set();
 
+function selectByGender(gender) {
+    const cards = document.querySelectorAll('.account-card');
+    cards.forEach(card => {
+        const accountId = parseInt(card.id.replace('account-', ''));
+        const checkbox = document.getElementById(`checkbox-${accountId}`);
+        const genderIcon = card.querySelector('.fa-mars, .fa-venus');
+        
+        let shouldSelect = false;
+        if (gender === 'male' && genderIcon && genderIcon.classList.contains('fa-mars')) {
+            shouldSelect = true;
+        } else if (gender === 'female' && genderIcon && genderIcon.classList.contains('fa-venus')) {
+            shouldSelect = true;
+        }
+        
+        if (shouldSelect) {
+            checkbox.checked = true;
+            selectedAccounts.add(accountId);
+            card.classList.add('selected');
+        }
+    });
+    
+    updateSelectedCount();
+}
+
+function selectAll() {
+    const checkboxes = document.querySelectorAll('.account-checkbox');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = true;
+        const accountId = parseInt(checkbox.id.replace('checkbox-', ''));
+        selectedAccounts.add(accountId);
+        document.getElementById(`account-${accountId}`).classList.add('selected');
+    });
+    
+    updateSelectedCount();
+}
+
+function deselectAll() {
+    const checkboxes = document.querySelectorAll('.account-checkbox');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = false;
+        const accountId = parseInt(checkbox.id.replace('checkbox-', ''));
+        selectedAccounts.delete(accountId);
+        document.getElementById(`account-${accountId}`).classList.remove('selected');
+    });
+    
+    selectedAccounts.clear();
+    updateSelectedCount();
+}
+
+function editAccount(accountId) {
+    // Получаем данные аккаунта
+    fetch(`/api/accounts/${accountId}`)
+        .then(response => response.json())
+        .then(data => {
+            // Заполняем форму
+            document.getElementById('editAccountId').value = accountId;
+            document.getElementById('editFirstName').value = data.first_name || '';
+            document.getElementById('editLastName').value = data.last_name || '';
+            document.getElementById('editGender').value = data.gender || '';
+            document.getElementById('editBio').value = data.bio || '';
+            
+            // Показываем модальное окно
+            const modal = new bootstrap.Modal(document.getElementById('editAccountModal'));
+            modal.show();
+        })
+        .catch(error => {
+            console.error('Ошибка получения данных аккаунта:', error);
+            showAlert('Ошибка загрузки данных аккаунта', 'danger');
+        });
+}
+
 function showAlert(message, type = 'info') {
     const alertsContainer = document.getElementById('alerts');
     const alertDiv = document.createElement('div');
