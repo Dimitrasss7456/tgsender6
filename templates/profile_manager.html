@@ -437,11 +437,6 @@ function toggleAccount(accountId, checkbox) {
     
     updateSelectedCount();
     console.log('📊 Текущие выбранные аккаунты:', Array.from(selectedAccounts));
-}entById('selectedCount');
-    if (countElement) {
-        countElement.textContent = `${count} выбрано`;
-        countElement.className = `badge ${count > 0 ? 'bg-primary' : 'bg-secondary'} me-2`;
-    }
 }
 
 function toggleAccountSelection(accountId) {
@@ -612,16 +607,6 @@ async function startSequentialComments() {
     } catch (error) {
         console.error('❌ Ошибка отправки комментария:', error);
         showAlert('Ошибка отправки комментария: ' + error.message, 'danger');
-    }
-
-        const result = await response.json();
-        if (result.success) {
-            showAlert('Комментирование запущено!', 'success');
-        } else {
-            showAlert('Ошибка: ' + result.message, 'danger');
-        }
-    } catch (error) {
-        showAlert('Ошибка: ' + error.message, 'danger');
     }
 }
 
