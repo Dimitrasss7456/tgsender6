@@ -676,18 +676,13 @@ class TelegramManager:
 
     async def _get_client_for_account(self,
                                       account_id: int) -> Optional[Client]:
-        """Получение или создание клиента с улучшенной диагностикой"""
-        print(f"🔄 Запрос клиента для аккаунта {account_id}")
-
-        # Всегда создаем новый клиент для избежания проблем с Broken Pipe
+        """Быстрое получение или создание клиента"""
+        # Проверяем кеш клиентов
         if account_id in self.clients:
-            try:
-                old_client = self.clients[account_id]
-                if hasattr(old_client, 'disconnect'):
-                    await old_client.disconnect()
-            except Exception as e:
-                print(f"⚠️ Ошибка при отключении старого клиента: {e}")
-            finally:
+            client = self.clients[account_id]
+            if hasattr(client, 'is_connected') and client.is_connected:
+                return client
+            else:
                 del self.clients[account_id]
 
         # Получаем данные аккаунта
@@ -695,139 +690,56 @@ class TelegramManager:
         try:
             account = db.query(Account).filter(
                 Account.id == account_id).first()
-            if not account:
-                print(f"❌ Аккаунт {account_id} не найден в базе данных")
+            if not account or not account.is_active:
                 return None
 
-            if not account.is_active:
-                print(f"❌ Аккаунт {account_id} неактивен")
-                return None
-
-            print(f"✅ Найден аккаунт: {account.name} ({account.phone})")
-
-            # Ищем файл сессии
+            # Быстрый поиск файла сессии
             phone_clean = account.phone.replace('+', '').replace(
                 ' ', '').replace('(', '').replace(')', '').replace('-', '')
-
-            # Список возможных имен сессий
-            possible_names = [
-                f"session_{phone_clean}", f"session_{account.phone}",
-                phone_clean
-            ]
-
-            session_file = None
-            for name in possible_names:
-                path = os.path.join(SESSIONS_DIR, f"{name}.session")
-                if os.path.exists(path):
-                    session_file = os.path.join(SESSIONS_DIR, name)
-                    print(f"Найден файл сессии: {session_file}.session")
-                    break
-
-            if not session_file:
-                print(
-                    f"Файл сессии не найден для аккаунта {account_id}, проверенные пути:"
-                )
-                for name in possible_names:
-                    print(f"  - {os.path.join(SESSIONS_DIR, name)}.session")
+            
+            session_file = os.path.join(SESSIONS_DIR, f"session_{phone_clean}")
+            if not os.path.exists(f"{session_file}.session"):
                 return None
 
-            # Создаем клиент с улучшенными настройками
+            # Создаем клиент с быстрыми настройками
             client = Client(session_file,
                             api_id=API_ID,
                             api_hash=API_HASH,
-                            proxy=self._parse_proxy(account.proxy)
-                            if account.proxy else None,
-                            sleep_threshold=60,  # Увеличиваем sleep threshold
-                            max_concurrent_transmissions=1,  # Ограничиваем одновременные передачи
+                            proxy=self._parse_proxy(account.proxy) if account.proxy else None,
+                            sleep_threshold=30,
+                            max_concurrent_transmissions=2,
                             no_updates=True,
-                            workers=1)  # Один воркер для стабильности
+                            workers=1)
 
-            # Проверяем подключение и авторизацию с retry
-            max_retries = 2  # Уменьшаем количество попыток
-            for attempt in range(max_retries):
+            # Быстрое подключение
+            try:
+                await asyncio.wait_for(client.connect(), timeout=10)
+                
+                # Создаем заглушку для client.me если не можем получить быстро
                 try:
-                    # Подключаемся с таймаутом
-                    await asyncio.wait_for(client.connect(), timeout=30)
+                    me = await asyncio.wait_for(client.get_me(), timeout=5)
+                    client.me = me
+                except (asyncio.TimeoutError, FloodWait):
+                    from types import SimpleNamespace
+                    client.me = SimpleNamespace(
+                        id=account_id,
+                        first_name=account.name or "User",
+                        is_premium=False,
+                        is_verified=False,
+                        is_bot=False
+                    )
 
-                    # Даем время на стабилизацию соединения
-                    await asyncio.sleep(1)
+                self.clients[account_id] = client
+                return client
 
-                    # Пробуем получить информацию о пользователе с таймаутом
-                    try:
-                        me = await asyncio.wait_for(client.get_me(), timeout=15)
-                        print(f"✓ Клиент для аккаунта {account_id} успешно подключен: {me.first_name}")
-
-                        # Принудительно устанавливаем client.me для корректной работы Pyrogram
-                        client.me = me
-
-                        # Обновляем статус в БД
-                        account.status = "online"
-                        account.last_activity = datetime.utcnow()
-                        db.commit()
-
-                        self.clients[account_id] = client
-                        return client
-
-                    except FloodWait as fw:
-                        print(f"⏰ FLOOD_WAIT для get_me аккаунта {account_id}: {fw.value} секунд")
-                        # Сохраняем клиент даже с FLOOD_WAIT
-                        self.clients[account_id] = client
-                        return client
-                    except asyncio.TimeoutError:
-                        print(f"⏰ Таймаут при получении информации о пользователе для аккаунта {account_id}")
-                        # Если get_me не удался из-за таймаута, все равно используем клиент
-                        self.clients[account_id] = client
-                        return client
-
-                except Exception as auth_error:
-                    error_str = str(auth_error).lower()
-                    print(f"Попытка {attempt + 1}/{max_retries} - Ошибка подключения клиента {account_id}: {auth_error}")
-
-                    # Специальная обработка AUTH_KEY_UNREGISTERED
-                    if "auth_key_unregistered" in error_str:
-                        print(f"🔧 Обнаружена недействительная сессия для аккаунта {account_id}")
-                        await self._handle_auth_key_unregistered(account_id)
-                        return None
-
-                    # Специальная обработка Broken Pipe
-                    if "broken pipe" in error_str or "errno 32" in error_str:
-                        print(f"🔧 Обнаружена ошибка Broken Pipe для аккаунта {account_id}")
-                        # При Broken Pipe сразу создаем новый клиент
-                        try:
-                            await client.disconnect()
-                        except:
-                            pass
-
-                        if attempt < max_retries - 1:
-                            await asyncio.sleep(5)  # Больше времени для восстановления
-                            # Создаем новый клиент
-                            client = Client(session_file,
-                                            api_id=API_ID,
-                                            api_hash=API_HASH,
-                                            proxy=self._parse_proxy(account.proxy)
-                                            if account.proxy else None,
-                                            sleep_threshold=60,
-                                            max_concurrent_transmissions=1,
-                                            no_updates=True,
-                                            workers=1)
-                            continue
-
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(3 + attempt * 2)  # Увеличиваем задержку
-                        continue
-                    else:
-                        # Последняя попытка не удалась
-                        try:
-                            if hasattr(client, 'disconnect'):
-                                await client.disconnect()
-                        except:
-                            pass
-                        return None
+            except Exception as e:
+                try:
+                    await client.disconnect()
+                except:
+                    pass
+                return None
 
         except Exception as e:
-            print(
-                f"Общая ошибка создания клиента для аккаунта {account_id}: {str(e)}"
-            )
             return None
         finally:
             db.close()
@@ -1272,225 +1184,62 @@ class TelegramManager:
             return {"status": "error", "message": f"Общая ошибка: {error_msg}"}
 
     async def send_message(self, account_id: int, recipient: str, message: str, file_path: str = None, schedule_seconds: int = 0) -> dict:
-        """Отправка сообщения/файла с полным выводом ошибок Telegram"""
-        import os, io, traceback, mimetypes, tempfile, shutil
-        from pyrogram.errors import RPCError, AuthKeyUnregistered, FloodWait
+        """Быстрая отправка сообщения/файла"""
         try:
             client = await self._get_client_for_account(account_id)
             if not client:
                 return {"status": "error", "message": "Клиент не найден"}
 
-            # Проверяем подключение с улучшенной обработкой ошибок
-            max_retries = 2
-            for attempt in range(max_retries):
+            # Быстрая проверка подключения
+            if not client.is_connected:
                 try:
-                    if not client.is_connected:
-                        await asyncio.wait_for(client.connect(), timeout=20)
-                    break
-                except Exception as connect_error:
-                    error_str = str(connect_error).lower()
-                    if "broken pipe" in error_str or "errno 32" in error_str:
-                        print(f"🔧 Broken pipe при подключении, попытка {attempt + 1}")
-                        # При Broken Pipe получаем новый клиент
-                        client = await self._get_client_for_account(account_id)
-                        if not client:
-                            return {"status": "error", "message": "Не удалось получить стабильный клиент"}
-                    elif attempt == max_retries - 1:
-                        return {"status": "error", "message": f"Не удалось подключиться: {str(connect_error)}"}
-                    await asyncio.sleep(3 + attempt * 2)
+                    await asyncio.wait_for(client.connect(), timeout=10)
+                except Exception:
+                    return {"status": "error", "message": "Не удалось подключиться"}
 
-            # Проверяем авторизацию с обработкой FLOOD_WAIT
-            try:
-                me = await client.get_me()
-                if not me:
-                    return {
-                        "status": "error",
-                        "message": "Ошибка авторизации аккаунта"
-                    }
-            except FloodWait as fw:
-                print(f"⏰ FLOOD_WAIT для get_me: {fw.value} секунд. Пропускаем проверку авторизации")
-                # Не ждем FLOOD_WAIT для get_me, просто пропускаем проверку
-                me = None
-            except AuthKeyUnregistered:
-                await self._handle_auth_key_unregistered(account_id)
-                return {
-                    "status": "error",
-                    "message": "Сессия аккаунта недействительна. Необходимо войти заново"
-                }
             # Нормализация получателя
-            if not recipient.startswith('@') and not recipient.startswith(
-                    '+') and not recipient.isdigit(
-                    ) and not recipient.startswith('-'):
+            if not recipient.startswith('@') and not recipient.startswith('+') and not recipient.isdigit() and not recipient.startswith('-'):
                 recipient = f"@{recipient}"
-            target_id = recipient if not recipient.isdigit() else int(
-                recipient)
+            
+            target_id = recipient if not recipient.isdigit() else int(recipient)
+            
             schedule_date = None
             if schedule_seconds > 0:
                 from datetime import datetime, timedelta
-                # Убираем минимальную задержку в 30 секунд для мгновенной отправки
                 schedule_date = datetime.utcnow() + timedelta(seconds=schedule_seconds)
 
-            def prepare_apk_file(path):
-                if not path.lower().endswith(".apk"):
-                    return path, None
-                tmp_dir = tempfile.mkdtemp()
-                tmp_path = os.path.join(tmp_dir,
-                                        os.path.basename(path) + ".zip")
-
-                # Копируем оригинальный файл
-                shutil.copy(path, tmp_path)
-
-                # Добавляем уникальные данные для каждого контакта
-                import random, time, uuid
-                from datetime import datetime
-
-                # Генерируем максимально уникальные данные
-                timestamp = str(int(time.time() * 1000000))  # Микросекунды
-                unique_id = str(uuid.uuid4())
-                random_symbols = ['.', ',', ';', ':', '!', '?', '-', '_', '=', '+', '#', '@', '$', '%']
-                random_data = ''.join(random.choices(random_symbols, k=random.randint(15, 30)))
-                recipient_hash = str(hash(recipient + timestamp))
-
-                # Добавляем максимальное разнообразие в конец файла
-                with open(tmp_path, 'ab') as f:
-                    # Комментарий с уникальными данными
-                    unique_comment = f"\n# Unique data for {recipient}\n"
-                    unique_comment += f"# Timestamp: {timestamp}\n"
-                    unique_comment += f"# UUID: {unique_id}\n"
-                    unique_comment += f"# Random: {random_data}\n"
-                    unique_comment += f"# Hash: {recipient_hash}\n"
-                    unique_comment += f"# DateTime: {datetime.now().isoformat()}\n"
-                    f.write(unique_comment.encode('utf-8'))
-
-                    # Случайные байты разной длины
-                    f.write(bytes([random.randint(0, 255) for _ in range(random.randint(50, 150))]))
-
-                    # Дополнительная строка с случайными данными
-                    f.write(f"\n{random_data * random.randint(2, 5)}\n".encode('utf-8'))
-
-                print(f"📝 Создан уникальный APK для {recipient} с ID: {unique_id[:8]}")
-                return tmp_path, tmp_dir
-
+            # Быстрая отправка файла
             if file_path and os.path.exists(file_path):
-                send_path, tmp_dir = prepare_apk_file(file_path)
-
-                # Сохраняем оригинальное имя файла
-                original_filename = os.path.basename(file_path)
-
-                # Создаем BytesIO объект с правильным именем
-                file_data = open(send_path, "rb").read()
-                bytes_io = io.BytesIO(file_data)
-                bytes_io.name = original_filename
-
-                attempts = [
-                    ("path", send_path),
-                    ("bytesIO", bytes_io)
-                ]
-
-                last_error = None
-                for label, doc in attempts:
-                    try:
-                        print(f"🔄 Попытка отправки файла через {label} ...")
-
-                        # Проверяем что client.me установлен
-                        if not hasattr(client, 'me') or client.me is None:
-                            print("⚠️ client.me не установлен, создаем заглушку")
-                            from types import SimpleNamespace
-                            client.me = SimpleNamespace(
-                                id=account_id,
-                                first_name="User",
-                                is_premium=False,
-                                is_verified=False,
-                                is_bot=False
-                            )
-
-                        # Параметры для отправки
-                        send_params = {
-                            "chat_id": target_id,
-                            "document": doc,
-                            "caption": message or "",
-                            "force_document": True,
-                            "file_name": original_filename
-                        }
-
-                        # Добавляем schedule_date только если задан
-                        if schedule_date:
-                            send_params["schedule_date"] = schedule_date
-
-                        sent = await client.send_document(**send_params)
-                        if tmp_dir:
-                            shutil.rmtree(tmp_dir, ignore_errors=True)
-                        return {
-                            "status": "success",
-                            "message_id": getattr(sent, "id", None)
-                        }
-                    except FloodWait as fw:
-                        print(f"⏰ FLOOD_WAIT при {label}: {fw.value} секунд")
-                        return {
-                            "status": "flood_wait",
-                            "message": f"Требуется ожидание {fw.value} секунд",
-                            "wait_time": fw.value
-                        }
-                    except RPCError as rpc_err:
-                        print(f"❌ RPCError при {label}: {rpc_err}")
-                        last_error = f"RPCError: {rpc_err}"
-                    except Exception as e:
-                        print(f"❌ Ошибка при {label}: {e}")
-                        last_error = str(e)
-
-                if tmp_dir:
-                    shutil.rmtree(tmp_dir, ignore_errors=True)
-                return {
-                    "status": "error",
-                    "message": f"Не удалось отправить файл: {last_error}"
-                }
-            else:
                 try:
-                    # Проверяем что client.me установлен
-                    if not hasattr(client, 'me') or client.me is None:
-                        print("⚠️ client.me не установлен, создаем заглушку")
-                        from types import SimpleNamespace
-                        client.me = SimpleNamespace(
-                            id=account_id,
-                            first_name="User",
-                            is_premium=False,
-                            is_verified=False,
-                            is_bot=False
-                        )
-
-                    sent = await client.send_message(
+                    sent = await client.send_document(
                         chat_id=target_id,
-                        text=message or "",
-                        schedule_date=schedule_date)
+                        document=file_path,
+                        caption=message or "",
+                        force_document=True,
+                        schedule_date=schedule_date
+                    )
                     return {
                         "status": "success",
                         "message_id": getattr(sent, "id", None)
                     }
-                except FloodWait as fw:
-                    print(f"⏰ FLOOD_WAIT при отправке текста: {fw.value} секунд")
+                except Exception as e:
+                    return {"status": "error", "message": str(e)}
+            
+            # Быстрая отправка текста
+            else:
+                try:
+                    sent = await client.send_message(
+                        chat_id=target_id,
+                        text=message or "",
+                        schedule_date=schedule_date
+                    )
                     return {
-                        "status": "flood_wait",
-                        "message": f"Требуется ожидание {fw.value} секунд",
-                        "wait_time": fw.value
+                        "status": "success",
+                        "message_id": getattr(sent, "id", None)
                     }
-                except RPCError as rpc_err:
-                    print(f"❌ RPCError при отправке текста: {rpc_err}")
-                    return {
-                        "status": "error",
-                        "message": f"RPCError: {rpc_err}"
-                    }
-                except Exception as e4:
-                    print(f"Ошибка при отправке текста: {e4}")
-                    return {"status": "error", "message": str(e4)}
-        except AuthKeyUnregistered:
-            await self._handle_auth_key_unregistered(account_id)
-            return {
-                "status": "error",
-                "message": "Сессия аккаунта недействительна. Необходимо войти заново"
-            }
+                except Exception as e:
+                    return {"status": "error", "message": str(e)}
         except Exception as e:
-            print(f"Общая ошибка send_message: {e}")
-            print(traceback.format_exc())
             return {"status": "error", "message": str(e)}
 
     async def _send_text_only(self,
