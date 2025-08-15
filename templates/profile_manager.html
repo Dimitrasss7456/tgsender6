@@ -450,21 +450,21 @@ function selectByGender(gender) {
         const accountId = parseInt(card.id.replace('account-', ''));
         const checkbox = document.getElementById(`checkbox-${accountId}`);
         const genderIcon = card.querySelector('.fa-mars, .fa-venus');
-        
+
         let shouldSelect = false;
         if (gender === 'male' && genderIcon && genderIcon.classList.contains('fa-mars')) {
             shouldSelect = true;
         } else if (gender === 'female' && genderIcon && genderIcon.classList.contains('fa-venus')) {
             shouldSelect = true;
         }
-        
+
         if (shouldSelect) {
             checkbox.checked = true;
             selectedAccounts.add(accountId);
             card.classList.add('selected');
         }
     });
-    
+
     updateSelectedCount();
 }
 
@@ -476,7 +476,7 @@ function selectAll() {
         selectedAccounts.add(accountId);
         document.getElementById(`account-${accountId}`).classList.add('selected');
     });
-    
+
     updateSelectedCount();
 }
 
@@ -488,7 +488,7 @@ function deselectAll() {
         selectedAccounts.delete(accountId);
         document.getElementById(`account-${accountId}`).classList.remove('selected');
     });
-    
+
     selectedAccounts.clear();
     updateSelectedCount();
 }
@@ -504,7 +504,7 @@ function editAccount(accountId) {
             document.getElementById('editLastName').value = data.last_name || '';
             document.getElementById('editGender').value = data.gender || '';
             document.getElementById('editBio').value = data.bio || '';
-            
+
             // Показываем модальное окно
             const modal = new bootstrap.Modal(document.getElementById('editAccountModal'));
             modal.show();
@@ -552,7 +552,7 @@ function toggleAccountSelection(accountId) {
     if (!checkbox) return;
 
     checkbox.checked = !checkbox.checked;
-    
+
     if (checkbox.checked) {
         selectedAccounts.add(parseInt(accountId));
         document.getElementById(`account-${accountId}`).classList.add('selected');
@@ -564,77 +564,6 @@ function toggleAccountSelection(accountId) {
     updateSelectedCount();
 }
 
-function selectByGender(gender) {
-    const cards = document.querySelectorAll('.account-card');
-    cards.forEach(card => {
-        const accountId = parseInt(card.id.replace('account-', ''));
-        const checkbox = document.getElementById(`checkbox-${accountId}`);
-        const genderIcon = card.querySelector('.fa-mars, .fa-venus');
-        
-        let shouldSelect = false;
-        if (gender === 'male' && genderIcon && genderIcon.classList.contains('fa-mars')) {
-            shouldSelect = true;
-        } else if (gender === 'female' && genderIcon && genderIcon.classList.contains('fa-venus')) {
-            shouldSelect = true;
-        }
-        
-        if (shouldSelect) {
-            checkbox.checked = true;
-            selectedAccounts.add(accountId);
-            card.classList.add('selected');
-        }
-    });
-    
-    updateSelectedCount();
-}
-
-function selectAll() {
-    const checkboxes = document.querySelectorAll('.account-checkbox');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = true;
-        const accountId = parseInt(checkbox.id.replace('checkbox-', ''));
-        selectedAccounts.add(accountId);
-        document.getElementById(`account-${accountId}`).classList.add('selected');
-    });
-    
-    updateSelectedCount();
-}
-
-function deselectAll() {
-    const checkboxes = document.querySelectorAll('.account-checkbox');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = false;
-        const accountId = parseInt(checkbox.id.replace('checkbox-', ''));
-        selectedAccounts.delete(accountId);
-        document.getElementById(`account-${accountId}`).classList.remove('selected');
-    });
-    
-    selectedAccounts.clear();
-    updateSelectedCount();
-}
-
-function editAccount(accountId) {
-    // Получаем данные аккаунта
-    fetch(`/api/accounts/${accountId}`)
-        .then(response => response.json())
-        .then(data => {
-            // Заполняем форму
-            document.getElementById('editAccountId').value = accountId;
-            document.getElementById('editFirstName').value = data.first_name || '';
-            document.getElementById('editLastName').value = data.last_name || '';
-            document.getElementById('editGender').value = data.gender || '';
-            document.getElementById('editBio').value = data.bio || '';
-            
-            // Показываем модальное окно
-            const modal = new bootstrap.Modal(document.getElementById('editAccountModal'));
-            modal.show();
-        })
-        .catch(error => {
-            console.error('Ошибка получения данных аккаунта:', error);
-            showAlert('Ошибка загрузки данных аккаунта', 'danger');
-        });
-}
-
 async function saveAccountChanges() {
     const accountId = document.getElementById('editAccountId').value;
     const firstName = document.getElementById('editFirstName').value;
@@ -642,32 +571,32 @@ async function saveAccountChanges() {
     const gender = document.getElementById('editGender').value;
     const bio = document.getElementById('editBio').value;
     const photoFile = document.getElementById('editPhoto').files[0];
-    
+
     try {
         const formData = new FormData();
         formData.append('first_name', firstName);
         formData.append('last_name', lastName);
         formData.append('gender', gender);
         formData.append('bio', bio);
-        
+
         if (photoFile) {
             formData.append('photo', photoFile);
         }
-        
+
         const response = await fetch(`/api/accounts/${accountId}/update`, {
             method: 'POST',
             body: formData
         });
-        
+
         const result = await response.json();
-        
+
         if (result.success) {
             showAlert('Аккаунт обновлен успешно', 'success');
-            
+
             // Закрываем модальное окно
             const modal = bootstrap.Modal.getInstance(document.getElementById('editAccountModal'));
             modal.hide();
-            
+
             // Перезагружаем страницу через секунду
             setTimeout(() => location.reload(), 1000);
         } else {
@@ -903,7 +832,7 @@ async function startSequentialComments() {
         const result = await response.json();
         if (result.success) {
             showAlert(result.message, 'success');
-            
+
             // Автоматически обновляем историю комментариев если модальное окно открыто
             const modal = document.getElementById('commentHistoryModal');
             if (modal && modal.classList.contains('show')) {
@@ -1007,12 +936,12 @@ function displayCommentHistory(comments) {
 
     comments.forEach(comment => {
         const date = comment.sent_at ? new Date(comment.sent_at).toLocaleString('ru-RU') : 'Неизвестно';
-        const status = comment.status === 'sent' ? 
-            '<span class="badge bg-success">Отправлен</span>' : 
+        const status = comment.status === 'sent' ?
+            '<span class="badge bg-success">Отправлен</span>' :
             '<span class="badge bg-danger">Ошибка</span>';
-        
-        const commentText = comment.comment.length > 50 ? 
-            comment.comment.substring(0, 50) + '...' : 
+
+        const commentText = comment.comment.length > 50 ?
+            comment.comment.substring(0, 50) + '...' :
             comment.comment;
 
         html += `
@@ -1053,7 +982,7 @@ async function deleteComment(commentId) {
 
         if (result.success) {
             showAlert(result.message, 'success');
-            
+
             // Удаляем строку из таблицы
             const row = document.getElementById(`comment-row-${commentId}`);
             if (row) {
@@ -1086,7 +1015,7 @@ async function clearAccountComments() {
 
         if (result.success) {
             showAlert(result.message, 'success');
-            
+
             // Обновляем содержимое модального окна
             document.getElementById('commentHistoryContent').innerHTML = `
                 <div class="alert alert-info">
@@ -1156,5 +1085,84 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
+
+// Обработчик для выбора реакций
+document.querySelectorAll('.reaction-selector').forEach(selector => {
+    selector.addEventListener('click', function() {
+        this.classList.toggle('selected');
+    });
+});
+
+// Фикс для кнопок реакций
+// Эта функция должна вызываться при инициализации или когда меняется состояние выбранных реакций
+function updateReactionButtonState() {
+    const selectedReactions = document.querySelectorAll('.reaction-selector.selected');
+    const startButton = document.querySelector('.btn-warning[onclick="startMultipleReactions()"]');
+    if (startButton) {
+        startButton.disabled = selectedReactions.length === 0;
+    }
+}
+
+
+// Функция для запуска нескольких реакций
+async function startMultipleReactions() {
+    if (selectedAccounts.size === 0) {
+        showAlert('Выберите аккаунты для реакций', 'warning');
+        return;
+    }
+
+    const postUrl = document.getElementById('reactionPostUrl').value.trim();
+    const totalReactions = parseInt(document.getElementById('totalReactions').value) || 1;
+    const delaySeconds = parseInt(document.getElementById('reactionDelay').value) || 20;
+
+    if (!postUrl) {
+        showAlert('Введите URL поста для реакций', 'warning');
+        return;
+    }
+
+    // Собираем выбранные реакции из кнопок
+    const selectedReactionButtons = document.querySelectorAll('.reaction-selector.selected');
+    const selectedReactions = Array.from(selectedReactionButtons).map(btn => btn.dataset.emoji);
+
+    if (selectedReactions.length === 0) {
+        showAlert('Выберите хотя бы одну реакцию', 'warning');
+        return;
+    }
+
+    console.log('Отправляем реакции:', {
+        post_url: postUrl,
+        reactions: selectedReactions,
+        total_count: totalReactions,
+        selected_accounts: Array.from(selectedAccounts),
+        delay_seconds: delaySeconds
+    });
+
+    try {
+        const response = await fetch('/api/multiple_reactions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                post_url: postUrl,
+                reactions: selectedReactions,
+                total_count: totalReactions,
+                selected_accounts: Array.from(selectedAccounts),
+                delay_seconds: delaySeconds
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showAlert(`Реакции запущены! Будет отправлено ${totalReactions} реакций с задержкой ${delaySeconds} секунд`, 'success');
+        } else {
+            showAlert('Ошибка запуска реакций: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        console.error('Ошибка запуска реакций:', error);
+        showAlert('Ошибка сети: ' + error.message, 'danger');
+    }
+}
 </script>
 {% endblock %}

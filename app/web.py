@@ -1514,38 +1514,73 @@ async def start_multiple_reactions(request: Request, db: Session = Depends(get_d
     """Запуск множественных реакций"""
     try:
         data = await request.json()
-        post_url = data.get('post_url')
+        post_url = data.get('post_url', '').strip()
         reactions = data.get('reactions', [])
-        total_count = data.get('total_count', 9)
+        total_count = data.get('total_count', 1)
         selected_accounts = data.get('selected_accounts', [])
         delay_seconds = data.get('delay_seconds', 20)
 
+        print(f"🎭 Получен запрос на реакции: {data}")
+
+        if not post_url:
+            return {"success": False, "message": "URL поста не указан"}
+
+        if not reactions or len(reactions) == 0:
+            return {"success": False, "message": "Не выбраны реакции"}
+
+        if not selected_accounts or len(selected_accounts) == 0:
+            return {"success": False, "message": "Не выбраны аккаунты"}
+
         # Парсим URL поста
         import re
-        url_match = re.search(r't\.me/([^/]+)/(\d+)', post_url)
-        if not url_match:
-            return {"success": False, "message": "Неверный формат URL"}
+        url_patterns = [
+            r'https?://t\.me/([^/]+)/(\d+)',
+            r't\.me/([^/]+)/(\d+)',
+            r'https?://telegram\.me/([^/]+)/(\d+)'
+        ]
+        
+        chat_id = None
+        message_id = None
+        
+        for pattern in url_patterns:
+            url_match = re.search(pattern, post_url)
+            if url_match:
+                chat_id = f"@{url_match.group(1)}"
+                message_id = int(url_match.group(2))
+                break
 
-        chat_id = f"@{url_match.group(1)}"
-        message_id = int(url_match.group(2))
+        if not chat_id or not message_id:
+            return {"success": False, "message": "Неверный формат URL поста"}
+
+        print(f"📍 Парсинг URL: {chat_id}, сообщение: {message_id}")
 
         # Получаем аккаунты
         accounts = db.query(Account).filter(
             Account.id.in_(selected_accounts),
-            Account.is_active == True
+            Account.is_active == True,
+            Account.status == 'online'
         ).all()
 
         if not accounts:
-            return {"success": False, "message": "Нет активных аккаунтов"}
+            return {"success": False, "message": "Нет активных онлайн аккаунтов среди выбранных"}
+
+        print(f"👥 Найдено {len(accounts)} активных аккаунтов для реакций")
 
         # Запускаем задачу в фоне
-        asyncio.create_task(run_multiple_reactions(
+        asyncio.create_task(run_multiple_reactions_improved(
             chat_id, message_id, accounts, reactions, total_count, delay_seconds
         ))
 
-        return {"success": True}
+        return {
+            "success": True, 
+            "message": f"Запущены реакции для {len(accounts)} аккаунтов",
+            "accounts_count": len(accounts),
+            "reactions_count": len(reactions)
+        }
+        
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        print(f"❌ Ошибка API реакций: {e}")
+        return {"success": False, "message": f"Ошибка сервера: {str(e)}"}
 
 @app.post("/api/post_views")
 async def start_post_views(request: Request, db: Session = Depends(get_db)):
@@ -1664,6 +1699,162 @@ async def auto_assign_genders(db: Session = Depends(get_db)):
         return {"success": True, "message": f"Обновлено {updated_count} аккаунтов"}
     except Exception as e:
         return {"success": False, "message": str(e)}
+
+@app.post("/api/accounts/auto_fill_profiles_by_count")
+async def auto_fill_profiles_by_count(request: Request, db: Session = Depends(get_db)):
+    """Автозаполнение профилей с контролем количества"""
+    try:
+        data = await request.json()
+        gender = data.get('gender')
+        count = data.get('count', 0)
+
+        if gender not in ['male', 'female']:
+            return {"success": False, "message": "Неверный гендер"}
+
+        if count <= 0:
+            return {"success": False, "message": "Количество должно быть больше 0"}
+
+        # Читаем файлы с именами
+        if gender == 'male':
+            with open('firstnames_male.txt', 'r', encoding='utf-8') as f:
+                first_names = [line.strip() for line in f if line.strip()]
+            with open('lastnames_male.txt', 'r', encoding='utf-8') as f:
+                last_names = [line.strip() for line in f if line.strip()]
+        else:
+            with open('firstnames_female.txt', 'r', encoding='utf-8') as f:
+                first_names = [line.strip() for line in f if line.strip()]
+            with open('lastnames_female.txt', 'r', encoding='utf-8') as f:
+                last_names = [line.strip() for line in f if line.strip()]
+
+        # Получаем доступные аккаунты без гендера или с другим гендером
+        available_accounts = db.query(Account).filter(
+            Account.is_active == True,
+            (Account.gender == None) | (Account.gender != gender)
+        ).limit(count).all()
+
+        if len(available_accounts) < count:
+            return {"success": False, "message": f"Доступно только {len(available_accounts)} аккаунтов для назначения"}
+
+        import random
+        updated_count = 0
+
+        for account in available_accounts[:count]:
+            account.gender = gender
+            account.first_name = random.choice(first_names)
+            account.last_name = random.choice(last_names)
+
+            # Генерируем простое био
+            bios = [
+                "Люблю жизнь и путешествия",
+                "Работаю и учусь",
+                "Интересуюсь спортом",
+                "Фотограф-любитель",
+                "Читаю книги",
+                "Слушаю музыку",
+                "Занимаюсь спортом"
+            ]
+            account.bio = random.choice(bios)
+            updated_count += 1
+
+        db.commit()
+        return {"success": True, "message": f"Назначено {updated_count} {gender} аккаунтов"}
+
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+@app.post("/api/accounts/upload_and_distribute_photos")
+async def upload_and_distribute_photos(
+    male_photos: List[UploadFile] = File(default=[]),
+    female_photos: List[UploadFile] = File(default=[]),
+    db: Session = Depends(get_db)
+):
+    """Загрузка и распределение фотографий по аккаунтам"""
+    try:
+        import uuid
+        import shutil
+
+        total_uploaded = 0
+        distribution_results = {"male": 0, "female": 0}
+
+        # Создаем папки для фотографий
+        male_photos_dir = os.path.join("profile_photos", "male")
+        female_photos_dir = os.path.join("profile_photos", "female")
+        os.makedirs(male_photos_dir, exist_ok=True)
+        os.makedirs(female_photos_dir, exist_ok=True)
+
+        # Обрабатываем мужские фото
+        if male_photos and len(male_photos) > 0 and male_photos[0].filename:
+            male_accounts = db.query(Account).filter(
+                Account.is_active == True,
+                Account.gender == 'male',
+                Account.profile_photo_path == None
+            ).all()
+
+            saved_male_photos = []
+            for photo in male_photos:
+                if not photo.filename:
+                    continue
+                    
+                file_extension = os.path.splitext(photo.filename)[1]
+                unique_filename = f"male_{uuid.uuid4().hex[:8]}{file_extension}"
+                photo_path = os.path.join(male_photos_dir, unique_filename)
+
+                content = await photo.read()
+                with open(photo_path, "wb") as f:
+                    f.write(content)
+
+                saved_male_photos.append(photo_path)
+                total_uploaded += 1
+
+            # Распределяем фото по мужским аккаунтам
+            import random
+            random.shuffle(male_accounts)
+            
+            for i, account in enumerate(male_accounts):
+                if i < len(saved_male_photos):
+                    account.profile_photo_path = saved_male_photos[i]
+                    distribution_results["male"] += 1
+
+        # Обрабатываем женские фото
+        if female_photos and len(female_photos) > 0 and female_photos[0].filename:
+            female_accounts = db.query(Account).filter(
+                Account.is_active == True,
+                Account.gender == 'female',
+                Account.profile_photo_path == None
+            ).all()
+
+            saved_female_photos = []
+            for photo in female_photos:
+                if not photo.filename:
+                    continue
+                    
+                file_extension = os.path.splitext(photo.filename)[1]
+                unique_filename = f"female_{uuid.uuid4().hex[:8]}{file_extension}"
+                photo_path = os.path.join(female_photos_dir, unique_filename)
+
+                content = await photo.read()
+                with open(photo_path, "wb") as f:
+                    f.write(content)
+
+                saved_female_photos.append(photo_path)
+                total_uploaded += 1
+
+            # Распределяем фото по женским аккаунтам
+            import random
+            random.shuffle(female_accounts)
+            
+            for i, account in enumerate(female_accounts):
+                if i < len(saved_female_photos):
+                    account.profile_photo_path = saved_female_photos[i]
+                    distribution_results["female"] += 1
+
+        db.commit()
+
+        message = f"Загружено {total_uploaded} фотографий. Распределено: {distribution_results['male']} мужским аккаунтам, {distribution_results['female']} женским аккаунтам"
+        return {"success": True, "message": message, "stats": distribution_results}
+
+    except Exception as e:
+        return {"success": False, "message": f"Ошибка загрузки фотографий: {str(e)}"}
 
 @app.post("/api/accounts/{account_id}/upload_photo")
 async def upload_profile_photo(account_id: int, photo: UploadFile = File(...), db: Session = Depends(get_db)):
@@ -2328,6 +2519,86 @@ async def run_multiple_reactions(chat_id, message_id, accounts, reactions, total
             continue
 
     print("🎉 Множественные реакции завершены")
+
+async def run_multiple_reactions_improved(chat_id, message_id, accounts, reactions, total_count, delay_seconds):
+    """Улучшенное выполнение множественных реакций"""
+    import random
+
+    try:
+        print(f"🎭 Начинаем улучшенную отправку реакций...")
+        print(f"🎯 Цель: {chat_id}, сообщение: {message_id}")
+        print(f"😀 Реакции: {reactions}")
+        print(f"👥 Аккаунтов: {len(accounts)}")
+        print(f"🔢 Всего реакций: {total_count}")
+
+        # Создаем план распределения реакций
+        reaction_plan = []
+        
+        # Равномерно распределяем реакции
+        if len(reactions) == 1:
+            # Если одна реакция, повторяем её
+            reaction_plan = [reactions[0]] * total_count
+        else:
+            # Если несколько реакций, распределяем равномерно
+            reactions_per_emoji = total_count // len(reactions)
+            remainder = total_count % len(reactions)
+
+            for i, emoji in enumerate(reactions):
+                count = reactions_per_emoji + (1 if i < remainder else 0)
+                reaction_plan.extend([emoji] * count)
+
+        # Перемешиваем план для случайности
+        random.shuffle(reaction_plan)
+
+        # Ограничиваем количество аккаунтов
+        available_accounts = accounts[:min(len(accounts), total_count)]
+        random.shuffle(available_accounts)
+
+        print(f"📋 План реакций создан: {len(reaction_plan)} реакций")
+        print(f"👥 Будет использовано аккаунтов: {len(available_accounts)}")
+
+        success_count = 0
+        error_count = 0
+
+        # Отправляем реакции
+        for i in range(min(len(reaction_plan), len(available_accounts))):
+            account = available_accounts[i]
+            emoji = reaction_plan[i]
+
+            try:
+                print(f"😀 [{i+1}/{len(reaction_plan)}] Отправляем {emoji} от аккаунта {account.id}")
+
+                result = await telegram_manager.send_reaction(
+                    account_id=account.id,
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    emoji=emoji
+                )
+
+                if result["status"] == "success":
+                    success_count += 1
+                    print(f"✅ Реакция {emoji} успешно отправлена от аккаунта {account.id}")
+                else:
+                    error_count += 1
+                    print(f"❌ Ошибка реакции от аккаунта {account.id}: {result.get('message')}")
+
+                # Задержка между реакциями (кроме последней)
+                if i < len(reaction_plan) - 1:
+                    actual_delay = delay_seconds + random.randint(-3, 7)
+                    print(f"⏱️ Ждем {actual_delay} секунд...")
+                    await asyncio.sleep(actual_delay)
+
+            except Exception as e:
+                error_count += 1
+                print(f"❌ Исключение при отправке реакции от аккаунта {account.id}: {e}")
+                continue
+
+        print(f"🎉 Реакции завершены! Успешно: {success_count}, Ошибок: {error_count}")
+
+    except Exception as e:
+        print(f"❌ Критическая ошибка в run_multiple_reactions_improved: {e}")
+        import traceback
+        print(f"🔍 Трассировка: {traceback.format_exc()}")
 
 async def run_post_views(chat_id, message_id, accounts, delay_seconds):
     """Выполнение просмотров постов"""
