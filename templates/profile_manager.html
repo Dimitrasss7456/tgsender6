@@ -162,6 +162,27 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Управление комментариями -->
+            <div class="col-12">
+                <div class="card fade-in">
+                    <div class="card-header">
+                        <i class="fas fa-comment-dots me-2"></i>УПРАВЛЕНИЕ КОММЕНТАРИЯМИ
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <button class="btn btn-info w-100" onclick="showCommentHistory()">
+                                <i class="fas fa-history me-2"></i>Показать историю комментариев
+                            </button>
+                        </div>
+                        <div class="mb-3">
+                            <button class="btn btn-danger w-100" onclick="clearAllComments()">
+                                <i class="fas fa-trash-alt me-2"></i>Очистить всю историю
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -314,6 +335,38 @@
                 </button>
                 <button type="button" class="btn btn-primary" onclick="saveAccountChanges()">
                     <i class="fas fa-save me-2"></i>Сохранить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно истории комментариев -->
+<div class="modal fade" id="commentHistoryModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-history me-2"></i>ИСТОРИЯ КОММЕНТАРИЕВ
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="commentHistoryContent">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Загрузка...</span>
+                        </div>
+                        <p class="mt-2">Загрузка истории комментариев...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>Закрыть
+                </button>
+                <button type="button" class="btn btn-danger" onclick="clearAccountComments()">
+                    <i class="fas fa-trash-alt me-2"></i>Очистить историю
                 </button>
             </div>
         </div>
@@ -670,6 +723,204 @@ async function startSequentialComments() {
     }
 }
 
+
+// Управление комментариями
+let currentAccountIdForComments = null;
+
+async function showCommentHistory() {
+    if (selectedAccounts.size === 0) {
+        showAlert('Выберите аккаунт для просмотра истории комментариев', 'warning');
+        return;
+    }
+
+    const accountId = Array.from(selectedAccounts)[0];
+    currentAccountIdForComments = accountId;
+
+    const modal = new bootstrap.Modal(document.getElementById('commentHistoryModal'));
+    modal.show();
+
+    try {
+        const response = await fetch(`/api/comments/history/${accountId}`);
+        const result = await response.json();
+
+        if (result.success) {
+            displayCommentHistory(result.comments);
+        } else {
+            document.getElementById('commentHistoryContent').innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    ${result.message || 'Не удалось загрузить историю комментариев'}
+                </div>
+            `;
+        }
+    } catch (error) {
+        document.getElementById('commentHistoryContent').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-circle me-2"></i>
+                Ошибка загрузки: ${error.message}
+            </div>
+        `;
+    }
+}
+
+function displayCommentHistory(comments) {
+    const content = document.getElementById('commentHistoryContent');
+
+    if (!comments || comments.length === 0) {
+        content.innerHTML = `
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                История комментариев пуста
+            </div>
+        `;
+        return;
+    }
+
+    let html = `
+        <div class="mb-3">
+            <span class="badge bg-primary">Всего комментариев: ${comments.length}</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-dark table-striped">
+                <thead>
+                    <tr>
+                        <th>Дата</th>
+                        <th>Канал/Чат</th>
+                        <th>Комментарий</th>
+                        <th>Статус</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    comments.forEach(comment => {
+        const date = comment.sent_at ? new Date(comment.sent_at).toLocaleString('ru-RU') : 'Неизвестно';
+        const status = comment.status === 'sent' ? 
+            '<span class="badge bg-success">Отправлен</span>' : 
+            '<span class="badge bg-danger">Ошибка</span>';
+        
+        const commentText = comment.comment.length > 50 ? 
+            comment.comment.substring(0, 50) + '...' : 
+            comment.comment;
+
+        html += `
+            <tr id="comment-row-${comment.id}">
+                <td>${date}</td>
+                <td>${comment.chat_id}</td>
+                <td title="${comment.comment}">${commentText}</td>
+                <td>${status}</td>
+                <td>
+                    <button class="btn btn-sm btn-danger" onclick="deleteComment(${comment.id})" title="Удалить комментарий">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    content.innerHTML = html;
+}
+
+async function deleteComment(commentId) {
+    if (!confirm('Вы уверены, что хотите удалить этот комментарий?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/comments/${commentId}`, {
+            method: 'DELETE'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showAlert(result.message, 'success');
+            
+            // Удаляем строку из таблицы
+            const row = document.getElementById(`comment-row-${commentId}`);
+            if (row) {
+                row.remove();
+            }
+        } else {
+            showAlert('Ошибка: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Ошибка удаления: ' + error.message, 'danger');
+    }
+}
+
+async function clearAccountComments() {
+    if (!currentAccountIdForComments) {
+        showAlert('Аккаунт не выбран', 'warning');
+        return;
+    }
+
+    if (!confirm('Вы уверены, что хотите очистить всю историю комментариев этого аккаунта?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/comments/clear/${currentAccountIdForComments}`, {
+            method: 'DELETE'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showAlert(result.message, 'success');
+            
+            // Обновляем содержимое модального окна
+            document.getElementById('commentHistoryContent').innerHTML = `
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    История комментариев очищена
+                </div>
+            `;
+        } else {
+            showAlert('Ошибка: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Ошибка очистки: ' + error.message, 'danger');
+    }
+}
+
+async function clearAllComments() {
+    if (selectedAccounts.size === 0) {
+        showAlert('Выберите аккаунты для очистки истории комментариев', 'warning');
+        return;
+    }
+
+    if (!confirm(`Вы уверены, что хотите очистить историю комментариев для ${selectedAccounts.size} аккаунтов?`)) {
+        return;
+    }
+
+    let clearedCount = 0;
+    const totalAccounts = selectedAccounts.size;
+
+    for (const accountId of selectedAccounts) {
+        try {
+            const response = await fetch(`/api/comments/clear/${accountId}`, {
+                method: 'DELETE'
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                clearedCount++;
+            }
+        } catch (error) {
+            console.error(`Ошибка очистки для аккаунта ${accountId}:`, error);
+        }
+    }
+
+    showAlert(`История комментариев очищена для ${clearedCount} из ${totalAccounts} аккаунтов`, 'success');
+}
 
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {

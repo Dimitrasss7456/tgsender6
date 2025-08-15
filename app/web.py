@@ -1703,6 +1703,151 @@ async def update_telegram_profile(account_id: int, db: Session = Depends(get_db)
         print(f"❌ Ошибка API обновления профиля: {e}")
         return {"success": False, "message": f"Ошибка сервера: {str(e)}"}
 
+@app.get("/api/comments/history/{account_id}")
+async def get_comment_history(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Получение истории комментариев аккаунта"""
+    try:
+        # Проверяем права доступа
+        if not current_user.is_admin:
+            account = db.query(Account).filter(
+                Account.id == account_id,
+                Account.user_id == current_user.id
+            ).first()
+        else:
+            account = db.query(Account).filter(Account.id == account_id).first()
+
+        if not account:
+            return {"success": False, "message": "Аккаунт не найден или нет прав доступа"}
+
+        # Получаем комментарии из таблицы comment_logs
+        try:
+            from app.database import CommentLog
+            comments = db.query(CommentLog).filter(
+                CommentLog.account_id == account_id
+            ).order_by(CommentLog.sent_at.desc()).limit(100).all()
+
+            comments_data = []
+            for comment in comments:
+                comments_data.append({
+                    "id": comment.id,
+                    "chat_id": comment.chat_id,
+                    "message_id": comment.message_id,
+                    "comment": comment.comment,
+                    "status": comment.status,
+                    "error_message": comment.error_message,
+                    "sent_at": comment.sent_at.isoformat() if comment.sent_at else None
+                })
+
+            return {
+                "success": True,
+                "comments": comments_data,
+                "total": len(comments_data)
+            }
+
+        except Exception as query_error:
+            print(f"❌ Ошибка запроса комментариев: {query_error}")
+            return {
+                "success": True,
+                "comments": [],
+                "total": 0,
+                "message": "История комментариев пуста"
+            }
+
+    except Exception as e:
+        print(f"❌ Ошибка получения истории комментариев: {e}")
+        return {"success": False, "message": f"Ошибка сервера: {str(e)}"}
+
+@app.delete("/api/comments/{comment_log_id}")
+async def delete_comment_from_telegram(comment_log_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Удаление комментария из Telegram и базы данных"""
+    try:
+        # Получаем запись комментария
+        try:
+            from app.database import CommentLog
+            comment_log = db.query(CommentLog).filter(CommentLog.id == comment_log_id).first()
+        except:
+            return {"success": False, "message": "Таблица комментариев не найдена"}
+
+        if not comment_log:
+            return {"success": False, "message": "Комментарий не найден"}
+
+        # Проверяем права доступа
+        if not current_user.is_admin:
+            account = db.query(Account).filter(
+                Account.id == comment_log.account_id,
+                Account.user_id == current_user.id
+            ).first()
+            if not account:
+                return {"success": False, "message": "Нет прав доступа к этому комментарию"}
+
+        print(f"🗑️ Удаляем комментарий {comment_log_id} из чата {comment_log.chat_id}")
+
+        # Пытаемся удалить комментарий из Telegram
+        delete_result = await telegram_manager.delete_message(
+            account_id=comment_log.account_id,
+            chat_id=comment_log.chat_id,
+            message_id=comment_log.message_id
+        )
+
+        # Удаляем запись из базы данных в любом случае
+        db.delete(comment_log)
+        db.commit()
+
+        if delete_result.get("status") == "success":
+            return {
+                "success": True,
+                "message": "Комментарий удален из Telegram и базы данных"
+            }
+        else:
+            return {
+                "success": True,
+                "message": f"Комментарий удален из базы данных. Из Telegram: {delete_result.get('message', 'не удалось удалить')}"
+            }
+
+    except Exception as e:
+        print(f"❌ Ошибка удаления комментария: {e}")
+        return {"success": False, "message": f"Ошибка сервера: {str(e)}"}
+
+@app.delete("/api/comments/clear/{account_id}")
+async def clear_comment_history(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Очистка всей истории комментариев аккаунта"""
+    try:
+        # Проверяем права доступа
+        if not current_user.is_admin:
+            account = db.query(Account).filter(
+                Account.id == account_id,
+                Account.user_id == current_user.id
+            ).first()
+        else:
+            account = db.query(Account).filter(Account.id == account_id).first()
+
+        if not account:
+            return {"success": False, "message": "Аккаунт не найден или нет прав доступа"}
+
+        # Удаляем все комментарии аккаунта из базы данных
+        try:
+            from app.database import CommentLog
+            deleted_count = db.query(CommentLog).filter(
+                CommentLog.account_id == account_id
+            ).delete()
+            db.commit()
+
+            return {
+                "success": True,
+                "message": f"Удалено {deleted_count} записей из истории комментариев"
+            }
+
+        except Exception as clear_error:
+            print(f"❌ Ошибка очистки истории: {clear_error}")
+            return {
+                "success": True,
+                "message": "История комментариев уже пуста"
+            }
+
+    except Exception as e:
+        print(f"❌ Ошибка очистки истории комментариев: {e}")
+        return {"success": False, "message": f"Ошибка сервера: {str(e)}"}
+
 # API для кампаний комментирования
 @app.post("/api/comment_campaigns")
 async def create_comment_campaign(request: Request, db: Session = Depends(get_db)):
