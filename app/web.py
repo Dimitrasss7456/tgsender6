@@ -1369,41 +1369,79 @@ async def update_account_full(
     gender: str = Form(...),
     bio: str = Form(...),
     photo: Optional[UploadFile] = File(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Полное обновление аккаунта"""
     try:
-        account = db.query(Account).filter(Account.id == account_id).first()
+        # Проверяем права доступа
+        if not current_user.is_admin:
+            account = db.query(Account).filter(
+                Account.id == account_id,
+                Account.user_id == current_user.id
+            ).first()
+        else:
+            account = db.query(Account).filter(Account.id == account_id).first()
+
         if not account:
-            return {"success": False, "message": "Аккаунт не найден"}
+            return {"success": False, "message": "Аккаунт не найден или нет прав доступа"}
+
+        print(f"🔄 Обновление аккаунта {account_id}: {first_name} {last_name}")
 
         account.first_name = first_name
         account.last_name = last_name
-        account.gender = gender
+        account.gender = gender if gender else None
         account.bio = bio
 
-        if photo and photo.filename:
-            # Сохраняем фото
-            import uuid
-            file_extension = os.path.splitext(photo.filename)[1]
-            unique_filename = f"profile_{account_id}_{uuid.uuid4().hex[:8]}{file_extension}"
+        if photo and photo.filename and photo.size > 0:
+            try:
+                print(f"📷 Загружаем фото: {photo.filename} ({photo.size} bytes)")
+                
+                # Создаем папки
+                os.makedirs("profile_photos", exist_ok=True)
+                if gender in ['male', 'female']:
+                    os.makedirs(f"profile_photos/{gender}", exist_ok=True)
 
-            # Определяем папку по гендеру
-            folder = f"profile_photos/{gender}" if gender in ['male', 'female'] else "profile_photos"
-            os.makedirs(folder, exist_ok=True)
+                # Сохраняем фото
+                import uuid
+                file_extension = os.path.splitext(photo.filename)[1]
+                unique_filename = f"profile_{account_id}_{uuid.uuid4().hex[:8]}{file_extension}"
 
-            photo_path = os.path.join(folder, unique_filename)
+                folder = f"profile_photos/{gender}" if gender in ['male', 'female'] else "profile_photos"
+                photo_path = os.path.join(folder, unique_filename)
 
-            with open(photo_path, "wb") as f:
                 content = await photo.read()
-                f.write(content)
+                with open(photo_path, "wb") as f:
+                    f.write(content)
 
-            account.profile_photo_path = photo_path
+                # Удаляем старое фото если есть
+                if account.profile_photo_path and os.path.exists(account.profile_photo_path):
+                    try:
+                        os.remove(account.profile_photo_path)
+                        print(f"🗑️ Старое фото удалено: {account.profile_photo_path}")
+                    except:
+                        pass
+
+                account.profile_photo_path = photo_path
+                print(f"✅ Фото сохранено: {photo_path}")
+
+            except Exception as photo_error:
+                print(f"❌ Ошибка сохранения фото: {photo_error}")
+                return {"success": False, "message": f"Ошибка сохранения фото: {str(photo_error)}"}
 
         db.commit()
-        return {"success": True}
+        print(f"✅ Аккаунт {account_id} обновлен успешно")
+        
+        return {
+            "success": True, 
+            "message": "Аккаунт обновлен успешно",
+            "photo_updated": bool(photo and photo.filename)
+        }
+        
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        print(f"❌ Ошибка обновления аккаунта {account_id}: {e}")
+        db.rollback()
+        return {"success": False, "message": f"Ошибка сервера: {str(e)}"}
 
 @app.post("/api/sequential_comments")
 async def sequential_comments(

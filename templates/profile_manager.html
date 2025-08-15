@@ -477,16 +477,134 @@ function updateSelectedCount() {
 }
 
 function toggleAccountSelection(accountId) {
-    const checkbox = document.querySelector(`input[data-account-id="${accountId}"]`);
+    const checkbox = document.getElementById(`checkbox-${accountId}`);
     if (!checkbox) return;
 
+    checkbox.checked = !checkbox.checked;
+    
     if (checkbox.checked) {
         selectedAccounts.add(parseInt(accountId));
+        document.getElementById(`account-${accountId}`).classList.add('selected');
     } else {
         selectedAccounts.delete(parseInt(accountId));
+        document.getElementById(`account-${accountId}`).classList.remove('selected');
     }
 
     updateSelectedCount();
+}
+
+function selectByGender(gender) {
+    const cards = document.querySelectorAll('.account-card');
+    cards.forEach(card => {
+        const accountId = parseInt(card.id.replace('account-', ''));
+        const checkbox = document.getElementById(`checkbox-${accountId}`);
+        const genderIcon = card.querySelector('.fa-mars, .fa-venus');
+        
+        let shouldSelect = false;
+        if (gender === 'male' && genderIcon && genderIcon.classList.contains('fa-mars')) {
+            shouldSelect = true;
+        } else if (gender === 'female' && genderIcon && genderIcon.classList.contains('fa-venus')) {
+            shouldSelect = true;
+        }
+        
+        if (shouldSelect) {
+            checkbox.checked = true;
+            selectedAccounts.add(accountId);
+            card.classList.add('selected');
+        }
+    });
+    
+    updateSelectedCount();
+}
+
+function selectAll() {
+    const checkboxes = document.querySelectorAll('.account-checkbox');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = true;
+        const accountId = parseInt(checkbox.id.replace('checkbox-', ''));
+        selectedAccounts.add(accountId);
+        document.getElementById(`account-${accountId}`).classList.add('selected');
+    });
+    
+    updateSelectedCount();
+}
+
+function deselectAll() {
+    const checkboxes = document.querySelectorAll('.account-checkbox');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = false;
+        const accountId = parseInt(checkbox.id.replace('checkbox-', ''));
+        selectedAccounts.delete(accountId);
+        document.getElementById(`account-${accountId}`).classList.remove('selected');
+    });
+    
+    selectedAccounts.clear();
+    updateSelectedCount();
+}
+
+function editAccount(accountId) {
+    // Получаем данные аккаунта
+    fetch(`/api/accounts/${accountId}`)
+        .then(response => response.json())
+        .then(data => {
+            // Заполняем форму
+            document.getElementById('editAccountId').value = accountId;
+            document.getElementById('editFirstName').value = data.first_name || '';
+            document.getElementById('editLastName').value = data.last_name || '';
+            document.getElementById('editGender').value = data.gender || '';
+            document.getElementById('editBio').value = data.bio || '';
+            
+            // Показываем модальное окно
+            const modal = new bootstrap.Modal(document.getElementById('editAccountModal'));
+            modal.show();
+        })
+        .catch(error => {
+            console.error('Ошибка получения данных аккаунта:', error);
+            showAlert('Ошибка загрузки данных аккаунта', 'danger');
+        });
+}
+
+async function saveAccountChanges() {
+    const accountId = document.getElementById('editAccountId').value;
+    const firstName = document.getElementById('editFirstName').value;
+    const lastName = document.getElementById('editLastName').value;
+    const gender = document.getElementById('editGender').value;
+    const bio = document.getElementById('editBio').value;
+    const photoFile = document.getElementById('editPhoto').files[0];
+    
+    try {
+        const formData = new FormData();
+        formData.append('first_name', firstName);
+        formData.append('last_name', lastName);
+        formData.append('gender', gender);
+        formData.append('bio', bio);
+        
+        if (photoFile) {
+            formData.append('photo', photoFile);
+        }
+        
+        const response = await fetch(`/api/accounts/${accountId}/update`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showAlert('Аккаунт обновлен успешно', 'success');
+            
+            // Закрываем модальное окно
+            const modal = bootstrap.Modal.getInstance(document.getElementById('editAccountModal'));
+            modal.hide();
+            
+            // Перезагружаем страницу через секунду
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert('Ошибка: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Ошибка сети: ' + error.message, 'danger');
+    }
 }
 
 function toggleAllAccounts() {
@@ -714,6 +832,15 @@ async function startSequentialComments() {
         const result = await response.json();
         if (result.success) {
             showAlert(result.message, 'success');
+            
+            // Автоматически обновляем историю комментариев если модальное окно открыто
+            const modal = document.getElementById('commentHistoryModal');
+            if (modal && modal.classList.contains('show')) {
+                console.log('🔄 Обновляем историю комментариев после отправки');
+                setTimeout(() => {
+                    showCommentHistory();
+                }, 2000); // Задержка 2 секунды для обновления БД
+            }
         } else {
             showAlert('Ошибка: ' + result.message, 'danger');
         }
@@ -739,9 +866,21 @@ async function showCommentHistory() {
     const modal = new bootstrap.Modal(document.getElementById('commentHistoryModal'));
     modal.show();
 
+    // Показываем индикатор загрузки
+    document.getElementById('commentHistoryContent').innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Загрузка...</span>
+            </div>
+            <p class="mt-2">Загрузка истории комментариев...</p>
+        </div>
+    `;
+
     try {
-        const response = await fetch(`/api/comments/history/${accountId}`);
+        const response = await fetch(`/api/comments/history/${accountId}?_t=${Date.now()}`);
         const result = await response.json();
+
+        console.log('История комментариев:', result);
 
         if (result.success) {
             displayCommentHistory(result.comments);
@@ -754,6 +893,7 @@ async function showCommentHistory() {
             `;
         }
     } catch (error) {
+        console.error('Ошибка загрузки истории:', error);
         document.getElementById('commentHistoryContent').innerHTML = `
             <div class="alert alert-danger">
                 <i class="fas fa-exclamation-circle me-2"></i>
