@@ -1319,7 +1319,7 @@ async def auto_fill_profiles(request: Request, db: Session = Depends(get_db)):
     try:
         data = await request.json()
         gender = data.get('gender', 'male')
-        
+
         # Читаем файлы с именами
         if gender == 'male':
             with open('firstnames_male.txt', 'r', encoding='utf-8') as f:
@@ -1345,7 +1345,7 @@ async def auto_fill_profiles(request: Request, db: Session = Depends(get_db)):
             account.gender = gender
             account.first_name = random.choice(first_names)
             account.last_name = random.choice(last_names)
-            
+
             # Генерируем простое био
             bios = [
                 "Люблю жизнь и путешествия",
@@ -1390,17 +1390,17 @@ async def update_account_full(
             import uuid
             file_extension = os.path.splitext(photo.filename)[1]
             unique_filename = f"profile_{account_id}_{uuid.uuid4().hex[:8]}{file_extension}"
-            
+
             # Определяем папку по гендеру
             folder = f"profile_photos/{gender}" if gender in ['male', 'female'] else "profile_photos"
             os.makedirs(folder, exist_ok=True)
-            
+
             photo_path = os.path.join(folder, unique_filename)
-            
+
             with open(photo_path, "wb") as f:
                 content = await photo.read()
                 f.write(content)
-            
+
             account.profile_photo_path = photo_path
 
         db.commit()
@@ -1409,43 +1409,69 @@ async def update_account_full(
         return {"success": False, "message": str(e)}
 
 @app.post("/api/sequential_comments")
-async def start_sequential_comments(request: Request, db: Session = Depends(get_db)):
-    """Запуск последовательных комментариев"""
+async def sequential_comments(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """Последовательное комментирование с одного аккаунта в секцию 'Leave a comment'"""
     try:
         data = await request.json()
-        post_url = data.get('post_url')
-        male_comments = data.get('male_comments', [])
-        female_comments = data.get('female_comments', [])
-        selected_accounts = data.get('selected_accounts', [])
-        delay_seconds = data.get('delay_seconds', 60)
-        antispam_mode = data.get('antispam_mode', 'safe')
+        account_id = data.get("account_id")
+        targets = data.get("targets", [])  # [{"chat_id": "@channel", "message_id": 123, "comment": "text"}]
+        delay_seconds = data.get("delay_seconds", 3)
 
-        # Парсим URL поста
-        import re
-        url_match = re.search(r't\.me/([^/]+)/(\d+)', post_url)
-        if not url_match:
-            return {"success": False, "message": "Неверный формат URL"}
+        if not account_id:
+            return {"success": False, "message": "Не указан аккаунт"}
 
-        chat_id = f"@{url_match.group(1)}"
-        message_id = int(url_match.group(2))
+        if not targets:
+            return {"success": False, "message": "Не указаны цели для комментирования"}
 
-        # Получаем выбранные аккаунты
-        accounts = db.query(Account).filter(
-            Account.id.in_(selected_accounts),
-            Account.is_active == True
-        ).all()
+        print(f"🚀 Запуск последовательного комментирования в 'Leave a comment': {len(targets)} комментариев")
 
-        if not accounts:
-            return {"success": False, "message": "Нет активных аккаунтов"}
+        results = []
 
-        # Запускаем задачу в фоне
-        asyncio.create_task(run_sequential_comments(
-            chat_id, message_id, accounts, male_comments, female_comments, 
-            delay_seconds, antispam_mode
-        ))
+        for i, target in enumerate(targets, 1):
+            chat_id = target.get("chat_id")
+            message_id = target.get("message_id")
+            comment = target.get("comment")
 
-        return {"success": True, "message": f"Запущено комментирование для {len(accounts)} аккаунтов"}
+            if not all([chat_id, message_id, comment]):
+                result = {"status": "error", "message": "Неполные данные цели"}
+                results.append(result)
+                continue
+
+            print(f"💬 Комментарий {i}/{len(targets)} от аккаунта {account_id}")
+
+            # Используем специальный метод для комментариев к постам
+            result = await telegram_manager.send_post_comment(
+                account_id=account_id,
+                chat_id=chat_id,
+                message_id=int(message_id),
+                comment=comment
+            )
+
+            results.append(result)
+
+            if result["status"] == "success":
+                print(f"✅ Комментарий добавлен в 'Leave a comment': {comment[:50]}...")
+            else:
+                print(f"❌ Ошибка комментария: {result.get('message', 'неизвестная ошибка')}")
+
+            # Задержка между комментариями (кроме последнего)
+            if i < len(targets):
+                await asyncio.sleep(delay_seconds)
+
+        print(f"🎉 Последовательное комментирование завершено")
+
+        success_count = len([r for r in results if r["status"] == "success"])
+        return {
+            "success": True,
+            "message": f"Комментирование в 'Leave a comment' завершено: {success_count}/{len(targets)} успешно",
+            "results": results
+        }
+
     except Exception as e:
+        print(f"❌ Ошибка последовательного комментирования: {e}")
         return {"success": False, "message": str(e)}
 
 @app.post("/api/multiple_reactions")
@@ -1531,7 +1557,7 @@ async def update_all_telegram_profiles(request: Request, db: Session = Depends(g
         account_ids = data.get('account_ids', [])
 
         accounts = db.query(Account).filter(
-            Account.id.in_(account_ids),
+            Account.id.in_([int(a_id) for a_id in account_ids]),  # Ensure IDs are integers
             Account.is_active == True
         ).all()
 
@@ -1812,18 +1838,15 @@ async def run_comment_campaign(campaign_id: int):
                 else:
                     continue
 
-                print(f"🔄 Отправка комментария от аккаунта {account.id} в чат {chat_id}, reply к сообщению {message_id}")
-                print(f"📝 Комментарий: {comment}")
-
                 # Отправляем комментарий
-                result = await telegram_manager.send_comment(
+                result = await telegram_manager.send_post_comment(
                     account_id=account.id,
                     chat_id=chat_id,
                     message_id=message_id,
                     comment=comment
                 )
 
-                # Логируем результат с правильными полями
+                # Логируем результат
                 try:
                     log_entry = CommentLog(
                         campaign_id=campaign_id,
@@ -1871,53 +1894,6 @@ async def run_comment_campaign(campaign_id: int):
             pass
     finally:
         db.close()
-
-async def send_comment_to_post(account_id: int, chat_id: str, message_id: int, comment: str, campaign_id: int, db: Session):
-    """Отправка комментария под пост с правильной обработкой ошибок"""
-    from app.database import CommentLog
-
-    try:
-        print(f"🔄 Отправка комментария от аккаунта {account_id} в чат {chat_id}, reply к сообщению {message_id}")
-        print(f"📝 Комментарий: {comment}")
-
-        # Используем telegram_manager для отправки комментария
-        result = await telegram_manager.send_comment(account_id, chat_id, message_id, comment)
-
-        # Логируем результат
-        log_entry = CommentLog(
-            campaign_id=campaign_id,
-            account_id=account_id,
-            chat_id=chat_id,
-            message_id=message_id,
-            comment=comment,
-            status=result.get("status", "unknown"),
-            error_message=result.get("message") if result.get("status") == "error" else None
-        )
-
-        db.add(log_entry)
-        db.commit()
-
-        if result.get("status") == "success":
-            print(f"✅ Комментарий отправлен под пост аккаунтом {account_id}")
-        else:
-            print(f"❌ Не удалось отправить комментарий аккаунтом {account_id}: {result.get('message')}")
-
-    except Exception as e:
-        print(f"❌ Исключение при отправке комментария: {e}")
-
-        # Логируем ошибку
-        log_entry = CommentLog(
-            campaign_id=campaign_id,
-            account_id=account_id,
-            chat_id=chat_id,
-            message_id=message_id,
-            comment=comment,
-            status="error",
-            error_message=str(e)
-        )
-
-        db.add(log_entry)
-        db.commit()
 
 async def run_reaction_campaign(campaign_id: int):
     """Выполнение кампании реакций"""
@@ -2072,17 +2048,17 @@ def parse_telegram_url(url: str):
 async def run_sequential_comments(chat_id, message_id, accounts, male_comments, female_comments, delay_seconds, antispam_mode):
     """Выполнение последовательных комментариев"""
     import random
-    
+
     # Настройки антиспама
     antispam_delays = {
         'safe': (60, 120),
-        'normal': (30, 90), 
+        'normal': (30, 90),
         'fast': (15, 45)
     }
     min_delay, max_delay = antispam_delays.get(antispam_mode, (60, 120))
-    
+
     all_comments = []
-    
+
     # Распределяем комментарии по аккаунтам
     for account in accounts:
         if account.gender == 'male' and male_comments:
@@ -2097,13 +2073,13 @@ async def run_sequential_comments(chat_id, message_id, accounts, male_comments, 
 
     # Перемешиваем для случайности
     random.shuffle(all_comments)
-    
+
     print(f"🚀 Запуск последовательного комментирования: {len(all_comments)} комментариев")
-    
+
     for i, (account_id, comment) in enumerate(all_comments):
         try:
             print(f"💬 Комментарий {i+1}/{len(all_comments)} от аккаунта {account_id}")
-            
+
             # Отправляем комментарий
             result = await telegram_manager.send_comment(
                 account_id=account_id,
@@ -2111,45 +2087,45 @@ async def run_sequential_comments(chat_id, message_id, accounts, male_comments, 
                 message_id=message_id,
                 comment=comment
             )
-            
+
             if result["status"] == "success":
                 print(f"✅ Комментарий отправлен: {comment[:30]}...")
             else:
                 print(f"❌ Ошибка комментария: {result.get('message')}")
-            
+
             # Умная задержка с антиспамом
             if i < len(all_comments) - 1:  # Не ждем после последнего
                 actual_delay = random.randint(min_delay, max_delay)
                 print(f"⏱️ Ожидание {actual_delay} секунд...")
                 await asyncio.sleep(actual_delay)
-                
+
         except Exception as e:
             print(f"❌ Ошибка с аккаунтом {account_id}: {e}")
             continue
-    
+
     print("🎉 Последовательное комментирование завершено")
 
 async def run_multiple_reactions(chat_id, message_id, accounts, reactions, total_count, delay_seconds):
     """Выполнение множественных реакций"""
     import random
-    
+
     # Распределяем реакции равномерно
     reactions_per_emoji = total_count // len(reactions)
     remainder = total_count % len(reactions)
-    
+
     reaction_plan = []
     for i, emoji in enumerate(reactions):
         count = reactions_per_emoji + (1 if i < remainder else 0)
         reaction_plan.extend([emoji] * count)
-    
+
     # Перемешиваем план
     random.shuffle(reaction_plan)
-    
+
     # Выбираем случайные аккаунты
     selected_accounts = random.sample(accounts, min(len(accounts), len(reaction_plan)))
-    
+
     print(f"🎭 Запуск реакций: {len(reaction_plan)} реакций от {len(selected_accounts)} аккаунтов")
-    
+
     for i, (account, emoji) in enumerate(zip(selected_accounts, reaction_plan)):
         try:
             result = await telegram_manager.send_reaction(
@@ -2158,27 +2134,27 @@ async def run_multiple_reactions(chat_id, message_id, accounts, reactions, total
                 message_id=message_id,
                 emoji=emoji
             )
-            
+
             if result["status"] == "success":
                 print(f"✅ Реакция {emoji} от аккаунта {account.id}")
             else:
                 print(f"❌ Ошибка реакции: {result.get('message')}")
-            
+
             if i < len(reaction_plan) - 1:
                 await asyncio.sleep(delay_seconds + random.randint(-5, 10))
-                
+
         except Exception as e:
             print(f"❌ Ошибка реакции от аккаунта {account.id}: {e}")
             continue
-    
+
     print("🎉 Множественные реакции завершены")
 
 async def run_post_views(chat_id, message_id, accounts, delay_seconds):
     """Выполнение просмотров постов"""
     import random
-    
+
     print(f"👀 Запуск просмотров: {len(accounts)} аккаунтов")
-    
+
     for i, account in enumerate(accounts):
         try:
             result = await telegram_manager.view_message(
@@ -2186,19 +2162,19 @@ async def run_post_views(chat_id, message_id, accounts, delay_seconds):
                 chat_id=chat_id,
                 message_id=message_id
             )
-            
+
             if result["status"] == "success":
                 print(f"✅ Просмотр от аккаунта {account.id}")
             else:
                 print(f"❌ Ошибка просмотра: {result.get('message')}")
-            
+
             if i < len(accounts) - 1:
                 await asyncio.sleep(delay_seconds + random.randint(-2, 5))
-                
+
         except Exception as e:
             print(f"❌ Ошибка просмотра от аккаунта {account.id}: {e}")
             continue
-    
+
     print("🎉 Просмотры завершены")
 
 if __name__ == "__main__":

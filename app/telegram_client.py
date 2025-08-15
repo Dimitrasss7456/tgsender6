@@ -2301,39 +2301,302 @@ class TelegramManager:
         except Exception as e:
             return {"status": "error", "message": f"Ошибка просмотра сообщения: {str(e)}"}
 
-    async def send_comment(self, account_id: int, chat_id: str, message_id: int, comment: str) -> Dict:
-        """Отправка комментария под пост канала с использованием Pyrogram и Telethon как альтернативы"""
+    async def send_post_comment(self, account_id: int, chat_id: str, message_id: int, comment: str) -> Dict:
+        """Специальный метод для отправки комментариев к постам канала в секцию 'Leave a comment'"""
         try:
-            print(f"🎯 Отправляем комментарий прямо под пост канала...")
+            print(f"📝 Отправляем комментарий к посту канала в секцию 'Leave a comment'...")
             
-            # Метод 1: Пробуем Pyrogram
-            print(f"🔄 Метод 1: Пробуем Pyrogram...")
-            pyrogram_result = await self._send_comment_pyrogram_enhanced(account_id, chat_id, message_id, comment)
-            
-            if pyrogram_result["status"] == "success":
-                print(f"✅ Pyrogram успешно отправил комментарий!")
-                return pyrogram_result
-            
-            print(f"⚠️ Pyrogram не смог отправить: {pyrogram_result.get('message', 'неизвестная ошибка')}")
-            
-            # Метод 2: Пробуем Telethon как альтернативу
-            print(f"🔄 Метод 2: Пробуем Telethon как альтернативу...")
-            telethon_result = await self._send_comment_telethon_enhanced(account_id, chat_id, message_id, comment)
-            
-            if telethon_result["status"] == "success":
-                print(f"✅ Telethon успешно отправил комментарий!")
-                return telethon_result
-            
-            print(f"❌ Telethon также не смог отправить: {telethon_result.get('message', 'неизвестная ошибка')}")
-            
-            # Если оба метода не сработали, возвращаем последнюю ошибку
-            return {
-                "status": "error", 
-                "message": f"Не удалось отправить комментарий: Pyrogram - {pyrogram_result.get('message', 'ошибка')}, Telethon - {telethon_result.get('message', 'ошибка')}"
-            }
+            client = await self._get_client_for_account(account_id)
+            if not client:
+                return {"status": "error", "message": "Не удалось подключиться к аккаунту"}
+
+            if not client.is_connected:
+                await client.connect()
+
+            # Проверяем авторизацию
+            try:
+                me = await client.get_me()
+                client.me = me
+                print(f"👤 Отправляем от имени: {me.first_name}")
+            except Exception:
+                print("⚠️ Не удалось получить информацию о пользователе")
+
+            # Нормализуем chat_id
+            if isinstance(chat_id, str):
+                if chat_id.startswith('@'):
+                    target_chat = chat_id
+                elif chat_id.isdigit():
+                    target_chat = int(chat_id)
+                elif chat_id.startswith('-') and chat_id[1:].isdigit():
+                    target_chat = int(chat_id)
+                else:
+                    target_chat = chat_id
+            else:
+                target_chat = chat_id
+
+            print(f"🎯 Канал: {target_chat}, пост ID: {message_id}")
+            print(f"💬 Комментарий: {comment}")
+
+            try:
+                # Метод 1: Используем специальный API для комментариев с дискуссиями
+                from pyrogram.raw import functions, types
+                
+                print(f"🔄 Ищем дискуссии для поста...")
+                
+                # Получаем peer канала
+                peer = await client.resolve_peer(target_chat)
+                
+                # Ищем дискуссии для конкретного поста
+                try:
+                    discussion_result = await client.invoke(
+                        functions.messages.GetDiscussionMessage(
+                            peer=peer,
+                            msg_id=message_id
+                        )
+                    )
+                    
+                    if discussion_result and hasattr(discussion_result, 'messages') and len(discussion_result.messages) >= 2:
+                        # Получаем информацию о группе обсуждений
+                        discussion_message = discussion_result.messages[1]  # Основное сообщение в группе обсуждений
+                        discussion_chat = discussion_result.chats[0] if discussion_result.chats else None
+                        
+                        if discussion_chat and discussion_message:
+                            print(f"📢 Найдена группа обсуждений: {discussion_chat.title} (ID: {discussion_chat.id})")
+                            
+                            # Отправляем комментарий в группу обсуждений
+                            await asyncio.sleep(1)  # Имитация человеческого поведения
+                            
+                            sent_message = await client.send_message(
+                                chat_id=discussion_chat.id,
+                                text=comment,
+                                reply_to_message_id=discussion_message.id
+                            )
+                            
+                            print(f"✅ Комментарий добавлен в секцию 'Leave a comment'! ID: {sent_message.id}")
+                            return {
+                                "status": "success",
+                                "message": "Комментарий добавлен в секцию 'Leave a comment'",
+                                "message_id": sent_message.id,
+                                "discussion_chat": discussion_chat.title
+                            }
+                        else:
+                            print(f"❌ Не удалось получить данные группы обсуждений")
+                    else:
+                        print(f"❌ Для этого поста нет доступных дискуссий")
+                        
+                except Exception as discussion_error:
+                    print(f"❌ Ошибка поиска дискуссий: {discussion_error}")
+
+                # Метод 2: Альтернативный способ через linked_chat
+                print(f"🔄 Пробуем найти связанную группу обсуждений...")
+                
+                try:
+                    channel = await client.get_chat(target_chat)
+                    
+                    if hasattr(channel, 'linked_chat') and channel.linked_chat:
+                        discussion_group_id = channel.linked_chat.id
+                        print(f"📢 Найдена связанная группа: {channel.linked_chat.title} (ID: {discussion_group_id})")
+                        
+                        await asyncio.sleep(1)
+                        
+                        # Отправляем комментарий с reply к посту
+                        sent_message = await client.send_message(
+                            chat_id=discussion_group_id,
+                            text=comment,
+                            reply_to_message_id=message_id
+                        )
+                        
+                        print(f"✅ Комментарий добавлен через связанную группу! ID: {sent_message.id}")
+                        return {
+                            "status": "success",
+                            "message": "Комментарий добавлен в секцию 'Leave a comment'",
+                            "message_id": sent_message.id,
+                            "discussion_chat": channel.linked_chat.title
+                        }
+                    else:
+                        print(f"❌ У канала нет связанной группы обсуждений")
+                        
+                except Exception as linked_error:
+                    print(f"❌ Ошибка поиска связанной группы: {linked_error}")
+
+                # Если ничего не сработало
+                return {
+                    "status": "error",
+                    "message": "У этого канала нет доступной секции комментариев или комментарии отключены"
+                }
+
+            except Exception as send_error:
+                error_str = str(send_error)
+                print(f"❌ Ошибка отправки: {error_str}")
+                
+                if "CHAT_ADMIN_REQUIRED" in error_str:
+                    return {"status": "error", "message": "Требуются права администратора для комментирования"}
+                elif "USER_BANNED_IN_CHANNEL" in error_str:
+                    return {"status": "error", "message": "Аккаунт заблокирован в канале"}
+                elif "PEER_ID_INVALID" in error_str:
+                    return {"status": "error", "message": "Канал не найден или недоступен"}
+                elif "MESSAGE_ID_INVALID" in error_str:
+                    return {"status": "error", "message": "Пост не найден или недоступен"}
+                else:
+                    return {"status": "error", "message": f"Ошибка: {error_str}"}
 
         except Exception as e:
-            print(f"❌ Ошибка комментария: {e}")
+            print(f"❌ Общая ошибка: {e}")
+            return {"status": "error", "message": f"Не удалось отправить комментарий: {str(e)}"}
+
+    async def send_comment(self, account_id: int, chat_id: str, message_id: int, comment: str) -> Dict:
+        """Отправка настоящего комментария под пост канала в секцию 'Leave a comment'"""
+        try:
+            print(f"💬 Отправляем комментарий в секцию 'Leave a comment' под постом канала...")
+            
+            client = await self._get_client_for_account(account_id)
+            if not client:
+                return {"status": "error", "message": "Не удалось подключиться к аккаунту"}
+
+            if not client.is_connected:
+                await client.connect()
+
+            # Проверяем что client.me установлен
+            if not hasattr(client, 'me') or client.me is None:
+                try:
+                    me = await client.get_me()
+                    client.me = me
+                except Exception:
+                    from types import SimpleNamespace
+                    client.me = SimpleNamespace(
+                        id=account_id,
+                        first_name="User",
+                        is_premium=False,
+                        is_verified=False,
+                        is_bot=False
+                    )
+
+            # Нормализуем chat_id
+            target_chat = chat_id
+            if isinstance(chat_id, str):
+                if chat_id.startswith('@'):
+                    target_chat = chat_id
+                elif chat_id.isdigit():
+                    target_chat = int(chat_id)
+                elif chat_id.startswith('-') and chat_id[1:].isdigit():
+                    target_chat = int(chat_id)
+
+            print(f"📺 Работаем с каналом: {target_chat}, пост ID: {message_id}")
+
+            try:
+                # Используем специальный API для комментариев к постам канала
+                from pyrogram.raw import functions, types
+                
+                # Получаем peer канала
+                peer = await client.resolve_peer(target_chat)
+                
+                print(f"🎯 Отправляем комментарий через discussions API...")
+                
+                # Используем SendMessage для комментариев с правильными параметрами
+                result = await client.invoke(
+                    functions.messages.SendMessage(
+                        peer=peer,
+                        message=comment,
+                        reply_to=types.InputReplyToMessage(
+                            reply_to_msg_id=message_id,
+                            top_msg_id=None,  # Не указываем top_msg_id для комментариев
+                            reply_to_peer_id=peer  # Указываем peer для комментариев
+                        ),
+                        random_id=client.rnd_id(),
+                        silent=False  # Комментарии обычно не тихие
+                    )
+                )
+                
+                if result and hasattr(result, 'updates') and result.updates:
+                    for update in result.updates:
+                        if hasattr(update, 'message') and hasattr(update.message, 'id'):
+                            print(f"✅ Комментарий успешно добавлен в секцию 'Leave a comment'! ID: {update.message.id}")
+                            return {
+                                "status": "success",
+                                "message": "Комментарий добавлен в секцию 'Leave a comment'",
+                                "message_id": update.message.id
+                            }
+                
+                # Если не получили ID, но ошибки нет - считаем успешным
+                print(f"✅ Комментарий отправлен в секцию 'Leave a comment'")
+                return {
+                    "status": "success",
+                    "message": "Комментарий добавлен в секцию 'Leave a comment'"
+                }
+
+            except Exception as api_error:
+                error_str = str(api_error)
+                print(f"❌ Ошибка API комментариев: {error_str}")
+
+                # Если основной метод не работает, пробуем альтернативный через группу обсуждений
+                if "CHAT_ADMIN_REQUIRED" in error_str or "PEER_ID_INVALID" in error_str:
+                    print(f"🔄 Пробуем найти группу обсуждений для отправки комментария...")
+                    
+                    try:
+                        # Получаем информацию о канале
+                        channel = await client.get_chat(chat_id)
+                        
+                        # Ищем связанную группу обсуждений
+                        discussion_group_id = None
+                        if hasattr(channel, 'linked_chat') and channel.linked_chat:
+                            discussion_group_id = channel.linked_chat.id
+                            print(f"📢 Найдена группа обсуждений: {discussion_group_id}")
+                        else:
+                            # Альтернативный поиск через GetFullChannel
+                            try:
+                                from pyrogram.raw import functions
+                                peer = await client.resolve_peer(target_chat)
+                                full_channel = await client.invoke(
+                                    functions.channels.GetFullChannel(channel=peer)
+                                )
+
+                                if hasattr(full_channel.full_chat, 'linked_chat_id') and full_channel.full_chat.linked_chat_id:
+                                    discussion_group_id = -int(f"100{full_channel.full_chat.linked_chat_id}")
+                                    print(f"📢 Найдена группа обсуждений (альтернативно): {discussion_group_id}")
+                            except Exception as search_error:
+                                print(f"❌ Поиск группы обсуждений не удался: {search_error}")
+
+                        if discussion_group_id:
+                            # Отправляем в группу обсуждений как настоящий комментарий
+                            try:
+                                await asyncio.sleep(1)
+
+                                sent_message = await client.send_message(
+                                    chat_id=discussion_group_id,
+                                    text=comment,
+                                    reply_to_message_id=message_id
+                                )
+
+                                print(f"✅ Комментарий отправлен в группу обсуждений (комментарии канала)")
+                                return {
+                                    "status": "success",
+                                    "message": "Комментарий добавлен в обсуждения канала",
+                                    "message_id": sent_message.id
+                                }
+                            except Exception as discussion_error:
+                                print(f"❌ Ошибка отправки в группу обсуждений: {discussion_error}")
+                                return {"status": "error", "message": f"Не удалось отправить в группу обсуждений: {str(discussion_error)}"}
+                        else:
+                            return {"status": "error", "message": "У канала нет доступной секции комментариев"}
+
+                    except Exception as channel_error:
+                        print(f"❌ Ошибка получения информации о канале: {channel_error}")
+                        return {"status": "error", "message": f"Ошибка доступа к каналу: {str(channel_error)}"}
+
+                # Обрабатываем другие специфические ошибки
+                if "USERNAME_INVALID" in error_str:
+                    return {"status": "error", "message": f"Неверное имя канала: {chat_id}"}
+                elif "MESSAGE_ID_INVALID" in error_str:
+                    return {"status": "error", "message": f"Сообщение с ID {message_id} не найдено"}
+                elif "USER_BANNED_IN_CHANNEL" in error_str:
+                    return {"status": "error", "message": "Аккаунт заблокирован в канале"}
+                elif "COMMENTS_DISABLED" in error_str:
+                    return {"status": "error", "message": "Комментарии отключены для этого поста"}
+                else:
+                    return {"status": "error", "message": f"Ошибка отправки комментария: {error_str}"}
+
+        except Exception as e:
+            print(f"❌ Общая ошибка отправки комментария: {e}")
             return {"status": "error", "message": f"Не удалось отправить комментарий: {str(e)}"}
 
     async def _send_comment_telethon_only(self, account_id: int, chat_id: str, message_id: int, comment: str) -> Dict:
