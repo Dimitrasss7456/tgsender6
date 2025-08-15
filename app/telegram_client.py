@@ -2302,33 +2302,127 @@ class TelegramManager:
             return {"status": "error", "message": f"Ошибка просмотра сообщения: {str(e)}"}
 
     async def send_comment(self, account_id: int, chat_id: str, message_id: int, comment: str) -> Dict:
-        """Отправка комментария под пост с улучшенной логикой"""
+        """Отправка комментария под пост канала (не в группу обсуждений)"""
         try:
-            print(f"🔄 Отправка комментария от аккаунта {account_id} в {chat_id}, к сообщению {message_id}")
+            print(f"🔄 Отправка комментария под пост от аккаунта {account_id} в {chat_id}, к сообщению {message_id}")
             print(f"📝 Комментарий: {comment}")
 
-            # Сначала пробуем Telethon (лучше для комментариев под постами)
-            telethon_result = await self._send_comment_telethon_enhanced(account_id, chat_id, message_id, comment)
+            client = await self._get_client_for_account(account_id)
+            if not client:
+                return {"status": "error", "message": "Не удалось подключиться к аккаунту"}
 
-            if telethon_result["status"] == "success":
-                print(f"✅ Комментарий отправлен через Telethon")
-                return telethon_result
+            if not client.is_connected:
+                await client.connect()
 
-            print(f"⚠️ Telethon не удался, пробуем Pyrogram: {telethon_result.get('message')}")
+            # Проверяем что client.me установлен
+            if not hasattr(client, 'me') or client.me is None:
+                try:
+                    me = await client.get_me()
+                    client.me = me
+                except Exception:
+                    from types import SimpleNamespace
+                    client.me = SimpleNamespace(
+                        id=account_id,
+                        first_name="User",
+                        is_premium=False,
+                        is_verified=False,
+                        is_bot=False
+                    )
 
-            # Fallback на Pyrogram
-            pyrogram_result = await self._send_comment_pyrogram_enhanced(account_id, chat_id, message_id, comment)
+            # Нормализуем chat_id
+            target_chat = chat_id
+            if isinstance(chat_id, str):
+                if chat_id.startswith('@'):
+                    target_chat = chat_id
+                elif chat_id.isdigit():
+                    target_chat = int(chat_id)
+                elif chat_id.startswith('-') and chat_id[1:].isdigit():
+                    target_chat = int(chat_id)
 
-            if pyrogram_result["status"] == "success":
-                print(f"✅ Комментарий отправлен через Pyrogram")
-                return pyrogram_result
+            print(f"🎯 Отправляем комментарий прямо под пост канала...")
 
-            # Если оба метода не удались
-            print(f"❌ Оба метода не удались")
-            return {
-                "status": "error",
-                "message": f"Telethon: {telethon_result.get('message')}, Pyrogram: {pyrogram_result.get('message')}"
-            }
+            try:
+                # Используем raw API для отправки комментария под пост
+                from pyrogram.raw import functions, types
+                
+                # Получаем peer для канала
+                peer = await client.resolve_peer(target_chat)
+                
+                # Отправляем сообщение как комментарий под конкретный пост
+                result = await client.invoke(
+                    functions.messages.SendMessage(
+                        peer=peer,
+                        message=comment,
+                        reply_to=types.InputReplyToMessage(
+                            reply_to_msg_id=message_id,
+                            top_msg_id=message_id  # Указываем что это комментарий к конкретному посту
+                        ),
+                        random_id=client.rnd_id()
+                    )
+                )
+
+                if result and hasattr(result, 'updates') and result.updates:
+                    # Ищем отправленное сообщение в обновлениях
+                    sent_message_id = None
+                    for update in result.updates:
+                        if hasattr(update, 'id'):
+                            sent_message_id = update.id
+                            break
+
+                    print(f"✅ Комментарий отправлен прямо под пост! ID: {sent_message_id}")
+                    return {
+                        "status": "success",
+                        "message": "Комментарий отправлен под пост канала",
+                        "message_id": sent_message_id
+                    }
+                else:
+                    print(f"⚠️ Комментарий отправлен, но не получен ID")
+                    return {
+                        "status": "success",
+                        "message": "Комментарий отправлен под пост канала",
+                        "message_id": None
+                    }
+
+            except Exception as raw_error:
+                error_str = str(raw_error)
+                print(f"❌ Ошибка raw API: {error_str}")
+
+                # Если raw API не работает, пробуем стандартный способ
+                if "CHAT_ADMIN_REQUIRED" not in error_str:
+                    try:
+                        print(f"🔄 Пробуем стандартный метод отправки...")
+                        
+                        sent_message = await client.send_message(
+                            chat_id=target_chat,
+                            text=comment,
+                            reply_to_message_id=message_id,
+                            disable_notification=False
+                        )
+
+                        if sent_message and hasattr(sent_message, 'id'):
+                            print(f"✅ Комментарий отправлен стандартным способом! ID: {sent_message.id}")
+                            return {
+                                "status": "success",
+                                "message": "Комментарий отправлен под пост",
+                                "message_id": sent_message.id
+                            }
+
+                    except Exception as std_error:
+                        print(f"❌ Стандартный метод тоже не сработал: {std_error}")
+
+                # Обрабатываем специфические ошибки
+                if "CHAT_ADMIN_REQUIRED" in error_str:
+                    return {"status": "error", "message": "Для отправки комментариев под посты канала требуются права администратора"}
+                elif "COMMENTS_DISABLED" in error_str:
+                    return {"status": "error", "message": "Комментарии отключены для этого канала"}
+                elif "USER_BANNED_IN_CHANNEL" in error_str:
+                    return {"status": "error", "message": "Аккаунт заблокирован в канале"}
+                elif "MESSAGE_ID_INVALID" in error_str:
+                    return {"status": "error", "message": "Неверный ID сообщения или пост не найден"}
+                elif "PEER_ID_INVALID" in error_str:
+                    return {"status": "error", "message": "Канал не найден или недоступен"}
+                else:
+                    return {"status": "error", "message": f"Не удалось отправить комментарий: {error_str}"}
 
         except Exception as e:
             print(f"❌ Общая ошибка отправки комментария: {e}")
