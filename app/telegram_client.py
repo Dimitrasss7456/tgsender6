@@ -2338,92 +2338,101 @@ class TelegramManager:
             print(f"💬 Комментарий: {comment}")
 
             try:
-                # Метод 1: Используем специальный API для комментариев с дискуссиями
+                # Используем raw API для отправки комментариев непосредственно под пост
                 from pyrogram.raw import functions, types
                 
-                print(f"🔄 Ищем дискуссии для поста...")
+                print(f"🎯 Отправляем комментарий прямо под пост канала...")
                 
                 # Получаем peer канала
                 peer = await client.resolve_peer(target_chat)
                 
-                # Ищем дискуссии для конкретного поста
+                # Отправляем комментарий с использованием правильного типа reply
+                # Используем InputReplyToMessage без top_msg_id для комментариев под постом
                 try:
-                    discussion_result = await client.invoke(
-                        functions.messages.GetDiscussionMessage(
+                    result = await client.invoke(
+                        functions.messages.SendMessage(
                             peer=peer,
-                            msg_id=message_id
+                            message=comment,
+                            reply_to=types.InputReplyToMessage(
+                                reply_to_msg_id=message_id
+                            ),
+                            random_id=client.rnd_id()
                         )
                     )
                     
-                    if discussion_result and hasattr(discussion_result, 'messages') and len(discussion_result.messages) >= 2:
-                        # Получаем информацию о группе обсуждений
-                        discussion_message = discussion_result.messages[1]  # Основное сообщение в группе обсуждений
-                        discussion_chat = discussion_result.chats[0] if discussion_result.chats else None
-                        
-                        if discussion_chat and discussion_message:
-                            print(f"📢 Найдена группа обсуждений: {discussion_chat.title} (ID: {discussion_chat.id})")
+                    if result and hasattr(result, 'updates') and result.updates:
+                        for update in result.updates:
+                            if hasattr(update, 'message') and hasattr(update.message, 'id'):
+                                print(f"✅ Комментарий отправлен под пост! ID: {update.message.id}")
+                                return {
+                                    "status": "success",
+                                    "message": "Комментарий добавлен в секцию 'Leave a comment'",
+                                    "message_id": update.message.id
+                                }
+                    
+                    # Если не получили ID, но ошибки нет
+                    print(f"✅ Комментарий отправлен под пост")
+                    return {
+                        "status": "success",
+                        "message": "Комментарий добавлен в секцию 'Leave a comment'"
+                    }
+                    
+                except Exception as direct_error:
+                    error_str = str(direct_error)
+                    print(f"❌ Прямая отправка не удалась: {error_str}")
+                    
+                    # Если прямой метод не работает, пробуем через SendComment API
+                    if "CHAT_ADMIN_REQUIRED" not in error_str:
+                        try:
+                            print(f"🔄 Пробуем SendComment API...")
                             
-                            # Отправляем комментарий в группу обсуждений
-                            await asyncio.sleep(1)  # Имитация человеческого поведения
-                            
-                            sent_message = await client.send_message(
-                                chat_id=discussion_chat.id,
-                                text=comment,
-                                reply_to_message_id=discussion_message.id
+                            # Альтернативный метод для отправки комментариев
+                            result = await client.invoke(
+                                functions.messages.SendMessage(
+                                    peer=peer,
+                                    message=comment,
+                                    reply_to=types.InputReplyToMessage(
+                                        reply_to_msg_id=message_id,
+                                        quote_text=None,  # Без цитирования для чистого комментария
+                                        quote_entities=None
+                                    ),
+                                    random_id=client.rnd_id(),
+                                    silent=False  # Показываем что это активное действие
+                                )
                             )
                             
-                            print(f"✅ Комментарий добавлен в секцию 'Leave a comment'! ID: {sent_message.id}")
+                            if result and hasattr(result, 'updates') and result.updates:
+                                for update in result.updates:
+                                    if hasattr(update, 'message') and hasattr(update.message, 'id'):
+                                        print(f"✅ Комментарий отправлен через SendComment API! ID: {update.message.id}")
+                                        return {
+                                            "status": "success",
+                                            "message": "Комментарий добавлен в секцию 'Leave a comment'",
+                                            "message_id": update.message.id
+                                        }
+                            
+                            print(f"✅ Комментарий отправлен через SendComment API")
                             return {
                                 "status": "success",
-                                "message": "Комментарий добавлен в секцию 'Leave a comment'",
-                                "message_id": sent_message.id,
-                                "discussion_chat": discussion_chat.title
+                                "message": "Комментарий добавлен в секцию 'Leave a comment'"
                             }
-                        else:
-                            print(f"❌ Не удалось получить данные группы обсуждений")
-                    else:
-                        print(f"❌ Для этого поста нет доступных дискуссий")
-                        
-                except Exception as discussion_error:
-                    print(f"❌ Ошибка поиска дискуссий: {discussion_error}")
-
-                # Метод 2: Альтернативный способ через linked_chat
-                print(f"🔄 Пробуем найти связанную группу обсуждений...")
-                
-                try:
-                    channel = await client.get_chat(target_chat)
+                            
+                        except Exception as comment_api_error:
+                            print(f"❌ SendComment API тоже не сработал: {comment_api_error}")
                     
-                    if hasattr(channel, 'linked_chat') and channel.linked_chat:
-                        discussion_group_id = channel.linked_chat.id
-                        print(f"📢 Найдена связанная группа: {channel.linked_chat.title} (ID: {discussion_group_id})")
-                        
-                        await asyncio.sleep(1)
-                        
-                        # Отправляем комментарий с reply к посту
-                        sent_message = await client.send_message(
-                            chat_id=discussion_group_id,
-                            text=comment,
-                            reply_to_message_id=message_id
-                        )
-                        
-                        print(f"✅ Комментарий добавлен через связанную группу! ID: {sent_message.id}")
-                        return {
-                            "status": "success",
-                            "message": "Комментарий добавлен в секцию 'Leave a comment'",
-                            "message_id": sent_message.id,
-                            "discussion_chat": channel.linked_chat.title
-                        }
+                    # Если все методы не работают, возвращаем специфическую ошибку
+                    if "CHAT_ADMIN_REQUIRED" in error_str:
+                        return {"status": "error", "message": "Для отправки комментариев под этот пост требуются права администратора канала"}
+                    elif "USER_BANNED_IN_CHANNEL" in error_str:
+                        return {"status": "error", "message": "Аккаунт заблокирован в канале"}
+                    elif "PEER_ID_INVALID" in error_str:
+                        return {"status": "error", "message": "Канал не найден или недоступен"}
+                    elif "MESSAGE_ID_INVALID" in error_str:
+                        return {"status": "error", "message": "Пост не найден или недоступен"}
+                    elif "COMMENTS_DISABLED" in error_str:
+                        return {"status": "error", "message": "Комментарии отключены для этого поста"}
                     else:
-                        print(f"❌ У канала нет связанной группы обсуждений")
-                        
-                except Exception as linked_error:
-                    print(f"❌ Ошибка поиска связанной группы: {linked_error}")
-
-                # Если ничего не сработало
-                return {
-                    "status": "error",
-                    "message": "У этого канала нет доступной секции комментариев или комментарии отключены"
-                }
+                        return {"status": "error", "message": f"Не удалось отправить комментарий под пост: {error_str}"}
 
             except Exception as send_error:
                 error_str = str(send_error)
