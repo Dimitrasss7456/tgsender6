@@ -14,7 +14,7 @@
                 <h5><i class="fas fa-address-book"></i> Создать рассылку по контактам</h5>
             </div>
             <div class="card-body">
-                <form id="contactsCampaignForm">
+                <form id="contactsCampaignForm" onsubmit="startContactsCampaign(event)">
                     <div class="mb-3">
                         <label class="form-label">
                             <i class="fas fa-users"></i> Выберите аккаунты для рассылки
@@ -25,14 +25,15 @@
                             </div>
                         </div>
                         <div class="mt-2 d-flex gap-2">
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="selectAllAccounts">
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectAllAccounts()">
                                 <i class="fas fa-check-double"></i> Выбрать все
                             </button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" id="clearAllAccounts">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearAllAccounts()">
                                 <i class="fas fa-times"></i> Очистить выбор
                             </button>
                             <span class="badge bg-info ms-auto align-self-center" id="selectedCount">Выбрано: 0</span>
                         </div>
+                        <div id="selectedAccountsDebug" class="mt-2 small text-muted" style="display: none;"></div>
                     </div>
 
                     <div class="mb-3">
@@ -52,13 +53,13 @@
 
                     <div class="mb-3">
                         <label for="delaySeconds" class="form-label">Задержка между сообщениями (сек)</label>
-                        <input type="number" class="form-control" id="delaySeconds" name="delaySeconds" value="0" min="0" max="3600">
+                        <input type="number" class="form-control" id="delaySeconds" value="0" min="0" max="3600">
                         <div class="form-text">Задержка в секундах. 0 = мгновенная отправка со всех аккаунтов параллельно</div>
                     </div>
 
                     <div class="mb-3">
                         <label for="startInMinutes" class="form-label">Отложенный запуск (минуты)</label>
-                        <input type="number" class="form-control" id="startInMinutes" name="start_in_minutes" min="1" max="1440" placeholder="Оставьте пустым для немедленного запуска">
+                        <input type="number" class="form-control" id="startInMinutes" min="1" max="1440" placeholder="Оставьте пустым для немедленного запуска">
                         <div class="form-text">Укажите через сколько минут запустить рассылку (максимум 24 часа)</div>
                     </div>
 
@@ -75,7 +76,7 @@
                     </div>
 
                     <div class="d-grid gap-2">
-                        <button type="button" class="btn btn-primary" id="submitBtn" onclick="startContactsCampaign()">
+                        <button type="submit" class="btn btn-primary" id="submitBtn">
                             <i class="fas fa-paper-plane"></i> Запустить рассылку
                         </button>
                     </div>
@@ -124,20 +125,194 @@
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const form = document.getElementById('contactsCampaignForm');
-    const resultDiv = document.getElementById('result');
-    const submitBtn = document.getElementById('submitBtn');
-    const fileUpload = document.getElementById('fileUpload');
-    const fileInfo = document.getElementById('fileInfo');
-    const accountsContainer = document.getElementById('accountsContainer');
-    let uploadedFilePath = null;
-    let selectedAccounts = new Set();
+// Глобальные переменные для управления состоянием
+let selectedAccounts = new Set();
+let allAccounts = [];
+let uploadedFilePath = null;
 
-    // Загружаем список аккаунтов
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🔄 Инициализация страницы рассылки по контактам...');
+
+    // Загружаем аккаунты при загрузке страницы
     loadAccounts();
 
-    // Обработчик загрузки файла
+    // Настраиваем обработчик загрузки файла
+    setupFileUpload();
+
+    // Обновляем статус кампаний
+    setInterval(updateCampaignStatus, 5000);
+    updateCampaignStatus();
+});
+
+// Загрузка списка аккаунтов
+async function loadAccounts() {
+    try {
+        console.log('📱 Загружаем список аккаунтов...');
+
+        const response = await fetch('/api/accounts');
+        const accounts = await response.json();
+
+        console.log(`📊 Получено аккаунтов: ${accounts.length}`);
+
+        allAccounts = accounts;
+        renderAccounts(accounts);
+
+    } catch (error) {
+        console.error('❌ Ошибка загрузки аккаунтов:', error);
+        showAccountsError('Ошибка загрузки аккаунтов');
+    }
+}
+
+// Отображение аккаунтов в интерфейсе
+function renderAccounts(accounts) {
+    const container = document.getElementById('accountsContainer');
+
+    if (!accounts || accounts.length === 0) {
+        container.innerHTML = '<div class="text-center text-warning">⚠️ Нет доступных аккаунтов</div>';
+        return;
+    }
+
+    const activeAccounts = accounts.filter(account => account.is_active && account.status === 'online');
+    const inactiveAccounts = accounts.filter(account => !account.is_active || account.status !== 'online');
+
+    console.log(`✅ Активных аккаунтов: ${activeAccounts.length}, неактивных: ${inactiveAccounts.length}`);
+
+    let html = '';
+
+    // Сначала показываем активные аккаунты
+    if (activeAccounts.length > 0) {
+        html += '<div class="mb-3"><strong class="text-success">Активные аккаунты:</strong></div>';
+
+        activeAccounts.forEach(account => {
+            const displayName = account.name || account.phone;
+            html += `
+                <div class="form-check mb-2">
+                    <input class="form-check-input account-checkbox" 
+                           type="checkbox" 
+                           value="${account.id}" 
+                           id="account_${account.id}" 
+                           onchange="toggleAccount(${account.id}, this.checked)">
+                    <label class="form-check-label text-success" for="account_${account.id}">
+                        <i class="fas fa-check-circle me-1"></i>
+                        <strong>${displayName}</strong> (${account.phone})
+                    </label>
+                </div>
+            `;
+        });
+    }
+
+    // Затем показываем неактивные аккаунты
+    if (inactiveAccounts.length > 0) {
+        html += '<div class="mb-2 mt-3"><strong class="text-muted">Неактивные аккаунты:</strong></div>';
+
+        inactiveAccounts.forEach(account => {
+            const displayName = account.name || account.phone;
+            html += `
+                <div class="form-check mb-2">
+                    <input class="form-check-input account-checkbox" 
+                           type="checkbox" 
+                           value="${account.id}" 
+                           id="account_${account.id}" 
+                           disabled>
+                    <label class="form-check-label text-muted" for="account_${account.id}">
+                        <i class="fas fa-times-circle me-1"></i>
+                        ${displayName} (${account.phone}) - ${account.status}
+                    </label>
+                </div>
+            `;
+        });
+    }
+
+    if (activeAccounts.length === 0) {
+        html += '<div class="text-center text-danger mt-3">❌ Нет активных аккаунтов для рассылки</div>';
+    }
+
+    container.innerHTML = html;
+    updateSelectedCount();
+}
+
+// Показ ошибки загрузки аккаунтов
+function showAccountsError(message) {
+    const container = document.getElementById('accountsContainer');
+    container.innerHTML = `<div class="text-center text-danger">❌ ${message}</div>`;
+}
+
+// Переключение выбора аккаунта
+function toggleAccount(accountId, isChecked) {
+    console.log(`🔄 Переключение аккаунта ${accountId}: ${isChecked}`);
+
+    if (isChecked) {
+        selectedAccounts.add(accountId);
+    } else {
+        selectedAccounts.delete(accountId);
+    }
+
+    updateSelectedCount();
+    updateDebugInfo();
+}
+
+// Выбрать все активные аккаунты
+function selectAllAccounts() {
+    console.log('✅ Выбираем все активные аккаунты');
+
+    const checkboxes = document.querySelectorAll('.account-checkbox:not(:disabled)');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = true;
+        selectedAccounts.add(parseInt(checkbox.value));
+    });
+
+    updateSelectedCount();
+    updateDebugInfo();
+}
+
+// Очистить выбор всех аккаунтов
+function clearAllAccounts() {
+    console.log('🗑️ Очищаем выбор всех аккаунтов');
+
+    const checkboxes = document.querySelectorAll('.account-checkbox');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = false;
+    });
+
+    selectedAccounts.clear();
+    updateSelectedCount();
+    updateDebugInfo();
+}
+
+// Обновление счетчика выбранных аккаунтов
+function updateSelectedCount() {
+    const count = selectedAccounts.size;
+    document.getElementById('selectedCount').textContent = `Выбрано: ${count}`;
+
+    // Меняем цвет в зависимости от количества
+    const badge = document.getElementById('selectedCount');
+    if (count === 0) {
+        badge.className = 'badge bg-secondary ms-auto align-self-center';
+    } else if (count <= 3) {
+        badge.className = 'badge bg-info ms-auto align-self-center';
+    } else {
+        badge.className = 'badge bg-success ms-auto align-self-center';
+    }
+}
+
+// Обновление отладочной информации
+function updateDebugInfo() {
+    const debugDiv = document.getElementById('selectedAccountsDebug');
+    const selectedArray = Array.from(selectedAccounts);
+
+    if (selectedArray.length > 0) {
+        debugDiv.innerHTML = `Выбранные ID: [${selectedArray.join(', ')}]`;
+        debugDiv.style.display = 'block';
+    } else {
+        debugDiv.style.display = 'none';
+    }
+}
+
+// Настройка обработчика загрузки файла
+function setupFileUpload() {
+    const fileUpload = document.getElementById('fileUpload');
+    const fileInfo = document.getElementById('fileInfo');
+
     fileUpload.addEventListener('change', async function(e) {
         const file = e.target.files[0];
         if (!file) {
@@ -189,427 +364,187 @@ document.addEventListener('DOMContentLoaded', function() {
             uploadedFilePath = null;
         }
     });
+}
 
-    // Обработчики кнопок выбора аккаунтов
-    document.getElementById('selectAllAccounts').addEventListener('click', function() {
-        const checkboxes = document.querySelectorAll('.account-checkbox:not(:disabled)');
-        checkboxes.forEach(checkbox => {
-            checkbox.checked = true;
-            selectedAccounts.add(parseInt(checkbox.value));
-        });
-        updateSelectedCount();
-    });
+// Главная функция запуска кампании
+async function startContactsCampaign(event) {
+    event.preventDefault();
 
-    document.getElementById('clearAllAccounts').addEventListener('click', function() {
-        const checkboxes = document.querySelectorAll('.account-checkbox');
-        checkboxes.forEach(checkbox => {
-            checkbox.checked = false;
-        });
-        selectedAccounts.clear();
-        updateSelectedCount();
-    });
+    console.log('🚀 Запуск кампании по контактам...');
 
-    // Обработчик отправки формы (для обычной отправки, не для запуска)
-    form.addEventListener('submit', async function(e) {
-        e.preventDefault();
+    // Получаем выбранные аккаунты
+    const selectedAccountsArray = Array.from(selectedAccounts);
 
-        const selectedOptions = Array.from(accountSelect.selectedOptions);
-        const accountIds = selectedOptions.map(option => option.value).filter(value => value !== '');
-        const message = document.getElementById('message').value;
-        const delaySeconds = parseInt(document.getElementById('delaySeconds').value);
-        const startInMinutes = document.getElementById('startInMinutes').value;
-        const autoDeleteAccount = document.getElementById('autoDeleteAccount').checked;
-        // If deleteDelay is a field, it should be appended here.
-        // formData.append('delete_delay_minutes', deleteDelay);
+    console.log('📊 Выбранные аккаунты:', selectedAccountsArray);
+    console.log('📊 Количество выбранных:', selectedAccountsArray.length);
 
-        if (accountIds.length === 0) {
-            showResult('error', 'Выберите хотя бы один аккаунт');
-            return;
-        }
-
-        if (!message.trim()) {
-            showResult('error', 'Введите сообщение');
-            return;
-        }
-
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Запуск...';
-
-        try {
-            const formData = new FormData();
-            formData.append('account_ids', JSON.stringify(accountIds));
-            formData.append('message', message);
-            formData.append('delay_seconds', delaySeconds);
-            formData.append('auto_delete_account', autoDeleteAccount);
-            if (startInMinutes) {
-                formData.append('start_in_minutes', startInMinutes);
-            }
-            if (uploadedFilePath) {
-                formData.append('attachment_path', uploadedFilePath);
-            }
-
-            const response = await fetch('/api/contacts-campaign/start', {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-
-            if (result.status === 'success') {
-                showResult('success', result.message);
-                form.reset();
-                uploadedFilePath = null;
-                fileInfo.style.display = 'none';
-                // Очищаем выбор аккаунтов
-                accountSelect.querySelectorAll('option').forEach(option => option.selected = false);
-            } else {
-                showResult('error', result.message);
-            }
-        } catch (error) {
-            showResult('error', 'Ошибка создания кампании: ' + error.message);
-        } finally {
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Запустить рассылку';
-        }
-    });
-
-    async function loadAccounts() {
-        try {
-            console.log('🔄 Загружаем аккаунты...');
-            const response = await fetch('/api/accounts');
-            const accounts = await response.json();
-            
-            console.log('📱 Получено аккаунтов:', accounts.length);
-
-            if (accounts.length === 0) {
-                accountsContainer.innerHTML = '<div class="text-center text-muted">❌ Нет доступных аккаунтов</div>';
-                return;
-            }
-
-            let activeCount = 0;
-            let html = '';
-
-            accounts.forEach(account => {
-                console.log(`Аккаунт ${account.id}: активен=${account.is_active}, статус=${account.status}`);
-                
-                const isActive = account.is_active && account.status === 'online';
-                const displayName = account.name || account.phone;
-                
-                if (isActive) {
-                    activeCount++;
-                    html += `
-                        <div class="form-check mb-2">
-                            <input class="form-check-input account-checkbox" type="checkbox" value="${account.id}" id="account_${account.id}" onchange="toggleAccount(${account.id})">
-                            <label class="form-check-label text-success" for="account_${account.id}">
-                                <i class="fas fa-check-circle me-1"></i>
-                                <strong>${displayName}</strong> (${account.phone})
-                            </label>
-                        </div>
-                    `;
-                    console.log(`✅ Добавлен активный аккаунт ${account.id}`);
-                } else {
-                    html += `
-                        <div class="form-check mb-2">
-                            <input class="form-check-input account-checkbox" type="checkbox" value="${account.id}" id="account_${account.id}" disabled>
-                            <label class="form-check-label text-muted" for="account_${account.id}">
-                                <i class="fas fa-times-circle me-1"></i>
-                                ${displayName} (${account.phone}) - ${account.status}
-                            </label>
-                        </div>
-                    `;
-                }
-            });
-
-            if (activeCount === 0) {
-                html = '<div class="text-center text-warning">⚠️ Нет активных онлайн аккаунтов</div>';
-            }
-
-            accountsContainer.innerHTML = html;
-            console.log(`✅ Загружено ${activeCount} активных аккаунтов из ${accounts.length}`);
-            updateSelectedCount();
-        } catch (error) {
-            console.error('❌ Ошибка загрузки аккаунтов:', error);
-            accountsContainer.innerHTML = '<div class="text-center text-danger">❌ Ошибка загрузки аккаунтов</div>';
-        }
+    // Валидация данных
+    if (selectedAccountsArray.length === 0) {
+        showResult('error', '❌ Выберите хотя бы один активный аккаунт для рассылки');
+        return;
     }
 
-    // Функция для переключения выбора аккаунта
-    function toggleAccount(accountId) {
-        const checkbox = document.getElementById(`account_${accountId}`);
-        if (checkbox.checked) {
-            selectedAccounts.add(accountId);
+    const message = document.getElementById('message').value.trim();
+    if (!message) {
+        showResult('error', '❌ Введите текст сообщения для рассылки');
+        return;
+    }
+
+    // Получаем остальные данные формы
+    const delaySeconds = parseInt(document.getElementById('delaySeconds').value) || 0;
+    const startInMinutes = parseInt(document.getElementById('startInMinutes').value) || null;
+    const autoDeleteAccount = document.getElementById('autoDeleteAccount').checked;
+
+    console.log('📝 Параметры кампании:');
+    console.log(`   Сообщение: "${message.substring(0, 50)}..."`);
+    console.log(`   Задержка: ${delaySeconds} сек`);
+    console.log(`   Автоудаление: ${autoDeleteAccount}`);
+    console.log(`   Отложенный запуск: ${startInMinutes || 'нет'} мин`);
+
+    // Подготавливаем данные для отправки
+    const formData = new FormData();
+    formData.append('message', message);
+    formData.append('delay_seconds', delaySeconds.toString());
+    formData.append('auto_delete_account', autoDeleteAccount.toString());
+    formData.append('delete_delay_minutes', '5');
+
+    // Простое добавление списка аккаунтов
+    formData.append('selected_accounts', selectedAccountsArray.join(','));
+
+    if (startInMinutes) {
+        formData.append('start_in_minutes', startInMinutes.toString());
+    }
+
+    // Добавляем файл если выбран
+    const fileInput = document.getElementById('fileUpload');
+    if (fileInput.files.length > 0) {
+        formData.append('attachment', fileInput.files[0]);
+        console.log('📎 Добавлен файл:', fileInput.files[0].name);
+    }
+
+    // Отключаем кнопку и показываем процесс
+    const submitBtn = document.getElementById('submitBtn');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Запускаем рассылку...';
+
+    try {
+        showResult('info', '🚀 Запускаем рассылку по контактам...');
+
+        console.log('📡 Отправляем запрос на сервер...');
+
+        const response = await fetch('/api/start-contacts-campaign', {
+            method: 'POST',
+            body: formData
+        });
+
+        console.log('📡 Получен ответ от сервера, статус:', response.status);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Ошибка сервера:', errorText);
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
+        const result = await response.json();
+        console.log('📊 Результат запроса:', result);
+
+        if (result.status === 'success') {
+            const successMessage = `✅ Рассылка запущена успешно!
+                                 📱 Аккаунтов задействовано: ${result.accounts_used || selectedAccountsArray.length}
+                                 🎯 Контактов для рассылки: ${result.contacts_count || 'загружается...'}
+                                 ${result.message || ''}`;
+
+            showResult('success', successMessage);
+
+            // Сбрасываем форму после успешного запуска
+            resetForm();
+
         } else {
-            selectedAccounts.delete(accountId);
+            showResult('error', `❌ Ошибка запуска: ${result.message || 'Неизвестная ошибка'}`);
         }
-        updateSelectedCount();
+
+    } catch (error) {
+        console.error('❌ Ошибка запроса:', error);
+        showResult('error', `❌ Ошибка соединения с сервером: ${error.message}`);
+    } finally {
+        // Восстанавливаем кнопку
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    }
+}
+
+// Сброс формы после успешной отправки
+function resetForm() {
+    console.log('🔄 Сбрасываем форму...');
+
+    // Очищаем поля
+    document.getElementById('message').value = '';
+    document.getElementById('delaySeconds').value = '0';
+    document.getElementById('startInMinutes').value = '';
+    document.getElementById('autoDeleteAccount').checked = false;
+    document.getElementById('fileUpload').value = '';
+
+    // Сбрасываем выбор аккаунтов
+    clearAllAccounts();
+
+    // Скрываем информацию о файле
+    document.getElementById('fileInfo').style.display = 'none';
+    uploadedFilePath = null;
+
+    console.log('✅ Форма сброшена');
+}
+
+// Показ результатов операций
+function showResult(type, message) {
+    const resultDiv = document.getElementById('result');
+
+    let alertClass = 'alert-info';
+    let icon = 'info-circle';
+
+    if (type === 'success') {
+        alertClass = 'alert-success';
+        icon = 'check-circle';
+    } else if (type === 'error') {
+        alertClass = 'alert-danger';
+        icon = 'exclamation-circle';
+    } else if (type === 'warning') {
+        alertClass = 'alert-warning';
+        icon = 'exclamation-triangle';
     }
 
-    function updateSelectedCount() {
-        document.getElementById('selectedCount').textContent = `Выбрано: ${selectedAccounts.size}`;
-    }
+    resultDiv.className = `alert ${alertClass}`;
+    resultDiv.innerHTML = `<i class="fas fa-${icon}"></i> ${message}`;
+    resultDiv.style.display = 'block';
 
-    // Делаем функцию доступной глобально
-    window.toggleAccount = toggleAccount;
-
-    function showResult(type, message) {
-        resultDiv.className = `alert alert-${type === 'success' ? 'success' : 'danger'}`;
-        resultDiv.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i> ${message}`;
-        resultDiv.style.display = 'block';
-    }
-
-    // Обновляем статус кампаний каждые 5 секунд
-    setInterval(updateCampaignStatus, 5000);
-    updateCampaignStatus();
-
-    async function updateCampaignStatus() {
-        try {
-            const response = await fetch('/api/scheduled-campaigns');
-            const data = await response.json();
-
-            const statusDiv = document.getElementById('campaignStatus');
-            if (data.scheduled_campaigns && data.scheduled_campaigns.length > 0) {
-                statusDiv.innerHTML = `
-                    <div class="alert alert-info">
-                        <i class="fas fa-clock"></i>
-                        Запланированных кампаний: ${data.scheduled_campaigns.length}
-                    </div>
-                `;
-            } else {
-                statusDiv.innerHTML = '';
-            }
-        } catch (error) {
-            console.error('Error updating campaign status:', error);
-        }
-    }
-
-    // Функция для запуска рассылки по контактам
-    window.startContactsCampaign = async function() {
-        // Получаем выбранные аккаунты из Set
-        const selectedAccountsArray = Array.from(selectedAccounts);
-
-        console.log('Выбранные аккаунты (ID):', selectedAccountsArray);
-        console.log('Количество выбранных:', selectedAccountsArray.length);
-        console.log('Сообщение:', document.getElementById('message').value);
-        console.log('Автоудаление:', document.getElementById('autoDeleteAccount').checked);
-
-        // Проверяем данные
-        if (selectedAccountsArray.length === 0) {
-            showResult('error', '❌ Выберите хотя бы один аккаунт для рассылки. Отметьте чекбоксы рядом с нужными аккаунтами.');
-            return;
-        }
-
-        const message = document.getElementById('message').value;
-        if (!message || !message.trim()) {
-            showResult('error', '❌ Введите текст сообщения для рассылки');
-            return;
-        }
-
-        const delaySeconds = parseInt(document.getElementById('delaySeconds').value);
-        const autoDeleteAccount = document.getElementById('autoDeleteAccount').checked;
-        const deleteDelayMinutes = 5; // 5 секунд задержка
-
-        // Создаем FormData
-        const formData = new FormData();
-        formData.append('message', message.trim());
-        formData.append('delay_seconds', delaySeconds);
-        formData.append('auto_delete_account', autoDeleteAccount ? 'true' : 'false');
-        formData.append('delete_delay_minutes', deleteDelayMinutes);
-
-        // Добавляем выбранные аккаунты простым способом
-        formData.append('selected_accounts', selectedAccountsArray.join(','));
-        
-        console.log('Данные FormData:');
-        console.log(`selected_accounts: ${selectedAccountsArray.join(',')}`);
-        console.log(`message: ${message.trim()}`);
-        console.log(`delay_seconds: ${delaySeconds}`);
-
-        // Добавляем файл если выбран
-        const fileInput = document.getElementById('fileUpload');
-        if (fileInput && fileInput.files.length > 0) {
-            formData.append('attachment', fileInput.files[0]);
-            console.log('Добавлен файл:', fileInput.files[0].name);
-        }
-
-        // Отключаем кнопку
-        const submitBtn = document.getElementById('submitBtn');
-        const originalText = submitBtn.innerHTML;
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Запускаем рассылку...';
-
-        try {
-            showResult('info', '🚀 Запускаем рассылку по контактам...');
-
-            console.log('Отправляем запрос на /api/start-contacts-campaign');
-
-            const response = await fetch('/api/start-contacts-campaign', {
-                method: 'POST',
-                body: formData
-            });
-
-            console.log('Статус ответа:', response.status);
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('Ошибка сервера:', errorText);
-                throw new Error(`HTTP ${response.status}: ${errorText}`);
-            }
-
-            const result = await response.json();
-            console.log('Результат:', result);
-
-            if (result.status === 'success') {
-                const message = `✅ Рассылка запущена! 
-                                           📱 Аккаунтов: ${result.accounts_used || selectedAccounts.length}
-                                           🎯 Контактов: ${result.contacts_count || 'загружается...'}
-                                           ${result.message || ''}`;
-                showResult('success', message);
-
-                // Обновляем счетчики
-                loadScheduledCampaigns();
-
-                // Сбрасываем форму
-                form.reset();
-                uploadedFilePath = null;
-                fileInfo.style.display = 'none';
-                
-                // Сбрасываем выбранные аккаунты
-                selectedAccounts.clear();
-                document.querySelectorAll('.account-checkbox').forEach(checkbox => {
-                    checkbox.checked = false;
-                });
-                updateSelectedCount();
-
-            } else {
-                showResult('error', `❌ Ошибка: ${result.message || 'Неизвестная ошибка'}`);
-            }
-
-        } catch (error) {
-            console.error('Ошибка запроса:', error);
-            showResult('error', `❌ Ошибка соединения: ${error.message}`);
-        } finally {
-            // Восстанавливаем кнопку
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = originalText;
-        }
-    }
-
-    // Функция для показа уведомлений (всплывающие)
-    function showAlert(message, type = 'info') {
-        const alertContainer = document.getElementById('alertContainer') || createAlertContainer();
-
-        const alertElement = document.createElement('div');
-        alertElement.className = `alert alert-${type} alert-dismissible fade show`;
-        alertElement.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        `;
-
-        alertContainer.appendChild(alertElement);
-
-        // Автоматически скрываем уведомление через 5 секунд
+    // Автоматически скрываем информационные сообщения через 10 секунд
+    if (type === 'info') {
         setTimeout(() => {
-            if (alertElement.parentNode) {
-                alertElement.remove();
-            }
-        }, 5000);
+            resultDiv.style.display = 'none';
+        }, 10000);
     }
+}
 
-    function createAlertContainer() {
-        const container = document.createElement('div');
-        container.id = 'alertContainer';
-        container.style.position = 'fixed';
-        container.style.top = '20px';
-        container.style.right = '20px';
-        container.style.zIndex = '9999';
-        container.style.width = '400px';
-        document.body.appendChild(container);
-        return container;
-    }
+// Обновление статуса кампаний
+async function updateCampaignStatus() {
+    try {
+        const response = await fetch('/api/scheduled-campaigns');
+        const data = await response.json();
 
-    // Helper to load accounts for campaign form (if different from initial load)
-    // In this case, it seems to be the same as loadAccounts, so could be merged or kept for clarity.
-    function loadAccountsForCampaign() {
-        loadAccounts();
-    }
-
-    // Helper function to load scheduled campaigns status
-    async function loadScheduledCampaigns() {
-        try {
-            const response = await fetch('/api/scheduled-campaigns');
-            const data = await response.json();
-
-            const statusDiv = document.getElementById('campaignStatus');
-            if (data.scheduled_campaigns && data.scheduled_campaigns.length > 0) {
-                statusDiv.innerHTML = `
-                    <div class="alert alert-info">
-                        <i class="fas fa-clock"></i>
-                        Запланированных кампаний: ${data.scheduled_campaigns.length}
-                    </div>
-                `;
-            } else {
-                statusDiv.innerHTML = '';
-            }
-        } catch (error) {
-            console.error('Error loading scheduled campaigns:', error);
+        const statusDiv = document.getElementById('campaignStatus');
+        if (data.scheduled_campaigns && data.scheduled_campaigns.length > 0) {
+            statusDiv.innerHTML = `
+                <div class="alert alert-info">
+                    <i class="fas fa-clock"></i>
+                    Запланированных кампаний: ${data.scheduled_campaigns.length}
+                </div>
+            `;
+        } else {
+            statusDiv.innerHTML = '';
         }
+    } catch (error) {
+        console.error('Error updating campaign status:', error);
     }
-
-    // Function to get selected accounts from the multi-select dropdown
-    function getSelectedAccounts() {
-        const selectedOptions = Array.from(accountSelect.selectedOptions);
-        return selectedOptions.map(option => parseInt(option.value)).filter(value => !isNaN(value));
-    }
-
-    // Attach the submit event listener to the form
-    document.getElementById('campaignForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-
-        const selectedAccounts = getSelectedAccounts();
-
-        if (selectedAccounts.length === 0) {
-            showAlert('Выберите хотя бы один аккаунт для рассылки', 'warning');
-            return;
-        }
-
-        console.log('Выбранные аккаунты:', selectedAccounts);
-
-        // Добавляем выбранные аккаунты в скрытое поле
-        document.getElementById('selectedAccountsInput').value = selectedAccounts.join(',');
-
-        const formData = new FormData(this);
-
-        // Добавляем каждый выбранный аккаунт как отдельное поле
-        selectedAccounts.forEach(accountId => {
-            formData.append('account_' + accountId, 'on');
-        });
-
-        // Отладочная информация
-        console.log('Данные формы:');
-        for (let [key, value] of formData.entries()) {
-            console.log(key + ':', value);
-        }
-
-        try {
-            const response = await fetch('/api/start-contacts-campaign', {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-
-            if (result.status === 'success') {
-                showAlert(result.message || 'Кампания запущена успешно!', 'success');
-                this.reset();
-                document.getElementById('selectedAccountsInput').value = '';
-                await loadAccounts();
-            } else {
-                showAlert(result.message || 'Ошибка запуска кампании', 'danger');
-            }
-        } catch (error) {
-            console.error('Campaign error:', error);
-            showAlert('Ошибка отправки формы: ' + error.message, 'danger');
-        }
-    });
-});
+}
 </script>
 {% endblock %}

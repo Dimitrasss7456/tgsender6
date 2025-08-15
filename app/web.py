@@ -1066,72 +1066,71 @@ async def start_contacts_campaign_api(
     attachment: Optional[UploadFile] = File(None),
     auto_delete_account: bool = Form(False),
     delete_delay_minutes: int = Form(5),
+    selected_accounts: str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """API для запуска кампании рассылки по контактам"""
+    """API для запуска кампании рассылки по контактам с упрощенной обработкой аккаунтов"""
     try:
         print(f"🚀 Получен запрос на запуск кампании от пользователя {current_user.username}")
-
-        # Получаем все данные формы для отладки
-        form_data = await request.form()
-        print(f"📋 Обработка формы рассылки по контактам")
-
-        # Простая обработка выбранных аккаунтов
-        selected_accounts = []
-        selected_accounts_str = form_data.get('selected_accounts', '')
-        
-        print(f"🔍 Получено selected_accounts: '{selected_accounts_str}'")
-        
-        if selected_accounts_str:
-            try:
-                # Парсим строку с ID аккаунтов через запятую
-                account_ids = [int(x.strip()) for x in selected_accounts_str.split(',') if x.strip().isdigit()]
-                selected_accounts = list(set(account_ids))  # Удаляем дубликаты
-                print(f"✅ Распарсены аккаунты: {selected_accounts}")
-            except (ValueError, AttributeError) as e:
-                print(f"❌ Ошибка парсинга аккаунтов: {e}")
-                selected_accounts = []
-        
-        print(f"📱 Итого найдено уникальных аккаунтов: {len(selected_accounts)} - {selected_accounts}")
+        print(f"📋 Полученные аккаунты: '{selected_accounts}'")
         print(f"📝 Сообщение: '{message[:50]}{'...' if len(message) > 50 else ''}'")
 
-        # Проверяем наличие аккаунтов
-        if not selected_accounts:
-            print("❌ Аккаунты не выбраны")
-            print("🔍 Доступные поля формы для отладки:")
-            for key, value in form_data.items():
-                print(f"  - {key}: {value} (тип: {type(value)})")
-            
+        # Простая и надежная обработка выбранных аккаунтов
+        account_ids = []
+        
+        if selected_accounts and selected_accounts.strip():
+            try:
+                # Разбиваем строку по запятым и преобразуем в числа
+                raw_ids = selected_accounts.strip().split(',')
+                for raw_id in raw_ids:
+                    clean_id = raw_id.strip()
+                    if clean_id and clean_id.isdigit():
+                        account_ids.append(int(clean_id))
+                
+                # Удаляем дубликаты
+                account_ids = list(set(account_ids))
+                print(f"✅ Обработанные ID аккаунтов: {account_ids}")
+                
+            except Exception as parse_error:
+                print(f"❌ Ошибка парсинга аккаунтов: {parse_error}")
+                return JSONResponse({
+                    "status": "error",
+                    "message": f"Ошибка обработки списка аккаунтов: {str(parse_error)}"
+                })
+        
+        # Проверяем что аккаунты выбраны
+        if not account_ids:
+            print("❌ Не выбраны аккаунты")
             return JSONResponse({
                 "status": "error",
-                "message": "Не выбраны аккаунты для рассылки. Убедитесь, что вы отметили чекбоксы рядом с аккаунтами в форме."
+                "message": "Не выбраны аккаунты для рассылки. Выберите хотя бы один активный аккаунт."
             })
 
-        # Проверяем наличие сообщения
+        # Проверяем сообщение
         if not message or not message.strip():
-            print("❌ Не указано сообщение")
+            print("❌ Пустое сообщение")
             return JSONResponse({
                 "status": "error",
-                "message": "Не указано сообщение для рассылки"
+                "message": "Введите текст сообщения для рассылки"
             })
-
-        print(f"📝 Сообщение: {message[:50]}...")
 
         # Проверяем что аккаунты существуют и активны
-        accounts = db.query(Account).filter(
-            Account.id.in_(selected_accounts),
-            Account.is_active == True
+        active_accounts = db.query(Account).filter(
+            Account.id.in_(account_ids),
+            Account.is_active == True,
+            Account.status == 'online'
         ).all()
 
-        if not accounts:
-            print("❌ Активные аккаунты не найдены")
+        if not active_accounts:
+            print(f"❌ Активные аккаунты не найдены среди {account_ids}")
             return JSONResponse({
                 "status": "error",
-                "message": "Выбранные аккаунты неактивны или не найдены"
+                "message": "Среди выбранных аккаунтов нет активных онлайн аккаунтов"
             })
 
-        print(f"✅ Найдено {len(accounts)} активных аккаунтов")
+        active_account_ids = [acc.id for acc in active_accounts]
+        print(f"✅ Найдено {len(active_accounts)} активных аккаунтов: {active_account_ids}")
 
         # Обработка файла вложения
         attachment_path = None
@@ -1153,40 +1152,27 @@ async def start_contacts_campaign_api(
                     "message": f"Ошибка сохранения файла: {str(file_error)}"
                 })
 
-        # Запускаем кампанию с мгновенной отправкой
-        print(f"🚀 Запускаем кампанию с {len(selected_accounts)} аккаунтами")
+        # Запускаем кампанию
+        print(f"🚀 Запускаем кампанию с {len(active_account_ids)} аккаунтами")
         print(f"⚙️ Параметры: delay={delay_seconds}, auto_delete={auto_delete_account}")
 
-        # Проверяем что аккаунты активны перед запуском
-        active_accounts = db.query(Account).filter(
-            Account.id.in_(selected_accounts),
-            Account.is_active == True
-        ).all()
-
-        print(f"✅ Активных аккаунтов найдено: {len(active_accounts)} из {len(selected_accounts)}")
-
-        if not active_accounts:
-            return JSONResponse({
-                "status": "error",
-                "message": "Выбранные аккаунты неактивны или не найдены"
-            })
-
         result = await message_sender.start_contacts_campaign(
-            account_ids=selected_accounts,
+            account_ids=active_account_ids,
             message=message,
-            delay_seconds=0,  # Мгновенная отправка
+            delay_seconds=delay_seconds,
             start_in_minutes=start_in_minutes,
             attachment_path=attachment_path,
             auto_delete_account=auto_delete_account,
-            delete_delay_minutes=5  # Задержка в секундах, не минутах
+            delete_delay_minutes=delete_delay_minutes
         )
 
         print(f"📊 Результат кампании: {result}")
 
         # Добавляем дополнительную информацию в ответ
         if result.get("status") == "success":
-            result["accounts_used"] = len(active_accounts)
-            result["message"] = f"Рассылка запущена с {len(active_accounts)} аккаунтами"
+            result["accounts_used"] = len(active_account_ids)
+            if "message" not in result:
+                result["message"] = f"Рассылка запущена с {len(active_account_ids)} аккаунтами"
 
         return JSONResponse(result)
 
