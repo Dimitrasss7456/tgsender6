@@ -1195,8 +1195,7 @@ class TelegramManager:
                     target_chat_id = chat_id
                 elif chat_id.isdigit():
                     target_chat_id = int(chat_id)
-                elif chat_id.startswith('-')
-                                           and chat_id[1:].isdigit():
+                elif chat_id.startswith('-') and chat_id[1:].isdigit():
                     target_chat_id = int(chat_id)
 
             print(f"🎯 Целевой чат: {target_chat_id}")
