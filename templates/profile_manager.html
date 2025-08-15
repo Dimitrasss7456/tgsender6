@@ -414,6 +414,31 @@ function updateSelectedCount() {
     const count = selectedAccounts.size;
     const countElement = document.getElementById('selectedCount');
     if (countElement) {
+        countElement.textContent = `Выбрано: ${count}`;
+    }
+}
+
+function toggleAccount(accountId, checkbox) {
+    console.log('🔄 Переключение аккаунта:', accountId, checkbox.checked);
+    
+    const accountCard = document.getElementById(`account-${accountId}`);
+    
+    if (checkbox.checked) {
+        selectedAccounts.add(accountId);
+        if (accountCard) {
+            accountCard.classList.add('selected');
+        }
+    } else {
+        selectedAccounts.delete(accountId);
+        if (accountCard) {
+            accountCard.classList.remove('selected');
+        }
+    }
+    
+    updateSelectedCount();
+    console.log('📊 Текущие выбранные аккаунты:', Array.from(selectedAccounts));
+}entById('selectedCount');
+    if (countElement) {
         countElement.textContent = `${count} выбрано`;
         countElement.className = `badge ${count > 0 ? 'bg-primary' : 'bg-secondary'} me-2`;
     }
@@ -513,6 +538,8 @@ async function startSequentialComments() {
     const delay = parseInt(document.getElementById('commentDelay').value);
     const antispamMode = document.getElementById('antispamMode').value;
 
+    console.log('🔍 Отладка выбранных аккаунтов:', Array.from(selectedAccounts));
+
     if (!postUrl) {
         showAlert('Укажите ссылку на пост', 'warning');
         return;
@@ -528,19 +555,64 @@ async function startSequentialComments() {
         return;
     }
 
+    // Получаем первый выбранный аккаунт для комментирования
+    const accountId = Array.from(selectedAccounts)[0];
+
+    console.log('📝 Отправляем запрос с аккаунтом:', accountId);
+
     try {
+        // Парсим URL поста для извлечения chat_id и message_id
+        const urlMatch = postUrl.match(/t\.me\/([^\/]+)\/(\d+)/);
+        if (!urlMatch) {
+            showAlert('Неверный формат URL поста. Используйте формат: t.me/channel/123', 'danger');
+            return;
+        }
+
+        const chatId = `@${urlMatch[1]}`;
+        const messageId = parseInt(urlMatch[2]);
+
+        // Создаем массив комментариев для отправки
+        const comments = [];
+        
+        // Выбираем комментарии в зависимости от гендера аккаунта или случайно
+        if (maleComments.length > 0) {
+            const randomComment = maleComments[Math.floor(Math.random() * maleComments.length)];
+            comments.push({
+                chat_id: chatId,
+                message_id: messageId,
+                comment: randomComment
+            });
+        } else if (femaleComments.length > 0) {
+            const randomComment = femaleComments[Math.floor(Math.random() * femaleComments.length)];
+            comments.push({
+                chat_id: chatId,
+                message_id: messageId,
+                comment: randomComment
+            });
+        }
+
         const response = await fetch('/api/sequential_comments', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
-                post_url: postUrl,
-                male_comments: maleComments,
-                female_comments: femaleComments,
-                selected_accounts: Array.from(selectedAccounts),
-                delay_seconds: delay,
-                antispam_mode: antispamMode
+                account_id: accountId,
+                targets: comments,
+                delay_seconds: delay
             })
         });
+
+        const result = await response.json();
+        
+        if (result.success) {
+            showAlert('Комментарий отправлен успешно!', 'success');
+        } else {
+            showAlert(`Ошибка: ${result.message}`, 'danger');
+        }
+
+    } catch (error) {
+        console.error('❌ Ошибка отправки комментария:', error);
+        showAlert('Ошибка отправки комментария: ' + error.message, 'danger');
+    }
 
         const result = await response.json();
         if (result.success) {
