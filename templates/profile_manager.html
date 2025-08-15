@@ -1,177 +1,211 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Управление профилями - Telegram Manager</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="/static/style.css" rel="stylesheet">
-    <style>
-        .account-card {
-            border: 2px solid #444;
-            transition: border-color 0.3s ease;
-        }
-        .account-card.selected {
-            border-color: #007bff;
-        }
-        .gender-male { border-left: 5px solid #007bff; }
-        .gender-female { border-left: 5px solid #e91e63; }
-    </style>
-</head>
-<body class="bg-dark text-light">
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Панель управления -->
-            <div class="col-md-3 bg-secondary p-3" style="height: 100vh; overflow-y: auto;">
-                <h4 class="text-center mb-4">
-                    <i class="fas fa-cogs"></i> Управление
-                </h4>
 
-                <!-- Автозаполнение -->
-                <div class="card bg-dark mb-3">
+{% extends "base.html" %}
+
+{% block title %}Управление профилями - Telegram Manager{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
+    <h1 class="page-title glitch" data-text="УПРАВЛЕНИЕ ПРОФИЛЯМИ">
+        <i class="fas fa-user-cog me-3"></i>УПРАВЛЕНИЕ ПРОФИЛЯМИ
+    </h1>
+    <div class="btn-group">
+        <button class="btn btn-primary" onclick="selectByGender('male')">
+            <i class="fas fa-mars me-2"></i>Мужские
+        </button>
+        <button class="btn btn-danger" onclick="selectByGender('female')">
+            <i class="fas fa-venus me-2"></i>Женские
+        </button>
+        <button class="btn btn-success" onclick="selectAll()">
+            <i class="fas fa-check-double me-2"></i>Все
+        </button>
+        <button class="btn btn-secondary" onclick="deselectAll()">
+            <i class="fas fa-times me-2"></i>Очистить
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Панель управления -->
+    <div class="col-lg-4 mb-4">
+        <div class="row g-3">
+            <!-- Автозаполнение -->
+            <div class="col-12">
+                <div class="card fade-in">
                     <div class="card-header">
-                        <h6><i class="fas fa-magic"></i> Автозаполнение</h6>
+                        <i class="fas fa-magic me-2"></i>АВТОЗАПОЛНЕНИЕ ПРОФИЛЕЙ
                     </div>
                     <div class="card-body">
-                        <div class="row mb-2">
+                        <div class="row g-2 mb-3">
                             <div class="col-6">
-                                <button class="btn btn-primary w-100 btn-sm" onclick="autoFillProfiles('male')">
-                                    Мужские
+                                <button class="btn btn-primary w-100" onclick="autoFillProfiles('male')">
+                                    <i class="fas fa-mars me-2"></i>Мужские
                                 </button>
                             </div>
                             <div class="col-6">
-                                <button class="btn btn-danger w-100 btn-sm" onclick="autoFillProfiles('female')">
-                                    Женские
+                                <button class="btn btn-danger w-100" onclick="autoFillProfiles('female')">
+                                    <i class="fas fa-venus me-2"></i>Женские
                                 </button>
                             </div>
                         </div>
-                        <button class="btn btn-success w-100 btn-sm" onclick="updateAllTelegramProfiles()">
-                            Обновить в Telegram
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Комментирование -->
-                <div class="card bg-dark mb-3">
-                    <div class="card-header">
-                        <h6><i class="fas fa-comments"></i> Комментирование</h6>
-                    </div>
-                    <div class="card-body">
-                        <div class="mb-2">
-                            <input type="url" class="form-control form-control-sm" id="commentPostUrl"
-                                   placeholder="https://t.me/channel/123">
-                        </div>
-
-                        <div class="mb-2">
-                            <textarea class="form-control form-control-sm" id="maleCommentsList" rows="2"
-                                      placeholder="Мужские комментарии (по строке)"></textarea>
-                        </div>
-
-                        <div class="mb-2">
-                            <textarea class="form-control form-control-sm" id="femaleCommentsList" rows="2"
-                                      placeholder="Женские комментарии (по строке)"></textarea>
-                        </div>
-
-                        <div class="row mb-2">
-                            <div class="col-6">
-                                <input type="number" class="form-control form-control-sm" id="commentDelay" value="60" min="30">
-                                <small>Задержка (сек)</small>
-                            </div>
-                            <div class="col-6">
-                                <select class="form-control form-control-sm" id="antispamMode">
-                                    <option value="safe">Безопасный</option>
-                                    <option value="normal">Обычный</option>
-                                    <option value="fast">Быстрый</option>
-                                </select>
-                                <small>Режим</small>
-                            </div>
-                        </div>
-
-                        <button class="btn btn-success w-100 btn-sm" onclick="startSequentialComments()">
-                            Запустить комментарии
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Реакции -->
-                <div class="card bg-dark mb-3">
-                    <div class="card-header">
-                        <h6><i class="fas fa-heart"></i> Реакции</h6>
-                    </div>
-                    <div class="card-body">
-                        <div class="mb-2">
-                            <input type="url" class="form-control form-control-sm" id="reactionPostUrl"
-                                   placeholder="https://t.me/channel/123">
-                        </div>
-
-                        <div class="mb-2">
-                            <div class="d-flex flex-wrap gap-1" id="reactionSelector">
-                                <span class="reaction-selector" data-emoji="👍" style="cursor: pointer; padding: 2px; border-radius: 3px;">👍</span>
-                                <span class="reaction-selector" data-emoji="❤️" style="cursor: pointer; padding: 2px; border-radius: 3px;">❤️</span>
-                                <span class="reaction-selector" data-emoji="🔥" style="cursor: pointer; padding: 2px; border-radius: 3px;">🔥</span>
-                                <span class="reaction-selector" data-emoji="👏" style="cursor: pointer; padding: 2px; border-radius: 3px;">👏</span>
-                                <span class="reaction-selector" data-emoji="😂" style="cursor: pointer; padding: 2px; border-radius: 3px;">😂</span>
-                                <span class="reaction-selector" data-emoji="👎" style="cursor: pointer; padding: 2px; border-radius: 3px;">👎</span>
-                            </div>
-                        </div>
-
-                        <div class="row mb-2">
-                            <div class="col-6">
-                                <input type="number" class="form-control form-control-sm" id="totalReactions" value="9" min="1">
-                                <small>Количество</small>
-                            </div>
-                            <div class="col-6">
-                                <input type="number" class="form-control form-control-sm" id="reactionDelay" value="20" min="5">
-                                <small>Задержка (сек)</small>
-                            </div>
-                        </div>
-
-                        <button class="btn btn-warning w-100 btn-sm" onclick="startMultipleReactions()">
-                            Запустить реакции
+                        <button class="btn btn-success w-100" onclick="updateAllTelegramProfiles()">
+                            <i class="fas fa-sync me-2"></i>Обновить в Telegram
                         </button>
                     </div>
                 </div>
             </div>
 
-            <!-- Список аккаунтов -->
-            <div class="col-md-9 p-3" style="height: 100vh; overflow-y: auto;">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h3>Аккаунты ({{ accounts|length }})</h3>
-                    <div class="btn-group btn-group-sm">
-                        <button class="btn btn-outline-primary" onclick="selectByGender('male')">
-                            Мужские
-                        </button>
-                        <button class="btn btn-outline-danger" onclick="selectByGender('female')">
-                            Женские
-                        </button>
-                        <button class="btn btn-outline-success" onclick="selectAll()">
-                            Все
-                        </button>
-                        <button class="btn btn-outline-secondary" onclick="deselectAll()">
-                            Очистить
+            <!-- Комментирование -->
+            <div class="col-12">
+                <div class="card fade-in">
+                    <div class="card-header">
+                        <i class="fas fa-comments me-2"></i>КОММЕНТИРОВАНИЕ
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">
+                                <i class="fas fa-link me-2"></i>Ссылка на пост
+                            </label>
+                            <input type="url" class="form-control" id="commentPostUrl"
+                                   placeholder="https://t.me/channel/123">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">
+                                <i class="fas fa-mars text-primary me-2"></i>Мужские комментарии
+                            </label>
+                            <textarea class="form-control" id="maleCommentsList" rows="3"
+                                      placeholder="Один комментарий на строку"></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">
+                                <i class="fas fa-venus text-danger me-2"></i>Женские комментарии
+                            </label>
+                            <textarea class="form-control" id="femaleCommentsList" rows="3"
+                                      placeholder="Один комментарий на строку"></textarea>
+                        </div>
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label">
+                                    <i class="fas fa-clock me-2"></i>Задержка (сек)
+                                </label>
+                                <input type="number" class="form-control" id="commentDelay" value="60" min="30">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">
+                                    <i class="fas fa-shield-alt me-2"></i>Режим
+                                </label>
+                                <select class="form-control" id="antispamMode">
+                                    <option value="safe">Безопасный</option>
+                                    <option value="normal">Обычный</option>
+                                    <option value="fast">Быстрый</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-success w-100" onclick="startSequentialComments()">
+                            <i class="fas fa-paper-plane me-2"></i>Запустить комментарии
                         </button>
                     </div>
                 </div>
+            </div>
 
+            <!-- Реакции -->
+            <div class="col-12">
+                <div class="card fade-in">
+                    <div class="card-header">
+                        <i class="fas fa-heart me-2"></i>РЕАКЦИИ
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">
+                                <i class="fas fa-link me-2"></i>Ссылка на пост
+                            </label>
+                            <input type="url" class="form-control" id="reactionPostUrl"
+                                   placeholder="https://t.me/channel/123">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">
+                                <i class="fas fa-smile me-2"></i>Выберите реакции
+                            </label>
+                            <div class="d-flex flex-wrap gap-2" id="reactionSelector">
+                                <span class="reaction-selector" data-emoji="👍">👍</span>
+                                <span class="reaction-selector" data-emoji="❤️">❤️</span>
+                                <span class="reaction-selector" data-emoji="🔥">🔥</span>
+                                <span class="reaction-selector" data-emoji="👏">👏</span>
+                                <span class="reaction-selector" data-emoji="😂">😂</span>
+                                <span class="reaction-selector" data-emoji="👎">👎</span>
+                                <span class="reaction-selector" data-emoji="😮">😮</span>
+                                <span class="reaction-selector" data-emoji="😢">😢</span>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label">
+                                    <i class="fas fa-hashtag me-2"></i>Количество
+                                </label>
+                                <input type="number" class="form-control" id="totalReactions" value="9" min="1">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">
+                                    <i class="fas fa-clock me-2"></i>Задержка (сек)
+                                </label>
+                                <input type="number" class="form-control" id="reactionDelay" value="20" min="5">
+                            </div>
+                        </div>
+
+                        <button class="btn btn-warning w-100" onclick="startMultipleReactions()">
+                            <i class="fas fa-rocket me-2"></i>Запустить реакции
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Список аккаунтов -->
+    <div class="col-lg-8">
+        <div class="card fade-in">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>
+                    <i class="fas fa-users me-2"></i>АККАУНТЫ ({{ accounts|length }})
+                </span>
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-primary me-2" id="selectedCount">0 выбрано</span>
+                </div>
+            </div>
+            <div class="card-body p-3">
                 <div id="alerts"></div>
 
-                <div class="row" id="accountsContainer">
+                <div class="row g-3" id="accountsContainer">
                     {% for account in accounts %}
-                    <div class="col-lg-4 col-md-6 mb-3">
-                        <div class="card bg-secondary account-card gender-{{ account.gender or 'unknown' }}"
+                    <div class="col-xl-4 col-lg-6 col-md-6">
+                        <div class="card account-card {% if account.gender == 'male' %}border-primary{% elif account.gender == 'female' %}border-danger{% else %}border-secondary{% endif %}"
                              id="account-{{ account.id }}"
                              onclick="toggleAccountSelection({{ account.id }})">
 
-                            <div class="card-header d-flex justify-content-between align-items-center p-2">
-                                <div>
-                                    <input type="checkbox" class="account-checkbox me-1"
+                            <div class="card-header p-2 d-flex justify-content-between align-items-center">
+                                <div class="d-flex align-items-center">
+                                    <input type="checkbox" class="form-check-input account-checkbox me-2"
                                            id="checkbox-{{ account.id }}"
                                            onclick="event.stopPropagation()">
+                                    
+                                    {% if account.gender == 'male' %}
+                                        <i class="fas fa-mars text-primary me-2"></i>
+                                    {% elif account.gender == 'female' %}
+                                        <i class="fas fa-venus text-danger me-2"></i>
+                                    {% else %}
+                                        <i class="fas fa-question text-secondary me-2"></i>
+                                    {% endif %}
+
                                     <small class="badge bg-{{ 'success' if account.is_active else 'danger' }}">
                                         {{ account.phone }}
                                     </small>
                                 </div>
+
                                 <div class="btn-group btn-group-sm">
                                     <button class="btn btn-outline-primary btn-sm"
                                             onclick="event.stopPropagation(); editAccount({{ account.id }})"
@@ -186,24 +220,28 @@
                                 </div>
                             </div>
 
-                            <div class="card-body p-2">
-                                <div class="d-flex align-items-center mb-1">
-                                    {% if account.gender == 'male' %}
-                                        <i class="fas fa-mars text-primary me-1"></i>
-                                    {% elif account.gender == 'female' %}
-                                        <i class="fas fa-venus text-danger me-1"></i>
-                                    {% else %}
-                                        <i class="fas fa-question text-secondary me-1"></i>
-                                    {% endif %}
-                                    <small><strong>{{ account.first_name or 'Без имени' }} {{ account.last_name or '' }}</strong></small>
+                            <div class="card-body p-3">
+                                <div class="mb-2">
+                                    <strong class="text-white">
+                                        {{ account.first_name or 'Без имени' }} {{ account.last_name or '' }}
+                                    </strong>
                                 </div>
 
                                 {% if account.bio %}
-                                <p class="small text-muted mb-1">{{ account.bio[:30] }}{% if account.bio|length > 30 %}...{% endif %}</p>
+                                <p class="small text-muted mb-2">
+                                    {{ account.bio[:40] }}{% if account.bio|length > 40 %}...{% endif %}
+                                </p>
                                 {% endif %}
 
-                                <div class="text-muted small">
-                                    <span class="badge bg-{{ 'success' if account.status == 'online' else 'secondary' }}">{{ account.status }}</span>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="badge bg-{{ 'success' if account.status == 'online' else 'secondary' }}">
+                                        {{ account.status }}
+                                    </span>
+                                    {% if account.gender %}
+                                    <span class="badge bg-{{ 'primary' if account.gender == 'male' else 'danger' }}">
+                                        {{ 'Мужской' if account.gender == 'male' else 'Женский' }}
+                                    </span>
+                                    {% endif %}
                                 </div>
                             </div>
                         </div>
@@ -213,347 +251,468 @@
             </div>
         </div>
     </div>
+</div>
 
-    <!-- Модальное окно редактирования -->
-    <div class="modal fade" id="editAccountModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content bg-dark">
-                <div class="modal-header">
-                    <h5 class="modal-title">Редактирование аккаунта</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="editAccountForm">
-                        <input type="hidden" id="editAccountId">
+<!-- Модальное окно редактирования -->
+<div class="modal fade" id="editAccountModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-user-edit me-2"></i>РЕДАКТИРОВАНИЕ АККАУНТА
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editAccountForm">
+                    <input type="hidden" id="editAccountId">
 
-                        <div class="row">
-                            <div class="col-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Имя</label>
-                                    <input type="text" class="form-control" id="editFirstName">
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Фамилия</label>
-                                    <input type="text" class="form-control" id="editLastName">
-                                </div>
-                            </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                <i class="fas fa-user me-2"></i>Имя
+                            </label>
+                            <input type="text" class="form-control" id="editFirstName" placeholder="Введите имя">
                         </div>
-
-                        <div class="row">
-                            <div class="col-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Гендер</label>
-                                    <select class="form-control" id="editGender">
-                                        <option value="">Не указан</option>
-                                        <option value="male">Мужской</option>
-                                        <option value="female">Женский</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Фото</label>
-                                    <input type="file" class="form-control" id="editPhoto" accept="image/*">
-                                </div>
-                            </div>
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                <i class="fas fa-user me-2"></i>Фамилия
+                            </label>
+                            <input type="text" class="form-control" id="editLastName" placeholder="Введите фамилию">
                         </div>
+                    </div>
 
-                        <div class="mb-3">
-                            <label class="form-label">О себе</label>
-                            <textarea class="form-control" id="editBio" rows="2"></textarea>
+                    <div class="row g-3 mt-2">
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                <i class="fas fa-venus-mars me-2"></i>Гендер
+                            </label>
+                            <select class="form-control" id="editGender">
+                                <option value="">Не указан</option>
+                                <option value="male">Мужской</option>
+                                <option value="female">Женский</option>
+                            </select>
                         </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                    <button type="button" class="btn btn-primary" onclick="saveAccountChanges()">Сохранить</button>
-                </div>
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                <i class="fas fa-image me-2"></i>Фото профиля
+                            </label>
+                            <input type="file" class="form-control" id="editPhoto" accept="image/*">
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <label class="form-label">
+                            <i class="fas fa-info-circle me-2"></i>О себе
+                        </label>
+                        <textarea class="form-control" id="editBio" rows="3" placeholder="Расскажите о себе..."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>Отмена
+                </button>
+                <button type="button" class="btn btn-primary" onclick="saveAccountChanges()">
+                    <i class="fas fa-save me-2"></i>Сохранить
+                </button>
             </div>
         </div>
     </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<style>
+.account-card {
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border-width: 2px !important;
+    background: var(--cyber-bg-card);
+    overflow: hidden;
+    position: relative;
+}
 
-    <script>
-        let selectedAccounts = new Set();
-        let selectedReactions = new Set();
+.account-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--cyber-primary), var(--cyber-secondary), var(--cyber-accent));
+    opacity: 0.7;
+}
 
-        function showAlert(message, type) {
-            const alertsContainer = document.getElementById('alerts');
-            const alertDiv = document.createElement('div');
-            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-            alertDiv.innerHTML = `
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
-            alertsContainer.appendChild(alertDiv);
-            setTimeout(() => {
-                if(alertDiv.parentNode) {
-                    alertDiv.remove();
-                }
-            }, 5000);
+.account-card:hover {
+    transform: translateY(-5px) scale(1.02);
+    box-shadow: var(--cyber-shadow-strong);
+}
+
+.account-card.selected {
+    border-color: var(--cyber-primary) !important;
+    box-shadow: var(--cyber-glow-strong) var(--cyber-primary);
+    transform: translateY(-3px) scale(1.02);
+}
+
+.reaction-selector {
+    cursor: pointer;
+    padding: 8px 12px;
+    border: 2px solid var(--cyber-border);
+    border-radius: 10px;
+    background: var(--cyber-bg-secondary);
+    transition: all 0.3s ease;
+    font-size: 18px;
+    display: inline-block;
+}
+
+.reaction-selector:hover {
+    border-color: var(--cyber-primary);
+    box-shadow: var(--cyber-glow) var(--cyber-primary);
+    transform: scale(1.1);
+}
+
+.reaction-selector.selected {
+    background: var(--cyber-primary);
+    border-color: var(--cyber-primary);
+    box-shadow: var(--cyber-glow-strong) var(--cyber-primary);
+}
+
+.border-primary {
+    border-color: var(--cyber-primary) !important;
+}
+
+.border-danger {
+    border-color: var(--cyber-danger) !important;
+}
+
+.border-secondary {
+    border-color: var(--cyber-border) !important;
+}
+</style>
+
+<script>
+let selectedAccounts = new Set();
+let selectedReactions = new Set();
+
+function showAlert(message, type) {
+    const alertsContainer = document.getElementById('alerts');
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        <i class="fas fa-${type === 'success' ? 'check' : type === 'danger' ? 'exclamation-triangle' : 'info'} me-2"></i>
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    alertsContainer.appendChild(alertDiv);
+    setTimeout(() => {
+        if(alertDiv.parentNode) {
+            alertDiv.remove();
         }
+    }, 5000);
+}
 
-        function toggleAccountSelection(accountId) {
-            const checkbox = document.getElementById(`checkbox-${accountId}`);
+function updateSelectedCount() {
+    const count = selectedAccounts.size;
+    const countElement = document.getElementById('selectedCount');
+    if (countElement) {
+        countElement.textContent = `${count} выбрано`;
+        countElement.className = `badge ${count > 0 ? 'bg-primary' : 'bg-secondary'} me-2`;
+    }
+}
+
+function toggleAccountSelection(accountId) {
+    const checkbox = document.getElementById(`checkbox-${accountId}`);
+    const card = document.getElementById(`account-${accountId}`);
+
+    checkbox.checked = !checkbox.checked;
+
+    if (checkbox.checked) {
+        selectedAccounts.add(accountId);
+        card.classList.add('selected');
+    } else {
+        selectedAccounts.delete(accountId);
+        card.classList.remove('selected');
+    }
+    
+    updateSelectedCount();
+}
+
+function selectByGender(gender) {
+    const cards = document.querySelectorAll(`.border-${gender === 'male' ? 'primary' : 'danger'}`);
+    cards.forEach(card => {
+        const accountId = parseInt(card.id.replace('account-', ''));
+        const checkbox = document.getElementById(`checkbox-${accountId}`);
+        if (checkbox) {
+            checkbox.checked = true;
+            selectedAccounts.add(accountId);
+            card.classList.add('selected');
+        }
+    });
+    updateSelectedCount();
+}
+
+function selectAll() {
+    const checkboxes = document.querySelectorAll('.account-checkbox');
+    checkboxes.forEach(checkbox => {
+        const accountId = parseInt(checkbox.id.replace('checkbox-', ''));
+        checkbox.checked = true;
+        selectedAccounts.add(accountId);
+        document.getElementById(`account-${accountId}`).classList.add('selected');
+    });
+    updateSelectedCount();
+}
+
+function deselectAll() {
+    const checkboxes = document.querySelectorAll('.account-checkbox');
+    checkboxes.forEach(checkbox => {
+        const accountId = parseInt(checkbox.id.replace('checkbox-', ''));
+        checkbox.checked = false;
+        selectedAccounts.delete(accountId);
+        document.getElementById(`account-${accountId}`).classList.remove('selected');
+    });
+    updateSelectedCount();
+}
+
+// Обработка реакций
+document.getElementById('reactionSelector').addEventListener('click', (e) => {
+    if (e.target.classList.contains('reaction-selector')) {
+        const emoji = e.target.dataset.emoji;
+        if (selectedReactions.has(emoji)) {
+            selectedReactions.delete(emoji);
+            e.target.classList.remove('selected');
+        } else {
+            selectedReactions.add(emoji);
+            e.target.classList.add('selected');
+        }
+    }
+});
+
+async function autoFillProfiles(gender) {
+    try {
+        const response = await fetch('/api/accounts/auto_fill_profiles', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({gender: gender})
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            showAlert(`Профили (${gender === 'male' ? 'мужские' : 'женские'}) заполнены!`, 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showAlert(result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Ошибка: ' + error.message, 'danger');
+    }
+}
+
+async function startSequentialComments() {
+    const postUrl = document.getElementById('commentPostUrl').value;
+    const maleComments = document.getElementById('maleCommentsList').value.split('\n').filter(c => c.trim());
+    const femaleComments = document.getElementById('femaleCommentsList').value.split('\n').filter(c => c.trim());
+    const delay = parseInt(document.getElementById('commentDelay').value);
+    const antispamMode = document.getElementById('antispamMode').value;
+
+    if (!postUrl) {
+        showAlert('Укажите ссылку на пост', 'warning');
+        return;
+    }
+
+    if (selectedAccounts.size === 0) {
+        showAlert('Выберите аккаунты', 'warning');
+        return;
+    }
+
+    if (maleComments.length === 0 && femaleComments.length === 0) {
+        showAlert('Укажите комментарии', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/sequential_comments', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                post_url: postUrl,
+                male_comments: maleComments,
+                female_comments: femaleComments,
+                selected_accounts: Array.from(selectedAccounts),
+                delay_seconds: delay,
+                antispam_mode: antispamMode
+            })
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            showAlert('Комментирование запущено!', 'success');
+        } else {
+            showAlert('Ошибка: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Ошибка: ' + error.message, 'danger');
+    }
+}
+
+async function startMultipleReactions() {
+    const postUrl = document.getElementById('reactionPostUrl').value;
+    const totalReactions = parseInt(document.getElementById('totalReactions').value);
+    const delay = parseInt(document.getElementById('reactionDelay').value);
+
+    if (!postUrl) {
+        showAlert('Укажите ссылку на пост', 'warning');
+        return;
+    }
+
+    if (selectedReactions.size === 0) {
+        showAlert('Выберите реакции', 'warning');
+        return;
+    }
+
+    if (selectedAccounts.size === 0) {
+        showAlert('Выберите аккаунты', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/multiple_reactions', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                post_url: postUrl,
+                reactions: Array.from(selectedReactions),
+                total_count: totalReactions,
+                selected_accounts: Array.from(selectedAccounts),
+                delay_seconds: delay
+            })
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            showAlert('Реакции запущены!', 'success');
+        } else {
+            showAlert('Ошибка: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Ошибка: ' + error.message, 'danger');
+    }
+}
+
+async function editAccount(accountId) {
+    try {
+        const response = await fetch(`/api/accounts/${accountId}`);
+        const account = await response.json();
+
+        document.getElementById('editAccountId').value = accountId;
+        document.getElementById('editFirstName').value = account.first_name || '';
+        document.getElementById('editLastName').value = account.last_name || '';
+        document.getElementById('editGender').value = account.gender || '';
+        document.getElementById('editBio').value = account.bio || '';
+
+        const modal = new bootstrap.Modal(document.getElementById('editAccountModal'));
+        modal.show();
+    } catch (error) {
+        showAlert('Ошибка загрузки данных аккаунта', 'danger');
+    }
+}
+
+async function saveAccountChanges() {
+    const accountId = document.getElementById('editAccountId').value;
+    const formData = new FormData();
+
+    formData.append('first_name', document.getElementById('editFirstName').value);
+    formData.append('last_name', document.getElementById('editLastName').value);
+    formData.append('gender', document.getElementById('editGender').value);
+    formData.append('bio', document.getElementById('editBio').value);
+
+    const photoFile = document.getElementById('editPhoto').files[0];
+    if (photoFile) {
+        formData.append('photo', photoFile);
+    }
+
+    try {
+        const response = await fetch(`/api/accounts/${accountId}/update`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            showAlert('Аккаунт обновлен!', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('editAccountModal')).hide();
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert('Ошибка: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Ошибка сохранения: ' + error.message, 'danger');
+    }
+}
+
+async function updateTelegramProfile(accountId) {
+    try {
+        const response = await fetch(`/api/accounts/${accountId}/update_telegram_profile`, {
+            method: 'POST'
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            showAlert('Профиль обновлен в Telegram!', 'success');
+        } else {
+            showAlert('Ошибка: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Ошибка обновления: ' + error.message, 'danger');
+    }
+}
+
+async function updateAllTelegramProfiles() {
+    if (selectedAccounts.size === 0) {
+        showAlert('Выберите аккаунты для обновления', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/accounts/update_all_telegram_profiles', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                account_ids: Array.from(selectedAccounts)
+            })
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            showAlert(`Обновлено ${result.updated_count} профилей!`, 'success');
+        } else {
+            showAlert('Ошибка: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Ошибка: ' + error.message, 'danger');
+    }
+}
+
+// Инициализация при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    updateSelectedCount();
+    
+    // Добавляем обработчики для чекбоксов
+    document.querySelectorAll('.account-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', function(e) {
+            e.stopPropagation();
+            const accountId = parseInt(this.id.replace('checkbox-', ''));
             const card = document.getElementById(`account-${accountId}`);
-
-            checkbox.checked = !checkbox.checked;
-
-            if (checkbox.checked) {
+            
+            if (this.checked) {
                 selectedAccounts.add(accountId);
                 card.classList.add('selected');
             } else {
                 selectedAccounts.delete(accountId);
                 card.classList.remove('selected');
             }
-        }
-
-        function selectByGender(gender) {
-            const accounts = document.querySelectorAll(`.gender-${gender} .account-checkbox`);
-            accounts.forEach(checkbox => {
-                const accountId = parseInt(checkbox.id.replace('checkbox-', ''));
-                checkbox.checked = true;
-                selectedAccounts.add(accountId);
-                document.getElementById(`account-${accountId}`).classList.add('selected');
-            });
-        }
-
-        function selectAll() {
-            const checkboxes = document.querySelectorAll('.account-checkbox');
-            checkboxes.forEach(checkbox => {
-                const accountId = parseInt(checkbox.id.replace('checkbox-', ''));
-                checkbox.checked = true;
-                selectedAccounts.add(accountId);
-                document.getElementById(`account-${accountId}`).classList.add('selected');
-            });
-        }
-
-        function deselectAll() {
-            const checkboxes = document.querySelectorAll('.account-checkbox');
-            checkboxes.forEach(checkbox => {
-                const accountId = parseInt(checkbox.id.replace('checkbox-', ''));
-                checkbox.checked = false;
-                selectedAccounts.delete(accountId);
-                document.getElementById(`account-${accountId}`).classList.remove('selected');
-            });
-        }
-
-        // Обработка реакций
-        document.getElementById('reactionSelector').addEventListener('click', (e) => {
-            if (e.target.classList.contains('reaction-selector')) {
-                const emoji = e.target.dataset.emoji;
-                if (selectedReactions.has(emoji)) {
-                    selectedReactions.delete(emoji);
-                    e.target.style.backgroundColor = '';
-                } else {
-                    selectedReactions.add(emoji);
-                    e.target.style.backgroundColor = '#007bff';
-                }
-            }
+            
+            updateSelectedCount();
         });
-
-        async function autoFillProfiles(gender) {
-            try {
-                const response = await fetch('/api/accounts/auto_fill_profiles', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({gender: gender})
-                });
-
-                const result = await response.json();
-                if (result.success) {
-                    showAlert(`Профили (${gender}) заполнены!`, 'success');
-                    setTimeout(() => location.reload(), 1500);
-                } else {
-                    showAlert(result.message, 'danger');
-                }
-            } catch (error) {
-                showAlert('Ошибка: ' + error.message, 'danger');
-            }
-        }
-
-        async function startSequentialComments() {
-            const postUrl = document.getElementById('commentPostUrl').value;
-            const maleComments = document.getElementById('maleCommentsList').value.split('\n').filter(c => c.trim());
-            const femaleComments = document.getElementById('femaleCommentsList').value.split('\n').filter(c => c.trim());
-            const delay = parseInt(document.getElementById('commentDelay').value);
-            const antispamMode = document.getElementById('antispamMode').value;
-
-            if (!postUrl) {
-                showAlert('Укажите ссылку на пост', 'warning');
-                return;
-            }
-
-            if (selectedAccounts.size === 0) {
-                showAlert('Выберите аккаунты', 'warning');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/sequential_comments', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        post_url: postUrl,
-                        male_comments: maleComments,
-                        female_comments: femaleComments,
-                        selected_accounts: Array.from(selectedAccounts),
-                        delay_seconds: delay,
-                        antispam_mode: antispamMode
-                    })
-                });
-
-                const result = await response.json();
-                if (result.success) {
-                    showAlert('Комментирование запущено!', 'success');
-                } else {
-                    showAlert('Ошибка: ' + result.message, 'danger');
-                }
-            } catch (error) {
-                showAlert('Ошибка: ' + error.message, 'danger');
-            }
-        }
-
-        async function startMultipleReactions() {
-            const postUrl = document.getElementById('reactionPostUrl').value;
-            const totalReactions = parseInt(document.getElementById('totalReactions').value);
-            const delay = parseInt(document.getElementById('reactionDelay').value);
-
-            if (!postUrl) {
-                showAlert('Укажите ссылку на пост', 'warning');
-                return;
-            }
-
-            if (selectedReactions.size === 0) {
-                showAlert('Выберите реакции', 'warning');
-                return;
-            }
-
-            if (selectedAccounts.size === 0) {
-                showAlert('Выберите аккаунты', 'warning');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/multiple_reactions', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        post_url: postUrl,
-                        reactions: Array.from(selectedReactions),
-                        total_count: totalReactions,
-                        selected_accounts: Array.from(selectedAccounts),
-                        delay_seconds: delay
-                    })
-                });
-
-                const result = await response.json();
-                if (result.success) {
-                    showAlert('Реакции запущены!', 'success');
-                } else {
-                    showAlert('Ошибка: ' + result.message, 'danger');
-                }
-            } catch (error) {
-                showAlert('Ошибка: ' + error.message, 'danger');
-            }
-        }
-
-        async function editAccount(accountId) {
-            try {
-                const response = await fetch(`/api/accounts/${accountId}`);
-                const account = await response.json();
-
-                document.getElementById('editAccountId').value = accountId;
-                document.getElementById('editFirstName').value = account.first_name || '';
-                document.getElementById('editLastName').value = account.last_name || '';
-                document.getElementById('editGender').value = account.gender || '';
-                document.getElementById('editBio').value = account.bio || '';
-
-                const modal = new bootstrap.Modal(document.getElementById('editAccountModal'));
-                modal.show();
-            } catch (error) {
-                showAlert('Ошибка загрузки данных аккаунта', 'danger');
-            }
-        }
-
-        async function saveAccountChanges() {
-            const accountId = document.getElementById('editAccountId').value;
-            const formData = new FormData();
-
-            formData.append('first_name', document.getElementById('editFirstName').value);
-            formData.append('last_name', document.getElementById('editLastName').value);
-            formData.append('gender', document.getElementById('editGender').value);
-            formData.append('bio', document.getElementById('editBio').value);
-
-            const photoFile = document.getElementById('editPhoto').files[0];
-            if (photoFile) {
-                formData.append('photo', photoFile);
-            }
-
-            try {
-                const response = await fetch(`/api/accounts/${accountId}/update`, {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const result = await response.json();
-                if (result.success) {
-                    showAlert('Аккаунт обновлен!', 'success');
-                    bootstrap.Modal.getInstance(document.getElementById('editAccountModal')).hide();
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showAlert('Ошибка: ' + result.message, 'danger');
-                }
-            } catch (error) {
-                showAlert('Ошибка сохранения: ' + error.message, 'danger');
-            }
-        }
-
-        async function updateTelegramProfile(accountId) {
-            try {
-                const response = await fetch(`/api/accounts/${accountId}/update_telegram_profile`, {
-                    method: 'POST'
-                });
-
-                const result = await response.json();
-                if (result.success) {
-                    showAlert('Профиль обновлен в Telegram!', 'success');
-                } else {
-                    showAlert('Ошибка: ' + result.message, 'danger');
-                }
-            } catch (error) {
-                showAlert('Ошибка обновления: ' + error.message, 'danger');
-            }
-        }
-
-        async function updateAllTelegramProfiles() {
-            if (selectedAccounts.size === 0) {
-                showAlert('Выберите аккаунты для обновления', 'warning');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/accounts/update_all_telegram_profiles', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        account_ids: Array.from(selectedAccounts)
-                    })
-                });
-
-                const result = await response.json();
-                if (result.success) {
-                    showAlert(`Обновлено ${result.updated_count} профилей!`, 'success');
-                } else {
-                    showAlert('Ошибка: ' + result.message, 'danger');
-                }
-            } catch (error) {
-                showAlert('Ошибка: ' + error.message, 'danger');
-            }
-        }
-    </script>
-</body>
-</html>
+    });
+});
+</script>
+{% endblock %}
