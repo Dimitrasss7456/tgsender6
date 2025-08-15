@@ -140,13 +140,14 @@ class CommentLog(Base):
     __tablename__ = "comment_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    campaign_id = Column(Integer, ForeignKey("comment_campaigns.id"))
+    campaign_id = Column(Integer, ForeignKey("comment_campaigns.id"), nullable=True)
     account_id = Column(Integer, ForeignKey("accounts.id"))
     chat_id = Column(String)  # ID чата где отправлялся комментарий
     message_id = Column(Integer)  # ID сообщения к которому отвечали
     comment = Column(Text)  # Текст комментария
     status = Column(String)  # sent, failed
     error_message = Column(Text)
+    comment_message_id = Column(Integer, nullable=True)  # ID отправленного комментария
     sent_at = Column(DateTime, default=datetime.utcnow)
 
 class ReactionCampaign(Base):
