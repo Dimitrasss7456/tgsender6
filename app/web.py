@@ -1075,26 +1075,59 @@ async def start_contacts_campaign_api(
 
         # Получаем все данные формы для отладки
         form_data = await request.form()
-        print(f"📋 Данные формы: {dict(form_data)}")
+        print(f"📋 Все поля формы:")
+        for key, value in form_data.items():
+            print(f"  {key}: {value}")
 
         selected_accounts = []
 
-        # Собираем все выбранные аккаунты
+        # Собираем все выбранные аккаунты - проверяем разные варианты полей
         for key, value in form_data.items():
-            print(f"🔍 Обрабатываем поле: {key} = {value}")
-            if key.startswith('account_') and value == 'on':
-                account_id = int(key.replace('account_', ''))
-                selected_accounts.append(account_id)
+            if key.startswith('account_') and (value == 'on' or value == 'true' or value == '1'):
+                try:
+                    account_id = int(key.replace('account_', ''))
+                    selected_accounts.append(account_id)
+                    print(f"✅ Добавлен аккаунт: {account_id}")
+                except ValueError:
+                    print(f"⚠️ Не удалось извлечь ID аккаунта из поля: {key}")
+            elif key == 'selected_accounts[]':
+                # Обрабатываем массив выбранных аккаунтов
+                try:
+                    account_id = int(value)
+                    selected_accounts.append(account_id)
+                    print(f"✅ Добавлен аккаунт из массива: {account_id}")
+                except ValueError:
+                    print(f"⚠️ Не удалось извлечь ID аккаунта из массива: {value}")
+            elif key == 'selected_accounts':
+                # Обрабатываем строку с ID аккаунтов через запятую
+                try:
+                    if ',' in str(value):
+                        account_ids = [int(x.strip()) for x in str(value).split(',') if x.strip()]
+                        selected_accounts.extend(account_ids)
+                        print(f"✅ Добавлены аккаунты из строки: {account_ids}")
+                    else:
+                        account_id = int(value)
+                        selected_accounts.append(account_id)
+                        print(f"✅ Добавлен аккаунт из поля: {account_id}")
+                except ValueError:
+                    print(f"⚠️ Не удалось извлечь ID аккаунтов из поля selected_accounts: {value}")
 
-        print(f"📱 Найдено аккаунтов: {len(selected_accounts)} - {selected_accounts}")
+        # Удаляем дубликаты
+        selected_accounts = list(set(selected_accounts))
+        
+        print(f"📱 Итого найдено уникальных аккаунтов: {len(selected_accounts)} - {selected_accounts}")
         print(f"📝 Сообщение: '{message[:50]}{'...' if len(message) > 50 else ''}'")
 
         # Проверяем наличие аккаунтов
         if not selected_accounts:
             print("❌ Аккаунты не выбраны")
+            print("🔍 Доступные поля формы для отладки:")
+            for key, value in form_data.items():
+                print(f"  - {key}: {value} (тип: {type(value)})")
+            
             return JSONResponse({
                 "status": "error",
-                "message": "Не выбраны аккаунты для рассылки. Выберите хотя бы один аккаунт из списка."
+                "message": "Не выбраны аккаунты для рассылки. Убедитесь, что вы отметили чекбоксы рядом с аккаунтами в форме."
             })
 
         # Проверяем наличие сообщения

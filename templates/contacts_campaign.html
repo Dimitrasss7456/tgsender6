@@ -436,7 +436,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 form.reset();
                 uploadedFilePath = null;
                 fileInfo.style.display = 'none';
-                accountSelect.selectedIndex = -1; // Сбрасываем выбор аккаунтов
+                accountSelect.querySelectorAll('option').forEach(option => option.selected = false); // Сбрасываем выбор аккаунтов
 
             } else {
                 showResult('error', `❌ Ошибка: ${result.message || 'Неизвестная ошибка'}`);
@@ -512,6 +512,63 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error loading scheduled campaigns:', error);
         }
     }
+
+    // Function to get selected accounts from the multi-select dropdown
+    function getSelectedAccounts() {
+        const selectedOptions = Array.from(accountSelect.selectedOptions);
+        return selectedOptions.map(option => option.value).filter(value => value !== '');
+    }
+
+    // Attach the submit event listener to the form
+    document.getElementById('campaignForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const selectedAccounts = getSelectedAccounts();
+
+        if (selectedAccounts.length === 0) {
+            showAlert('Выберите хотя бы один аккаунт для рассылки', 'warning');
+            return;
+        }
+
+        console.log('Выбранные аккаунты:', selectedAccounts);
+
+        // Добавляем выбранные аккаунты в скрытое поле
+        document.getElementById('selectedAccountsInput').value = selectedAccounts.join(',');
+
+        const formData = new FormData(this);
+
+        // Добавляем каждый выбранный аккаунт как отдельное поле
+        selectedAccounts.forEach(accountId => {
+            formData.append('account_' + accountId, 'on');
+        });
+
+        // Отладочная информация
+        console.log('Данные формы:');
+        for (let [key, value] of formData.entries()) {
+            console.log(key + ':', value);
+        }
+
+        try {
+            const response = await fetch('/api/start-contacts-campaign', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                showAlert(result.message || 'Кампания запущена успешно!', 'success');
+                this.reset();
+                document.getElementById('selectedAccountsInput').value = '';
+                await loadAccounts();
+            } else {
+                showAlert(result.message || 'Ошибка запуска кампании', 'danger');
+            }
+        } catch (error) {
+            console.error('Campaign error:', error);
+            showAlert('Ошибка отправки формы: ' + error.message, 'danger');
+        }
+    });
 });
 </script>
 {% endblock %}
