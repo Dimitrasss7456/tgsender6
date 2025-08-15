@@ -683,6 +683,25 @@ async def delete_account(account_id: int, db: Session = Depends(get_db)):
         return JSONResponse({"status": "success"})
     return JSONResponse({"status": "error", "message": "Аккаунт не найден"})
 
+@app.get("/api/accounts/{account_id}")
+async def get_account_api(account_id: int, db: Session = Depends(get_db)):
+    """API для получения данных конкретного аккаунта"""
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account:
+        return JSONResponse({"error": "Аккаунт не найден"}, status_code=404)
+
+    return JSONResponse({
+        "id": account.id,
+        "name": account.name,
+        "phone": account.phone,
+        "first_name": account.first_name,
+        "last_name": account.last_name,
+        "bio": account.bio,
+        "gender": account.gender,
+        "is_active": account.is_active,
+        "status": account.status
+    })
+
 @app.get("/api/accounts")
 async def get_accounts_api(db: Session = Depends(get_db)):
     """API для получения списка аккаунтов"""
@@ -1490,7 +1509,7 @@ async def run_comment_campaign(campaign_id: int):
     from app.database import CommentCampaign, CommentLog, Account
     import re
     import random
-    
+
     db = next(get_db())
     try:
         campaign = db.query(CommentCampaign).filter(CommentCampaign.id == campaign_id).first()
@@ -1499,7 +1518,7 @@ async def run_comment_campaign(campaign_id: int):
             return
 
         print(f"🔄 Запуск кампании комментирования {campaign_id}: {campaign.name}")
-        
+
         # Парсим URL поста
         url_match = re.search(r't\.me/([^/]+)/(\d+)', campaign.post_url)
         if not url_match:
@@ -1507,12 +1526,12 @@ async def run_comment_campaign(campaign_id: int):
             campaign.status = "failed"
             db.commit()
             return
-            
+
         chat_id = f"@{url_match.group(1)}"
         message_id = int(url_match.group(2))
-        
+
         print(f"📍 Цель: {chat_id}, сообщение: {message_id}")
-        
+
         # Получаем активные аккаунты
         accounts = db.query(Account).filter(Account.is_active == True).all()
         if not accounts:
@@ -1520,21 +1539,21 @@ async def run_comment_campaign(campaign_id: int):
             campaign.status = "failed"
             db.commit()
             return
-            
+
         print(f"👥 Найдено {len(accounts)} активных аккаунтов")
-        
+
         # Парсим комментарии
         male_comments = [c.strip() for c in (campaign.comments_male or "").split('\n') if c.strip()]
         female_comments = [c.strip() for c in (campaign.comments_female or "").split('\n') if c.strip()]
-        
+
         if not male_comments and not female_comments:
             print("❌ Нет комментариев для отправки")
             campaign.status = "failed"
             db.commit()
             return
-            
+
         print(f"💬 Мужских комментариев: {len(male_comments)}, женских: {len(female_comments)}")
-        
+
         success_count = 0
         for account in accounts:
             try:
@@ -1549,10 +1568,10 @@ async def run_comment_campaign(campaign_id: int):
                     comment = random.choice(female_comments)
                 else:
                     continue
-                    
+
                 print(f"🔄 Отправка комментария от аккаунта {account.id} в чат {chat_id}, reply к сообщению {message_id}")
                 print(f"📝 Комментарий: {comment}")
-                
+
                 # Отправляем комментарий
                 result = await telegram_manager.send_comment(
                     account_id=account.id,
@@ -1560,7 +1579,7 @@ async def run_comment_campaign(campaign_id: int):
                     message_id=message_id,
                     comment=comment
                 )
-                
+
                 # Логируем результат с правильными полями
                 try:
                     log_entry = CommentLog(
@@ -1574,32 +1593,32 @@ async def run_comment_campaign(campaign_id: int):
                     )
                     db.add(log_entry)
                     db.commit()
-                    
+
                     if result["status"] == "success":
                         success_count += 1
                         print(f"✅ Комментарий отправлен от аккаунта {account.id}")
                     else:
                         print(f"❌ Ошибка от аккаунта {account.id}: {result.get('message', 'Неизвестная ошибка')}")
-                        
+
                 except Exception as log_error:
                     print(f"❌ Исключение при отправке комментария: {log_error}")
                     db.rollback()
-                    
+
                 # Задержка между комментариями
                 if campaign.delay_seconds > 0:
                     await asyncio.sleep(campaign.delay_seconds)
-                    
+
             except Exception as account_error:
                 print(f"❌ Ошибка с аккаунтом {account.id}: {account_error}")
                 continue
-                
+
         # Обновляем статус кампании
         campaign.status = "completed"
         campaign.completed_at = datetime.utcnow()
         db.commit()
-        
+
         print(f"🎉 Кампания комментирования завершена. Успешно: {success_count}/{len(accounts)}")
-        
+
     except Exception as e:
         print(f"❌ Ошибка в кампании комментирования {campaign_id}: {e}")
         try:
@@ -1609,146 +1628,6 @@ async def run_comment_campaign(campaign_id: int):
             pass
     finally:
         db.close()
-
-@app.post("/api/comment_campaigns/{campaign_id}/stop")
-async def stop_comment_campaign(campaign_id: int, db: Session = Depends(get_db)):
-    """Остановка кампании комментирования"""
-    try:
-        from app.database import CommentCampaign
-
-        campaign = db.query(CommentCampaign).filter(CommentCampaign.id == campaign_id).first()
-        if not campaign:
-            return {"success": False, "message": "Кампания не найдена"}
-
-        campaign.status = "stopped"
-        db.commit()
-
-        return {"success": True}
-    except Exception as e:
-        return {"success": False, "message": str(e)}
-
-# API для кампаний реакций
-@app.post("/api/reaction_campaigns")
-async def create_reaction_campaign(request: Request, db: Session = Depends(get_db)):
-    """Создание кампании реакций"""
-    try:
-        from app.database import ReactionCampaign
-
-        data = await request.json()
-
-        campaign = ReactionCampaign(
-            name=data['name'],
-            post_url=data['post_url'],
-            reaction_emoji=data['reaction_emoji'],
-            delay_seconds=data['delay_seconds']
-        )
-
-        db.add(campaign)
-        db.commit()
-
-        # Запускаем кампанию сразу
-        asyncio.create_task(run_reaction_campaign(campaign.id))
-
-        return {"success": True, "campaign_id": campaign.id}
-    except Exception as e:
-        return {"success": False, "message": str(e)}
-
-# API для кампаний просмотров
-@app.post("/api/view_campaigns")
-async def create_view_campaign(request: Request, db: Session = Depends(get_db)):
-    """Создание кампании просмотров"""
-    try:
-        from app.database import ViewCampaign
-
-        data = await request.json()
-
-        campaign = ViewCampaign(
-            name=data['name'],
-            post_url=data['post_url'],
-            delay_seconds=data['delay_seconds']
-        )
-
-        db.add(campaign)
-        db.commit()
-
-        # Запускаем кампанию сразу
-        asyncio.create_task(run_view_campaign(campaign.id))
-
-        return {"success": True, "campaign_id": campaign.id}
-    except Exception as e:
-        return {"success": False, "message": str(e)}
-
-# Функции выполнения кампаний
-async def run_comment_campaign(campaign_id: int):
-    """Выполнение кампании комментирования"""
-    try:
-        from app.database import CommentCampaign, CommentLog, get_db_session
-
-        db = get_db_session()
-        try:
-            campaign = db.query(CommentCampaign).filter(CommentCampaign.id == campaign_id).first()
-            if not campaign or campaign.status != "running":
-                return
-
-            # Получаем аккаунты по гендерам
-            male_accounts = db.query(Account).filter(
-                Account.is_active == True,
-                Account.gender == 'male'
-            ).all()
-
-            female_accounts = db.query(Account).filter(
-                Account.is_active == True,
-                Account.gender == 'female'
-            ).all()
-
-            # Разбиваем комментарии
-            male_comments = [c.strip() for c in campaign.comments_male.split('\n') if c.strip()]
-            female_comments = [c.strip() for c in campaign.comments_female.split('\n') if c.strip()]
-
-            # Извлекаем chat_id и message_id из URL
-            chat_id, message_id = parse_telegram_url(campaign.post_url)
-            if not chat_id or not message_id:
-                print(f"❌ Невозможно извлечь данные из URL: {campaign.post_url}")
-                return
-
-            comment_index = 0
-
-            # Отправляем мужские комментарии
-            for i, comment in enumerate(male_comments):
-                if campaign.status != "running":
-                    break
-
-                if i < len(male_accounts):
-                    account = male_accounts[i]
-                    await send_comment_to_post(account.id, chat_id, message_id, comment, campaign_id, db)
-
-                    comment_index += 1
-                    if comment_index < len(male_comments) + len(female_comments):
-                        await asyncio.sleep(campaign.delay_seconds)
-
-            # Отправляем женские комментарии
-            for i, comment in enumerate(female_comments):
-                if campaign.status != "running":
-                    break
-
-                if i < len(female_accounts):
-                    account = female_accounts[i]
-                    await send_comment_to_post(account.id, chat_id, message_id, comment, campaign_id, db)
-
-                    comment_index += 1
-                    if comment_index < len(male_comments) + len(female_comments):
-                        await asyncio.sleep(campaign.delay_seconds)
-
-            # Завершаем кампанию
-            campaign.status = "completed"
-            campaign.completed_at = datetime.utcnow()
-            db.commit()
-
-        finally:
-            db.close()
-
-    except Exception as e:
-        print(f"❌ Ошибка в кампании комментирования {campaign_id}: {e}")
 
 async def send_comment_to_post(account_id: int, chat_id: str, message_id: int, comment: str, campaign_id: int, db: Session):
     """Отправка комментария под пост с правильной обработкой ошибок"""
@@ -1939,7 +1818,7 @@ def parse_telegram_url(url: str):
                 return chat_username, message_id
 
         # Если URL не распознан, попробуем извлечь вручную
-        print(f"❌ Не удалось распарсить URL: {url}")
+        print(f"❌ Не удалось парсить URL: {url}")
         return None, None
 
     except Exception as e:

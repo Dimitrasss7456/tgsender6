@@ -294,16 +294,16 @@
 
         // Функция обновления поля аккаунта
         function updateField(accountId, field, value) {
-            fetch(`/api/accounts/${accountId}/profile`, {
-                method: 'PUT',
+            fetch(`/api/accounts/${accountId}/update_field`, {
+                method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({[field]: value})
+                body: JSON.stringify({field: field, value: value})
             })
             .then(response => response.json())
             .then(data => {
-                if (data.status === 'success') {
+                if (data.success) {
                     // showAlert('Профиль обновлен', 'success'); // Сообщение будет показано в saveEditedProfile
                 } else {
                     showAlert(data.message || 'Ошибка обновления', 'danger');
