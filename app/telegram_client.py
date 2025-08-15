@@ -2347,15 +2347,26 @@ class TelegramManager:
                 peer = await client.resolve_peer(target_chat)
                 
                 # Отправляем комментарий с использованием правильного типа reply
-                # Используем InputReplyToMessage без top_msg_id для комментариев под постом
+                # Пробуем разные варианты InputReplyToMessage для совместимости
                 try:
+                    # Пробуем современный вариант InputReplyToMessage
+                    try:
+                        from pyrogram.raw.types import InputReplyToMessage
+                        reply_to = InputReplyToMessage(reply_to_msg_id=message_id)
+                    except ImportError:
+                        # Пробуем альтернативные варианты для старых версий
+                        try:
+                            from pyrogram.raw.types import MessageReplyHeader
+                            reply_to = MessageReplyHeader(reply_to_msg_id=message_id)
+                        except ImportError:
+                            # Используем базовый тип если специфичные недоступны
+                            reply_to = message_id
+                    
                     result = await client.invoke(
                         functions.messages.SendMessage(
                             peer=peer,
                             message=comment,
-                            reply_to=types.InputReplyToMessage(
-                                reply_to_msg_id=message_id
-                            ),
+                            reply_to=reply_to,
                             random_id=client.rnd_id()
                         )
                     )
@@ -2387,15 +2398,12 @@ class TelegramManager:
                             print(f"🔄 Пробуем SendComment API...")
                             
                             # Альтернативный метод для отправки комментариев
+                            # Используем тот же совместимый reply_to объект
                             result = await client.invoke(
                                 functions.messages.SendMessage(
                                     peer=peer,
                                     message=comment,
-                                    reply_to=types.InputReplyToMessage(
-                                        reply_to_msg_id=message_id,
-                                        quote_text=None,  # Без цитирования для чистого комментария
-                                        quote_entities=None
-                                    ),
+                                    reply_to=reply_to,
                                     random_id=client.rnd_id(),
                                     silent=False  # Показываем что это активное действие
                                 )
@@ -2419,6 +2427,25 @@ class TelegramManager:
                             
                         except Exception as comment_api_error:
                             print(f"❌ SendComment API тоже не сработал: {comment_api_error}")
+                    
+                    # Если raw API не работает, пробуем стандартный метод Pyrogram
+                    try:
+                        print(f"🔄 Пробуем стандартный метод отправки сообщения...")
+                        sent_message = await client.send_message(
+                            chat_id=target_id,
+                            text=comment,
+                            reply_to_message_id=message_id
+                        )
+                        
+                        if sent_message and hasattr(sent_message, 'id'):
+                            print(f"✅ Стандартный метод сработал! ID: {sent_message.id}")
+                            return {
+                                "status": "success",
+                                "message": "Комментарий отправлен (стандартный метод)",
+                                "message_id": sent_message.id
+                            }
+                    except Exception as standard_error:
+                        print(f"❌ Стандартный метод тоже не сработал: {standard_error}")
                     
                     # Если все методы не работают, возвращаем специфическую ошибку
                     if "CHAT_ADMIN_REQUIRED" in error_str:
