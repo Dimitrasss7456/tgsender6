@@ -282,8 +282,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function loadAccounts() {
         try {
+            console.log('🔄 Загружаем аккаунты...');
             const response = await fetch('/api/accounts');
             const accounts = await response.json();
+            
+            console.log('📱 Получено аккаунтов:', accounts.length);
 
             accountSelect.innerHTML = ''; // Clear previous options
 
@@ -294,23 +297,39 @@ document.addEventListener('DOMContentLoaded', function() {
 
             let activeCount = 0;
             accounts.forEach(account => {
+                console.log(`Аккаунт ${account.id}: активен=${account.is_active}, статус=${account.status}`);
+                
                 if (account.is_active && account.status === 'online') {
                     const option = document.createElement('option');
-                    option.value = account.id;
-                    option.textContent = `✅ ${account.name} (${account.phone})`;
+                    option.value = account.id.toString(); // Убеждаемся что это строка
+                    option.textContent = `✅ ${account.name || account.phone} (${account.phone})`;
                     option.style.backgroundColor = '#e8f5e8';
                     accountSelect.appendChild(option);
                     activeCount++;
+                    console.log(`✅ Добавлен аккаунт ${account.id} в список`);
+                } else {
+                    // Добавляем неактивные аккаунты как отключенные для отладки
+                    const option = document.createElement('option');
+                    option.value = account.id.toString();
+                    option.textContent = `❌ ${account.name || account.phone} (${account.phone}) - ${account.status}`;
+                    option.disabled = true;
+                    option.style.backgroundColor = '#ffeeee';
+                    accountSelect.appendChild(option);
                 }
             });
 
             if (activeCount === 0) {
-                accountSelect.innerHTML = '<option value="" disabled>⚠️ Нет активных онлайн аккаунтов</option>';
+                const option = document.createElement('option');
+                option.value = '';
+                option.disabled = true;
+                option.textContent = '⚠️ Нет активных онлайн аккаунтов';
+                accountSelect.appendChild(option);
             }
 
+            console.log(`✅ Загружено ${activeCount} активных аккаунтов из ${accounts.length}`);
             updateSelectedCount();
         } catch (error) {
-            console.error('Error loading accounts:', error);
+            console.error('❌ Ошибка загрузки аккаунтов:', error);
             accountSelect.innerHTML = '<option value="" disabled>❌ Ошибка загрузки аккаунтов</option>';
         }
     }
@@ -354,15 +373,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // Функция для запуска рассылки по контактам
     window.startContactsCampaign = async function() {
         // Получаем выбранные аккаунты
-        const selectedAccounts = Array.from(accountSelect.selectedOptions).map(option => parseInt(option.value));
+        const selectedOptions = Array.from(accountSelect.selectedOptions);
+        const selectedAccounts = selectedOptions
+            .map(option => parseInt(option.value))
+            .filter(value => !isNaN(value) && value > 0);
 
+        console.log('Все опции:', selectedOptions.map(o => ({value: o.value, text: o.text})));
         console.log('Выбранные аккаунты:', selectedAccounts);
         console.log('Сообщение:', document.getElementById('message').value);
         console.log('Автоудаление:', document.getElementById('autoDeleteAccount').checked);
 
         // Проверяем данные
         if (selectedAccounts.length === 0) {
-            showResult('error', '❌ Выберите хотя бы один аккаунт для рассылки');
+            showResult('error', '❌ Выберите хотя бы один аккаунт для рассылки. Убедитесь что вы кликнули на аккаунты в списке.');
             return;
         }
 
@@ -516,7 +539,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Function to get selected accounts from the multi-select dropdown
     function getSelectedAccounts() {
         const selectedOptions = Array.from(accountSelect.selectedOptions);
-        return selectedOptions.map(option => option.value).filter(value => value !== '');
+        return selectedOptions.map(option => parseInt(option.value)).filter(value => !isNaN(value));
     }
 
     // Attach the submit event listener to the form
