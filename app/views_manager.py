@@ -55,76 +55,85 @@ class ViewsManager:
     
     async def _get_client_for_account(self, account_id: int) -> Optional[Client]:
         """Получение клиента для аккаунта"""
-        # Проверяем кеш клиентов
-        if account_id in self.clients:
-            client = self.clients[account_id]
-            if hasattr(client, 'is_connected') and client.is_connected:
-                return client
-            else:
-                del self.clients[account_id]
-
-        # Получаем данные аккаунта из базы
-        db = next(get_db())
         try:
-            account = db.query(Account).filter(Account.id == account_id).first()
-            if not account or not account.is_active:
-                return None
+            # Проверяем кеш клиентов
+            if account_id in self.clients:
+                client = self.clients[account_id]
+                if hasattr(client, 'is_connected') and client.is_connected:
+                    return client
+                else:
+                    del self.clients[account_id]
 
-            # Определяем путь к файлу сессии
-            phone_clean = account.phone.replace('+', '').replace(' ', '').replace('(', '').replace(')', '').replace('-', '')
-            session_file = os.path.join(SESSIONS_DIR, f"session_{phone_clean}")
-            
-            if not os.path.exists(f"{session_file}.session"):
-                print(f"❌ Файл сессии не найден: {session_file}.session")
-                return None
-
-            # Создаем клиент
-            client = Client(
-                session_file,
-                api_id=API_ID,
-                api_hash=API_HASH,
-                proxy=self._parse_proxy(account.proxy) if account.proxy else None,
-                sleep_threshold=30,
-                max_concurrent_transmissions=1,
-                no_updates=True,
-                workers=1
-            )
-
-            # Подключаемся
+            # Получаем данные аккаунта из базы
+            db = next(get_db())
             try:
-                await asyncio.wait_for(client.connect(), timeout=15)
+                account = db.query(Account).filter(Account.id == account_id).first()
+                if not account or not account.is_active:
+                    print(f"❌ Аккаунт {account_id} не найден или неактивен")
+                    return None
+
+                # Определяем путь к файлу сессии
+                phone_clean = account.phone.replace('+', '').replace(' ', '').replace('(', '').replace(')', '').replace('-', '')
+                session_file = os.path.join(SESSIONS_DIR, f"session_{phone_clean}")
                 
-                # Получаем информацию о пользователе
-                try:
-                    me = await asyncio.wait_for(client.get_me(), timeout=10)
-                    client.me = me
-                except (asyncio.TimeoutError, FloodWait):
-                    # Создаем заглушку если не можем получить быстро
-                    from types import SimpleNamespace
-                    client.me = SimpleNamespace(
-                        id=account_id,
-                        first_name=account.name or "User",
-                        is_premium=False,
-                        is_verified=False,
-                        is_bot=False
-                    )
+                if not os.path.exists(f"{session_file}.session"):
+                    print(f"❌ Файл сессии не найден: {session_file}.session")
+                    return None
 
-                self.clients[account_id] = client
-                return client
+                # Создаем клиент
+                client = Client(
+                    name=session_file,  # Используем name= вместо позиционного аргумента
+                    api_id=API_ID,
+                    api_hash=API_HASH,
+                    proxy=self._parse_proxy(account.proxy) if account.proxy else None,
+                    sleep_threshold=30,
+                    max_concurrent_transmissions=1,
+                    no_updates=True,
+                    workers=1
+                )
 
-            except Exception as e:
-                print(f"❌ Ошибка подключения клиента {account_id}: {e}")
+                # Подключаемся
                 try:
-                    await client.disconnect()
-                except:
-                    pass
+                    await asyncio.wait_for(client.connect(), timeout=15)
+                    print(f"✅ Клиент {account_id} подключен")
+                    
+                    # Получаем информацию о пользователе
+                    try:
+                        me = await asyncio.wait_for(client.get_me(), timeout=10)
+                        client.me = me
+                        print(f"✅ Получена информация о пользователе {me.first_name}")
+                    except (asyncio.TimeoutError, FloodWait) as timeout_error:
+                        print(f"⚠️ Таймаут получения информации о пользователе: {timeout_error}")
+                        # Создаем заглушку если не можем получить быстро
+                        from types import SimpleNamespace
+                        client.me = SimpleNamespace(
+                            id=account_id,
+                            first_name=account.name or "User",
+                            is_premium=False,
+                            is_verified=False,
+                            is_bot=False
+                        )
+
+                    self.clients[account_id] = client
+                    return client
+
+                except Exception as connect_error:
+                    print(f"❌ Ошибка подключения клиента {account_id}: {connect_error}")
+                    try:
+                        await client.disconnect()
+                    except:
+                        pass
+                    return None
+
+            except Exception as db_error:
+                print(f"❌ Ошибка работы с БД для аккаунта {account_id}: {db_error}")
                 return None
-
-        except Exception as e:
-            print(f"❌ Ошибка получения клиента {account_id}: {e}")
+            finally:
+                db.close()
+                
+        except Exception as general_error:
+            print(f"❌ Общая ошибка получения клиента {account_id}: {general_error}")
             return None
-        finally:
-            db.close()
     
     def _parse_post_url(self, post_url: str) -> Optional[Dict]:
         """Парсинг URL поста для получения chat_id и message_id"""
@@ -168,23 +177,56 @@ class ViewsManager:
                 return {"status": "error", "message": "Не удалось получить клиент"}
             
             # Проверяем подключение
-            if not client.is_connected:
-                await client.connect()
+            if not hasattr(client, 'is_connected') or not client.is_connected:
+                print(f"🔄 Переподключаем клиент {account_id}")
+                try:
+                    await client.connect()
+                except Exception as reconnect_error:
+                    print(f"❌ Ошибка переподключения: {reconnect_error}")
+                    return {"status": "error", "message": f"Ошибка переподключения: {str(reconnect_error)}"}
             
             try:
                 # Метод 1: Используем raw API для просмотра канала
                 from pyrogram.raw import functions
                 
                 # Получаем peer для канала
-                peer = await client.resolve_peer(chat_id)
+                try:
+                    peer = await client.resolve_peer(chat_id)
+                    print(f"✅ Peer получен для {chat_id}")
+                except Exception as peer_error:
+                    print(f"❌ Ошибка получения peer: {peer_error}")
+                    return {"status": "error", "message": f"Ошибка получения peer: {str(peer_error)}"}
                 
                 # Отмечаем просмотр конкретного сообщения через GetMessages
-                result = await client.invoke(
-                    functions.channels.GetMessages(
-                        channel=peer,
-                        id=[message_id]
+                try:
+                    result = await client.invoke(
+                        functions.channels.GetMessages(
+                            channel=peer,
+                            id=[message_id]
+                        )
                     )
-                )
+                except Exception as invoke_error:
+                    print(f"❌ Ошибка вызова GetMessages: {invoke_error}")
+                    # Пробуем fallback метод сразу
+                    try:
+                        message = await client.get_messages(chat_id, message_id)
+                        if message:
+                            await client.read_chat_history(chat_id, max_id=message_id)
+                            print(f"✅ Fallback просмотр выполнен аккаунтом {account_id}")
+                            return {
+                                "status": "success",
+                                "message": f"Пост просмотрен аккаунтом {account_id} (fallback)",
+                                "post_id": message_id,
+                                "views": getattr(message, 'views', 'N/A')
+                            }
+                        else:
+                            return {"status": "error", "message": "Сообщение не найдено"}
+                    except Exception as fallback_error:
+                        print(f"❌ Fallback метод также не сработал: {fallback_error}")
+                        return {"status": "error", "message": f"Ошибка просмотра: {str(fallback_error)}"}
+                    
+                    # Если дошли сюда, значит fallback не сработал
+                    return {"status": "error", "message": f"Ошибка API: {str(invoke_error)}"}
                 
                 if result and result.messages:
                     message = result.messages[0]
