@@ -320,45 +320,45 @@ async def add_account_from_session(
     """Добавление аккаунта из .session файла Pyrogram"""
     import tempfile
     import shutil
-    
+
     try:
         print(f"🔄 Начинаем импорт .session файла для пользователя {current_user.username}")
-        
+
         if not session_file.filename:
             return JSONResponse({
-                "status": "error", 
+                "status": "error",
                 "message": "Файл не выбран"
             })
-        
+
         if not session_file.filename.endswith('.session'):
             return JSONResponse({
                 "status": "error",
                 "message": "Неверный формат файла. Требуется .session файл Pyrogram"
             })
-        
+
         # Читаем содержимое файла
         content = await session_file.read()
-        
+
         if len(content) == 0:
             return JSONResponse({
                 "status": "error",
                 "message": "Файл сессии пустой"
             })
-        
+
         # Проверяем размер файла (обычно .session файлы небольшие)
         if len(content) > 10 * 1024 * 1024:  # 10MB
             return JSONResponse({
                 "status": "error",
                 "message": "Файл сессии слишком большой"
             })
-        
+
         print(f"📁 Получен .session файл: {session_file.filename} ({len(content)} байт)")
-        
+
         # Создаем временный файл
         with tempfile.NamedTemporaryFile(suffix='.session', delete=False) as temp_file:
             temp_file.write(content)
             temp_file_path = temp_file.name
-        
+
         try:
             # Получаем прокси если нужно
             proxy = None
@@ -366,17 +366,17 @@ async def add_account_from_session(
                 proxy = proxy_manager.get_proxy_for_phone("session_import")
                 if proxy:
                     print(f"🔗 Используем прокси: {proxy}")
-            
+
             # Импортируем аккаунт
             result = await telegram_manager.add_account_from_session(
                 temp_file_path,
                 proxy,
                 current_user.id
             )
-            
+
             print(f"✅ Результат импорта .session: {result}")
             return JSONResponse(result)
-            
+
         finally:
             # Удаляем временный файл
             try:
@@ -384,7 +384,7 @@ async def add_account_from_session(
                 print(f"🧹 Временный файл удален")
             except Exception as cleanup_error:
                 print(f"⚠️ Ошибка очистки: {cleanup_error}")
-                
+
     except Exception as e:
         error_msg = str(e)
         print(f"❌ Ошибка импорта .session файла: {error_msg}")
@@ -1763,41 +1763,48 @@ async def start_multiple_reactions(request: Request, db: Session = Depends(get_d
         return {"success": False, "message": f"Ошибка сервера: {str(e)}"}
 
 @app.post("/api/post_views")
-async def start_post_views(request: Request, db: Session = Depends(get_db)):
-    """Запуск просмотров постов"""
+async def boost_post_views(request: Request):
+    """Накрутка просмотров поста"""
     try:
         data = await request.json()
-        post_url = data.get('post_url')
-        view_count = data.get('view_count', 10)
-        selected_accounts = data.get('selected_accounts', [])
-        delay_seconds = data.get('delay_seconds', 10)
+        post_url = data.get("post_url", "").strip()
+        view_count = int(data.get("view_count", 1))
+        delay_seconds = int(data.get("delay_seconds", 10))
+        selected_accounts = data.get("selected_accounts", [])
 
-        # Парсим URL поста
-        import re
-        url_match = re.search(r't\.me/([^/]+)/(\d+)', post_url)
-        if not url_match:
-            return {"success": False, "message": "Неверный формат URL"}
+        if not post_url:
+            return {"success": False, "message": "URL поста обязателен"}
 
-        chat_id = f"@{url_match.group(1)}"
-        message_id = int(url_match.group(2))
+        if not selected_accounts:
+            return {"success": False, "message": "Выберите аккаунты для накрутки"}
 
-        # Получаем аккаунты
-        accounts = db.query(Account).filter(
-            Account.id.in_(selected_accounts),
-            Account.is_active == True
-        ).limit(view_count).all()
+        print(f"🎬 Начинаем накрутку просмотров на пост {post_url}")
+        print(f"👥 Используем {len(selected_accounts)} аккаунтов с задержкой {delay_seconds} секунд")
 
-        if not accounts:
-            return {"success": False, "message": "Нет активных аккаунтов"}
+        # Используем новый ViewsManager
+        from app.views_manager import views_manager
 
-        # Запускаем задачу в фоне
-        asyncio.create_task(run_post_views(
-            chat_id, message_id, accounts, delay_seconds
-        ))
+        result = await views_manager.boost_post_views(
+            post_url=post_url,
+            target_views=view_count,
+            account_ids=selected_accounts,
+            delay_seconds=delay_seconds
+        )
 
-        return {"success": True}
+        if result["status"] == "success":
+            return {
+                "success": True,
+                "message": result["message"],
+                "successful_views": result["results"]["successful_views"],
+                "total_errors": result["results"]["failed_views"],
+                "flood_waits": result["results"]["flood_waits"]
+            }
+        else:
+            return {"success": False, "message": result["message"]}
+
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        print(f"❌ Ошибка накрутки просмотров: {str(e)}")
+        return {"success": False, "message": f"Ошибка: {str(e)}"}
 
 @app.post("/api/accounts/update_all_telegram_profiles")
 async def update_all_telegram_profiles(request: Request, db: Session = Depends(get_db)):
@@ -2383,7 +2390,7 @@ async def run_comment_campaign(campaign_id: int):
                 elif account.gender == 'female' and female_comments:
                     comment = random.choice(female_comments)
                 elif male_comments:
-                    comment = random.choice(male_comments)
+                    comment = random.choice(male_comments + female_comments)
                 elif female_comments:
                     comment = random.choice(female_comments)
                 else:
