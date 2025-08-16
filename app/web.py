@@ -393,7 +393,7 @@ async def add_account_from_session(
             "message": f"Ошибка импорта: {error_msg}"
         })
 
-@app.post("/accounts/add_tdata")
+@app.post("/api/accounts/add_tdata")
 async def add_account_from_tdata(
     tdata_files: List[UploadFile] = File(...),
     use_auto_proxy: bool = Form(False),
@@ -960,7 +960,7 @@ async def get_campaign_stats(db: Session = Depends(get_db), current_user: User =
         else:
             user_accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
             account_ids = [a.id for a in user_accounts]
-            campaigns = db.query(Campaign).filter(Campaign.account_id.in_(account_ids)).all() if account_ids else []
+            campaigns = db.query(Campaign).filter(Campaign.account_id.in_([a.id for a in accounts])).all() if account_ids else []
 
         campaign_stats = []
         total_sent = 0
@@ -1357,7 +1357,6 @@ async def start_contacts_campaign_api(
         return JSONResponse(result)
 
     except Exception as e:
-        import traceback
         error_msg = str(e)
         error_trace = traceback.format_exc()
         print(f"❌ Ошибка API кампании по контактам: {error_msg}")
@@ -1864,27 +1863,74 @@ async def auto_assign_genders(db: Session = Depends(get_db)):
             "Соколова", "Зайцева", "Попова", "Васильева", "Кузнецова", "Смирнова", "Федорова", "Михайлова"
         ]
 
-        accounts = db.query(Account).filter(Account.is_active == True).all()
+        # Загружаем пользовательские фото, если они есть
+        custom_male_photos = []
+        if os.path.exists("profile_photos/male"):
+            custom_male_photos = [os.path.join("profile_photos", "male", f) for f in os.listdir("profile_photos/male") if os.path.isfile(os.path.join("profile_photos", "male", f))]
+
+        custom_female_photos = []
+        if os.path.exists("profile_photos/female"):
+            custom_female_photos = [os.path.join("profile_photos", "female", f) for f in os.listdir("profile_photos/female") if os.path.isfile(os.path.join("profile_photos", "female", f))]
+
+        # Получаем все аккаунты без гендера
+        accounts = db.query(Account).filter(Account.gender.is_(None)).all()
+
         updated_count = 0
-
         for account in accounts:
-            # Случайно назначаем гендер если не задан
-            if not account.gender:
-                account.gender = random.choice(['male', 'female'])
+            try:
+                # Случайно выбираем гендер
+                gender = random.choice(['male', 'female'])
 
-            # Назначаем имя и фамилию по гендеру
-            if account.gender == 'male':
-                account.first_name = random.choice(male_first_names)
-                account.last_name = random.choice(male_last_names)
-            elif account.gender == 'female':
-                account.first_name = random.choice(female_first_names)
-                account.last_name = random.choice(female_last_names)
+                if gender == 'male':
+                    first_name = random.choice(male_first_names)
+                    last_name = random.choice(male_last_names)
+                    # Выбираем случайное фото из пользовательских
+                    if custom_male_photos:
+                        photo_path = random.choice(custom_male_photos)
+                        account.profile_photo_path = photo_path
+                else:
+                    first_name = random.choice(female_first_names)
+                    last_name = random.choice(female_last_names)
+                    # Выбираем случайное фото из пользовательских
+                    if custom_female_photos:
+                        photo_path = random.choice(custom_female_photos)
+                        account.profile_photo_path = photo_path
 
-            updated_count += 1
+                # Создаем username автоматически
+                username_base = f"{first_name.lower()}{last_name.lower()}"
+                # Убираем русские символы и заменяем на латинские
+                transliteration = {
+                    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'e',
+                    'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+                    'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+                    'ф': 'f', 'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch',
+                    'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
+                }
+
+                username_latin = ""
+                for char in username_base:
+                    username_latin += transliteration.get(char, char)
+
+                # Добавляем случайные цифры для уникальности
+                username = f"{username_latin}{random.randint(10, 99)}"
+
+                # Обновляем аккаунт
+                account.gender = gender
+                account.first_name = first_name
+                account.last_name = last_name
+                account.username = username
+
+                updated_count += 1
+
+            except Exception as e:
+                print(f"Ошибка обновления аккаунта {account.id}: {e}")
+                continue
 
         db.commit()
-        return {"success": True, "message": f"Обновлено {updated_count} аккаунтов"}
+        return {"success": True, "updated_count": updated_count}
+
     except Exception as e:
+        db.rollback()
         return {"success": False, "message": str(e)}
 
 @app.post("/api/accounts/auto_fill_profiles_by_count")

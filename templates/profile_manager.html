@@ -28,10 +28,12 @@
     <div class="col-lg-4 mb-4">
         <div class="row g-3">
             <!-- Автозаполнение -->
-            <div class="col-12">
+            <div class="col-md-6">
                 <div class="card fade-in">
                     <div class="card-header">
-                        <i class="fas fa-magic me-2"></i>АВТОЗАПОЛНЕНИЕ ПРОФИЛЕЙ
+                        <h5 class="mb-0">
+                            <i class="fas fa-magic me-2"></i>Автозаполнение профилей
+                        </h5>
                     </div>
                     <div class="card-body">
                         <div class="row g-2 mb-3">
@@ -49,6 +51,84 @@
                         <button class="btn btn-success w-100" onclick="updateAllTelegramProfiles()">
                             <i class="fas fa-sync me-2"></i>Обновить в Telegram
                         </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Загрузка пользовательских списков -->
+            <div class="col-md-6">
+                <div class="card fade-in">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-upload me-2"></i>Пользовательские списки
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="accordion" id="customListsAccordion">
+                            <!-- Имена -->
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#namesCollapse">
+                                        <i class="fas fa-user me-2"></i>Имена и фамилии
+                                    </button>
+                                </h2>
+                                <div id="namesCollapse" class="accordion-collapse collapse" data-bs-parent="#customListsAccordion">
+                                    <div class="accordion-body">
+                                        <div class="row g-2 mb-2">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Мужские имена</label>
+                                                <input type="file" class="form-control form-control-sm" accept=".txt" onchange="uploadCustomNames(this, 'male', 'firstnames')">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Женские имена</label>
+                                                <input type="file" class="form-control form-control-sm" accept=".txt" onchange="uploadCustomNames(this, 'female', 'firstnames')">
+                                            </div>
+                                        </div>
+                                        <div class="row g-2">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Мужские фамилии</label>
+                                                <input type="file" class="form-control form-control-sm" accept=".txt" onchange="uploadCustomNames(this, 'male', 'lastnames')">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Женские фамилии</label>
+                                                <input type="file" class="form-control form-control-sm" accept=".txt" onchange="uploadCustomNames(this, 'female', 'lastnames')">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Фотографии -->
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#photosCollapse">
+                                        <i class="fas fa-images me-2"></i>Фотографии профилей
+                                    </button>
+                                </h2>
+                                <div id="photosCollapse" class="accordion-collapse collapse" data-bs-parent="#customListsAccordion">
+                                    <div class="accordion-body">
+                                        <div class="row g-2 mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Мужские фото</label>
+                                                <input type="file" class="form-control form-control-sm" accept="image/*" multiple onchange="uploadCustomPhotos(this, 'male')">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Женские фото</label>
+                                                <input type="file" class="form-control form-control-sm" accept="image/*" multiple onchange="uploadCustomPhotos(this, 'female')">
+                                            </div>
+                                        </div>
+                                        <div class="alert alert-info mb-0">
+                                            <small>
+                                                <strong>Как использовать:</strong><br>
+                                                1. Загрузите txt файлы с именами (по одному на строку)<br>
+                                                2. Загрузите фотографии (PNG, JPG)<br>
+                                                3. Нажмите "Автозаполнение" - система будет использовать ваши списки<br>
+                                                4. Username создается автоматически из имени и фамилии
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -685,18 +765,17 @@ async function updateAccountField(accountId, field, value) {
 
 async function autoFillProfiles(gender) {
     try {
-        const response = await fetch('/api/accounts/auto_fill_profiles', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ gender: gender })
+        showAlert('Обновление профилей...', 'info');
+
+        const response = await fetch('/api/accounts/auto_assign_genders', {
+            method: 'POST'
         });
 
         const result = await response.json();
+
         if (result.success) {
-            showAlert(result.message, 'success');
-            setTimeout(() => location.reload(), 1000);
+            showAlert(`✅ Успешно обновлено ${result.updated_count} профилей с использованием ваших списков`, 'success');
+            setTimeout(() => location.reload(), 2000);
         } else {
             showAlert('Ошибка: ' + result.message, 'danger');
         }
@@ -704,6 +783,58 @@ async function autoFillProfiles(gender) {
         showAlert('Ошибка: ' + error.message, 'danger');
     }
 }
+
+async function uploadCustomNames(input, gender, nameType) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('gender', gender);
+    formData.append('name_type', nameType);
+
+    try {
+        const response = await fetch('/api/upload_custom_names', {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+        if (result.success) {
+            showAlert(`Файл с ${nameType} для ${gender} успешно загружен`, 'success');
+        } else {
+            showAlert(`Ошибка загрузки ${nameType}: ${result.message}`, 'danger');
+        }
+    } catch (error) {
+        showAlert(`Ошибка сети при загрузке ${nameType}: ${error.message}`, 'danger');
+    }
+}
+
+async function uploadCustomPhotos(input, gender) {
+    const files = input.files;
+    if (!files || files.length === 0) return;
+
+    const formData = new FormData();
+    formData.append('gender', gender);
+    for (let i = 0; i < files.length; i++) {
+        formData.append('photos', files[i]);
+    }
+
+    try {
+        const response = await fetch('/api/upload_custom_photos', {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+        if (result.success) {
+            showAlert(`Фотографии для ${gender} успешно загружены (${result.count} файлов)`, 'success');
+        } else {
+            showAlert(`Ошибка загрузки фотографий: ${result.message}`, 'danger');
+        }
+    } catch (error) {
+        showAlert(`Ошибка сети при загрузке фотографий: ${error.message}`, 'danger');
+    }
+}
+
 
 async function uploadProfilePhoto(accountId) {
     const fileInput = document.getElementById(`photoUpload${accountId}`);
@@ -771,24 +902,6 @@ async function updateAllTelegramProfiles() {
         const result = await response.json();
         if (result.success) {
             showAlert(`Обновлено профилей: ${result.updated_count}`, 'success');
-        } else {
-            showAlert('Ошибка: ' + result.message, 'danger');
-        }
-    } catch (error) {
-        showAlert('Ошибка: ' + error.message, 'danger');
-    }
-}
-
-async function autoAssignGenders() {
-    try {
-        const response = await fetch('/api/accounts/auto_assign_genders', {
-            method: 'POST'
-        });
-
-        const result = await response.json();
-        if (result.success) {
-            showAlert(result.message, 'success');
-            setTimeout(() => location.reload(), 1000);
         } else {
             showAlert('Ошибка: ' + result.message, 'danger');
         }
@@ -1127,11 +1240,11 @@ document.addEventListener('DOMContentLoaded', function() {
 document.querySelectorAll('.reaction-selector').forEach(selector => {
     selector.addEventListener('click', function() {
         this.classList.toggle('selected');
+        updateReactionButtonState(); // Обновляем состояние кнопки при выборе/снятии реакции
     });
 });
 
-// Фикс для кнопок реакций
-// Эта функция должна вызываться при инициализации или когда меняется состояние выбранных реакций
+// Функция для обновления состояния кнопки "Запустить реакции"
 function updateReactionButtonState() {
     const selectedReactions = document.querySelectorAll('.reaction-selector.selected');
     const startButton = document.querySelector('.btn-warning[onclick="startMultipleReactions()"]');
@@ -1228,7 +1341,7 @@ async function startPostViews() {
 
     // Ограничиваем количество аккаунтов количеством просмотров
     const accountsToUse = Math.min(selectedAccounts.size, viewCount);
-    
+
     console.log('Запускаем просмотры:', {
         post_url: postUrl,
         view_count: viewCount,
