@@ -77,6 +77,12 @@
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="session-tab" data-bs-toggle="tab" data-bs-target="#session-pane" type="button" role="tab">
+                            <i class="fas fa-file-code me-2"></i>
+                            Импорт .session
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
                         <button class="nav-link" id="tdata-tab" data-bs-toggle="tab" data-bs-target="#tdata-pane" type="button" role="tab">
                             <i class="fas fa-folder-open me-2"></i>
                             Импорт TDATA
@@ -135,6 +141,70 @@
                                                 <button type="submit" class="btn btn-primary btn-lg">
                                                     <i class="fas fa-paper-plane me-2"></i>
                                                     Добавить аккаунт
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Вкладка импорта .session -->
+                    <div class="tab-pane fade" id="session-pane" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-8 mx-auto">
+                                <div class="card border-0 shadow-sm">
+                                    <div class="card-body">
+                                        <div class="text-center mb-4">
+                                            <div class="bg-info bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 60px; height: 60px;">
+                                                <i class="fas fa-file-code text-info" style="font-size: 24px;"></i>
+                                            </div>
+                                            <h6 class="mt-3 mb-2">Импорт .session файла</h6>
+                                            <p class="text-muted small">Загрузите .session файл от Pyrogram</p>
+                                        </div>
+
+                                        <form id="addSessionForm" enctype="multipart/form-data">
+                                            <div class="mb-4">
+                                                <label for="sessionFile" class="form-label fw-bold">
+                                                    <i class="fas fa-file-code me-2 text-info"></i>
+                                                    .session файл Pyrogram
+                                                </label>
+                                                <div class="file-upload-area">
+                                                    <input type="file" class="form-control" id="sessionFile" accept=".session" required>
+                                                </div>
+                                                <div class="alert alert-info mt-3 py-2">
+                                                    <i class="fas fa-info-circle me-2"></i>
+                                                    <strong>Информация о .session файлах:</strong><br>
+                                                    <small class="d-block mt-1">
+                                                        • Поддерживаются только .session файлы от Pyrogram<br>
+                                                        • Файл должен содержать валидную авторизованную сессию<br>
+                                                        • Убедитесь что сессия не истекла
+                                                    </small>
+                                                </div>
+                                            </div>
+
+                                            <div class="mb-4">
+                                                <div class="card bg-light border-0">
+                                                    <div class="card-body p-3">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="checkbox" id="useAutoProxySession">
+                                                            <label class="form-check-label fw-bold" for="useAutoProxySession">
+                                                                <i class="fas fa-shield-alt me-2 text-success"></i>
+                                                                Использовать автоматический прокси
+                                                            </label>
+                                                            <div class="form-text small mt-1">
+                                                                Рекомендуется для защиты от блокировок
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="d-grid">
+                                                <button type="submit" class="btn btn-info btn-lg">
+                                                    <i class="fas fa-download me-2"></i>
+                                                    Импортировать .session
                                                 </button>
                                             </div>
                                         </form>
@@ -446,6 +516,79 @@ document.getElementById('addAccountForm').addEventListener('submit', async funct
         }
     } catch (error) {
         alert('Ошибка при добавлении аккаунта: ' + error.message);
+    }
+});
+
+// Обработчик формы импорта .session
+document.getElementById('addSessionForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const sessionFile = document.getElementById('sessionFile').files[0];
+    const useAutoProxy = document.getElementById('useAutoProxySession').checked;
+
+    if (!sessionFile) {
+        alert('Выберите .session файл');
+        return;
+    }
+
+    if (!sessionFile.name.endsWith('.session')) {
+        alert('Выберите файл с расширением .session');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('session_file', sessionFile);
+    formData.append('use_auto_proxy', useAutoProxy);
+
+    // Показываем прогресс
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Импорт...';
+
+    try {
+        const response = await fetch('/accounts/add_session', {
+            method: 'POST',
+            body: formData
+        });
+
+        // Проверяем статус ответа
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            const text = await response.text();
+            throw new Error('Сервер вернул некорректный ответ: ' + text.substring(0, 100));
+        }
+
+        const result = await response.json();
+
+        if (result.status === 'success') {
+            alert(`Session аккаунт успешно импортирован!\nИмя: ${result.name || 'Неизвестно'}\nТелефон: ${result.phone || 'Неизвестно'}`);
+            location.reload();
+        } else {
+            const errorMsg = result.message || 'Неизвестная ошибка импорта';
+            alert('Ошибка при импорте .session: ' + errorMsg);
+        }
+    } catch (error) {
+        console.error('Session import error:', error);
+        let errorMessage = 'Произошла ошибка при импорте .session файла';
+
+        if (error.message.includes('Failed to fetch')) {
+            errorMessage = 'Ошибка соединения с сервером. Проверьте подключение к интернету.';
+        } else if (error.message.includes('HTTP')) {
+            errorMessage = 'Ошибка сервера: ' + error.message;
+        } else {
+            errorMessage += ': ' + error.message;
+        }
+
+        alert(errorMessage);
+    } finally {
+        // Восстанавливаем кнопку
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
     }
 });
 

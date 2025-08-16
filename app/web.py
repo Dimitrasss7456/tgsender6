@@ -311,6 +311,88 @@ async def verify_password(
     result = await telegram_manager.verify_password(phone, password, session_name, proxy, current_user.id)
     return JSONResponse(result)
 
+@app.post("/accounts/add_session")
+async def add_account_from_session(
+    session_file: UploadFile = File(...),
+    use_auto_proxy: bool = Form(False),
+    current_user: User = Depends(get_current_user)
+):
+    """Добавление аккаунта из .session файла Pyrogram"""
+    import tempfile
+    import shutil
+    
+    try:
+        print(f"🔄 Начинаем импорт .session файла для пользователя {current_user.username}")
+        
+        if not session_file.filename:
+            return JSONResponse({
+                "status": "error", 
+                "message": "Файл не выбран"
+            })
+        
+        if not session_file.filename.endswith('.session'):
+            return JSONResponse({
+                "status": "error",
+                "message": "Неверный формат файла. Требуется .session файл Pyrogram"
+            })
+        
+        # Читаем содержимое файла
+        content = await session_file.read()
+        
+        if len(content) == 0:
+            return JSONResponse({
+                "status": "error",
+                "message": "Файл сессии пустой"
+            })
+        
+        # Проверяем размер файла (обычно .session файлы небольшие)
+        if len(content) > 10 * 1024 * 1024:  # 10MB
+            return JSONResponse({
+                "status": "error",
+                "message": "Файл сессии слишком большой"
+            })
+        
+        print(f"📁 Получен .session файл: {session_file.filename} ({len(content)} байт)")
+        
+        # Создаем временный файл
+        with tempfile.NamedTemporaryFile(suffix='.session', delete=False) as temp_file:
+            temp_file.write(content)
+            temp_file_path = temp_file.name
+        
+        try:
+            # Получаем прокси если нужно
+            proxy = None
+            if use_auto_proxy:
+                proxy = proxy_manager.get_proxy_for_phone("session_import")
+                if proxy:
+                    print(f"🔗 Используем прокси: {proxy}")
+            
+            # Импортируем аккаунт
+            result = await telegram_manager.add_account_from_session(
+                temp_file_path,
+                proxy,
+                current_user.id
+            )
+            
+            print(f"✅ Результат импорта .session: {result}")
+            return JSONResponse(result)
+            
+        finally:
+            # Удаляем временный файл
+            try:
+                os.remove(temp_file_path)
+                print(f"🧹 Временный файл удален")
+            except Exception as cleanup_error:
+                print(f"⚠️ Ошибка очистки: {cleanup_error}")
+                
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Ошибка импорта .session файла: {error_msg}")
+        return JSONResponse({
+            "status": "error",
+            "message": f"Ошибка импорта: {error_msg}"
+        })
+
 @app.post("/accounts/add_tdata")
 async def add_account_from_tdata(
     tdata_files: List[UploadFile] = File(...),

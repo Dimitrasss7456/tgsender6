@@ -279,6 +279,124 @@ class TelegramManager:
                 del self.pending_clients[session_name]
             return {"status": "error", "message": str(e)}
 
+    async def add_account_from_session(self,
+                                     session_file_path: str,
+                                     proxy: Optional[str] = None,
+                                     current_user_id: Optional[int] = None) -> Dict:
+        """Добавление аккаунта из .session файла Pyrogram"""
+        import shutil
+        import uuid
+        
+        try:
+            print(f"🔄 Импорт аккаунта из .session файла: {session_file_path}")
+            
+            # Проверяем что файл существует и это .session файл
+            if not os.path.exists(session_file_path):
+                return {"status": "error", "message": "Файл сессии не найден"}
+            
+            if not session_file_path.endswith('.session'):
+                return {"status": "error", "message": "Неверный формат файла. Требуется .session файл"}
+            
+            # Проверяем что файл не пустой
+            file_size = os.path.getsize(session_file_path)
+            if file_size == 0:
+                return {"status": "error", "message": "Файл сессии пустой"}
+            
+            print(f"📁 Размер файла сессии: {file_size} байт")
+            
+            # Создаем временное имя для тестирования
+            temp_session_name = f"temp_session_{uuid.uuid4().hex[:8]}"
+            temp_session_path = os.path.join(SESSIONS_DIR, temp_session_name)
+            
+            try:
+                # Копируем файл во временное место
+                shutil.copy2(session_file_path, f"{temp_session_path}.session")
+                print(f"📋 Файл скопирован во временное место")
+                
+                # Автоматически получаем прокси если нужно
+                if not proxy:
+                    from app.proxy_manager import proxy_manager
+                    auto_proxy = proxy_manager.get_proxy_for_phone("session_import")
+                    if auto_proxy:
+                        proxy = auto_proxy
+                        print(f"🔗 Автоматически назначен прокси {proxy}")
+                
+                # Создаем тестовый клиент для проверки сессии
+                test_client = Client(
+                    temp_session_path,
+                    api_id=API_ID,
+                    api_hash=API_HASH,
+                    proxy=self._parse_proxy(proxy) if proxy else None,
+                    no_updates=True
+                )
+                
+                print(f"🔌 Подключаемся к Telegram для проверки сессии...")
+                await test_client.connect()
+                
+                # Получаем информацию о пользователе
+                me = await test_client.get_me()
+                
+                if not me or not me.id:
+                    await test_client.disconnect()
+                    return {"status": "error", "message": "Не удалось получить информацию о пользователе из сессии"}
+                
+                print(f"✅ Сессия валидна: {me.first_name} ({me.phone_number})")
+                
+                # Создаем постоянную сессию
+                phone_clean = me.phone_number.replace('+', '').replace(' ', '').replace('(', '').replace(')', '').replace('-', '')
+                permanent_session_name = f"session_{phone_clean}"
+                permanent_session_path = os.path.join(SESSIONS_DIR, permanent_session_name)
+                
+                await test_client.disconnect()
+                
+                # Копируем файл в постоянное место
+                permanent_session_file = f"{permanent_session_path}.session"
+                shutil.copy2(f"{temp_session_path}.session", permanent_session_file)
+                print(f"✅ Сессия сохранена: {permanent_session_file}")
+                
+                # Сохраняем аккаунт в базу данных
+                await self._save_account(
+                    phone=me.phone_number,
+                    session_path=permanent_session_path,
+                    name=me.first_name or "Session User",
+                    proxy=proxy,
+                    user_id=me.id,
+                    session_data=None,  # Будет считан из файла
+                    current_user_id=current_user_id
+                )
+                
+                return {
+                    "status": "success",
+                    "name": me.first_name or "Session User",
+                    "phone": me.phone_number
+                }
+                
+            except Exception as e:
+                error_msg = str(e)
+                print(f"❌ Ошибка обработки сессии: {error_msg}")
+                
+                if "AUTH_KEY_UNREGISTERED" in error_msg:
+                    return {"status": "error", "message": "Сессия недействительна или устарела"}
+                elif "SESSION_PASSWORD_NEEDED" in error_msg:
+                    return {"status": "error", "message": "Требуется пароль двухфакторной аутентификации"}
+                else:
+                    return {"status": "error", "message": f"Ошибка проверки сессии: {error_msg}"}
+                    
+            finally:
+                # Очищаем временные файлы
+                try:
+                    temp_file = f"{temp_session_path}.session"
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                        print(f"🧹 Временный файл удален")
+                except Exception as cleanup_error:
+                    print(f"⚠️ Ошибка очистки: {cleanup_error}")
+                    
+        except Exception as e:
+            error_msg = str(e)
+            print(f"❌ Общая ошибка импорта .session: {error_msg}")
+            return {"status": "error", "message": f"Ошибка импорта: {error_msg}"}
+
     async def add_account_from_tdata(self,
                                    tdata_path: str,
                                    proxy: Optional[str] = None,
