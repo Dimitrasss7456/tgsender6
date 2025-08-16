@@ -644,7 +644,7 @@ async def get_proxies():
         proxies = proxy_manager.get_all_proxies()
         stats = proxy_manager.get_proxy_stats()
         return {
-            "success": True, 
+            "success": True,
             "proxies": proxies,
             "stats": stats
         }
@@ -657,36 +657,36 @@ async def save_proxies(request: Request):
     try:
         data = await request.json()
         proxies_text = data.get("proxies", "").strip()
-        
+
         if not proxies_text:
             return {"success": False, "message": "Список прокси не может быть пустым"}
-        
+
         # Валидируем каждый прокси
         proxy_lines = [line.strip() for line in proxies_text.split('\n') if line.strip()]
         invalid_proxies = []
-        
+
         for line in proxy_lines:
             if not proxy_manager.validate_proxy_format(line):
                 invalid_proxies.append(line)
-        
+
         if invalid_proxies:
             return {
-                "success": False, 
+                "success": False,
                 "message": f"Неверный формат прокси: {', '.join(invalid_proxies[:3])}{'...' if len(invalid_proxies) > 3 else ''}"
             }
-        
+
         success = proxy_manager.save_proxies(proxies_text)
-        
+
         if success:
             stats = proxy_manager.get_proxy_stats()
             return {
-                "success": True, 
+                "success": True,
                 "message": f"Сохранено {stats['total_proxies']} прокси",
                 "stats": stats
             }
         else:
             return {"success": False, "message": "Ошибка сохранения прокси"}
-            
+
     except Exception as e:
         print(f"Ошибка при сохранении прокси: {e}")
         return {"success": False, "message": f"Ошибка сервера: {str(e)}"}
@@ -697,20 +697,20 @@ async def add_proxy(request: Request):
     try:
         data = await request.json()
         proxy_url = data.get("proxy", "").strip()
-        
+
         if not proxy_url:
             return {"success": False, "message": "URL прокси не может быть пустым"}
-        
+
         if not proxy_manager.validate_proxy_format(proxy_url):
             return {"success": False, "message": "Неверный формат прокси. Используйте: protocol://[username:password@]host:port"}
-        
+
         success = proxy_manager.add_proxy({"proxy": proxy_url})
-        
+
         if success:
             return {"success": True, "message": "Прокси добавлен"}
         else:
             return {"success": False, "message": "Прокси уже существует или ошибка добавления"}
-            
+
     except Exception as e:
         return {"success": False, "message": str(e)}
 
@@ -1176,7 +1176,7 @@ async def start_contacts_campaign_api(
 
         # Простая и надежная обработка выбранных аккаунтов
         account_ids = []
-        
+
         if selected_accounts and selected_accounts.strip():
             try:
                 # Разбиваем строку по запятым и преобразуем в числа
@@ -1185,18 +1185,18 @@ async def start_contacts_campaign_api(
                     clean_id = raw_id.strip()
                     if clean_id and clean_id.isdigit():
                         account_ids.append(int(clean_id))
-                
+
                 # Удаляем дубликаты
                 account_ids = list(set(account_ids))
                 print(f"✅ Обработанные ID аккаунтов: {account_ids}")
-                
+
             except Exception as parse_error:
                 print(f"❌ Ошибка парсинга аккаунтов: {parse_error}")
                 return JSONResponse({
                     "status": "error",
                     "message": f"Ошибка обработки списка аккаунтов: {str(parse_error)}"
                 })
-        
+
         # Проверяем что аккаунты выбраны
         if not account_ids:
             print("❌ Не выбраны аккаунты")
@@ -1494,7 +1494,7 @@ async def update_account_full(
         if photo and photo.filename and photo.size > 0:
             try:
                 print(f"📷 Загружаем фото: {photo.filename} ({photo.size} bytes)")
-                
+
                 # Создаем папки
                 os.makedirs("profile_photos", exist_ok=True)
                 if gender in ['male', 'female']:
@@ -1529,13 +1529,13 @@ async def update_account_full(
 
         db.commit()
         print(f"✅ Аккаунт {account_id} обновлен успешно")
-        
+
         return {
-            "success": True, 
+            "success": True,
             "message": "Аккаунт обновлен успешно",
             "photo_updated": bool(photo and photo.filename)
         }
-        
+
     except Exception as e:
         print(f"❌ Ошибка обновления аккаунта {account_id}: {e}")
         db.rollback()
@@ -1632,14 +1632,14 @@ async def start_multiple_reactions(request: Request, db: Session = Depends(get_d
         # Парсим URL поста
         import re
         url_patterns = [
-            r'https?://t\.me/([^/]+)/(\d+)',
+            r'https://t\.me/([^/]+)/(\d+)',
             r't\.me/([^/]+)/(\d+)',
-            r'https?://telegram\.me/([^/]+)/(\d+)'
+            r'https://telegram\.me/([^/]+)/(\d+)'
         ]
-        
+
         chat_id = None
         message_id = None
-        
+
         for pattern in url_patterns:
             url_match = re.search(pattern, post_url)
             if url_match:
@@ -1670,12 +1670,12 @@ async def start_multiple_reactions(request: Request, db: Session = Depends(get_d
         ))
 
         return {
-            "success": True, 
+            "success": True,
             "message": f"Запущены реакции для {len(accounts)} аккаунтов",
             "accounts_count": len(accounts),
             "reactions_count": len(reactions)
         }
-        
+
     except Exception as e:
         print(f"❌ Ошибка API реакций: {e}")
         return {"success": False, "message": f"Ошибка сервера: {str(e)}"}
@@ -1892,7 +1892,7 @@ async def upload_and_distribute_photos(
             for photo in male_photos:
                 if not photo.filename:
                     continue
-                    
+
                 file_extension = os.path.splitext(photo.filename)[1]
                 unique_filename = f"male_{uuid.uuid4().hex[:8]}{file_extension}"
                 photo_path = os.path.join(male_photos_dir, unique_filename)
@@ -1907,7 +1907,7 @@ async def upload_and_distribute_photos(
             # Распределяем фото по мужским аккаунтам
             import random
             random.shuffle(male_accounts)
-            
+
             for i, account in enumerate(male_accounts):
                 if i < len(saved_male_photos):
                     account.profile_photo_path = saved_male_photos[i]
@@ -1925,7 +1925,7 @@ async def upload_and_distribute_photos(
             for photo in female_photos:
                 if not photo.filename:
                     continue
-                    
+
                 file_extension = os.path.splitext(photo.filename)[1]
                 unique_filename = f"female_{uuid.uuid4().hex[:8]}{file_extension}"
                 photo_path = os.path.join(female_photos_dir, unique_filename)
@@ -1940,7 +1940,7 @@ async def upload_and_distribute_photos(
             # Распределяем фото по женским аккаунтам
             import random
             random.shuffle(female_accounts)
-            
+
             for i, account in enumerate(female_accounts):
                 if i < len(saved_female_photos):
                     account.profile_photo_path = saved_female_photos[i]
@@ -2631,7 +2631,7 @@ async def run_multiple_reactions_improved(chat_id, message_id, accounts, reactio
 
         # Создаем план распределения реакций
         reaction_plan = []
-        
+
         # Равномерно распределяем реакции
         if len(reactions) == 1:
             # Если одна реакция, повторяем её
@@ -2698,33 +2698,44 @@ async def run_multiple_reactions_improved(chat_id, message_id, accounts, reactio
         import traceback
         print(f"🔍 Трассировка: {traceback.format_exc()}")
 
-async def run_post_views(chat_id, message_id, accounts, delay_seconds):
-    """Выполнение просмотров постов"""
-    import random
+async def run_post_views(chat_id: str, message_id: int, accounts: List[Account], delay_seconds: int):
+    """Функция для накрутки просмотров на пост"""
+    try:
+        print(f"🎬 Начинаем накрутку просмотров на пост {chat_id}/{message_id}")
+        print(f"👥 Используем {len(accounts)} аккаунтов с задержкой {delay_seconds} секунд")
 
-    print(f"👀 Запуск просмотров: {len(accounts)} аккаунтов")
+        success_count = 0
+        error_count = 0
 
-    for i, account in enumerate(accounts):
-        try:
-            result = await telegram_manager.view_message(
-                account_id=account.id,
-                chat_id=chat_id,
-                message_id=message_id
-            )
+        for i, account in enumerate(accounts, 1):
+            try:
+                print(f"👁️ Просмотр {i}/{len(accounts)} от аккаунта {account.id} ({account.name})")
 
-            if result["status"] == "success":
-                print(f"✅ Просмотр от аккаунта {account.id}")
-            else:
-                print(f"❌ Ошибка просмотра: {result.get('message')}")
+                result = await telegram_manager.view_post(account.id, chat_id, message_id)
 
-            if i < len(accounts) - 1:
-                await asyncio.sleep(delay_seconds + random.randint(-2, 5))
+                if result.get("status") == "success":
+                    success_count += 1
+                    print(f"✅ Просмотр засчитан: {account.name}")
+                else:
+                    error_count += 1
+                    print(f"❌ Ошибка просмотра от {account.name}: {result.get('message', 'Unknown error')}")
 
-        except Exception as e:
-            print(f"❌ Ошибка просмотра от аккаунта {account.id}: {e}")
-            continue
+                # Задержка между просмотрами (кроме последнего)
+                if i < len(accounts):
+                    print(f"⏳ Ожидание {delay_seconds} секунд...")
+                    await asyncio.sleep(delay_seconds)
 
-    print("🎉 Просмотры завершены")
+            except Exception as account_error:
+                error_count += 1
+                print(f"❌ Исключение для аккаунта {account.id}: {str(account_error)}")
+                continue
+
+        print(f"🎉 Накрутка просмотров завершена")
+        print(f"📊 Успешно: {success_count}, Ошибок: {error_count}")
+
+    except Exception as e:
+        print(f"❌ Ошибка накрутки просмотров: {str(e)}")
+
 
 if __name__ == "__main__":
     import uvicorn
