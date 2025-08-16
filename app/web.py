@@ -637,6 +637,104 @@ async def delete_proxy(proxy_id: int):
     success = proxy_manager.remove_proxy(proxy_id)
     return {"success": success}
 
+@app.get("/api/proxy")
+async def get_proxies():
+    """Получение списка всех прокси"""
+    try:
+        proxies = proxy_manager.get_all_proxies()
+        stats = proxy_manager.get_proxy_stats()
+        return {
+            "success": True, 
+            "proxies": proxies,
+            "stats": stats
+        }
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+@app.post("/api/proxy/save")
+async def save_proxies(request: Request):
+    """Сохранение списка прокси"""
+    try:
+        data = await request.json()
+        proxies_text = data.get("proxies", "").strip()
+        
+        if not proxies_text:
+            return {"success": False, "message": "Список прокси не может быть пустым"}
+        
+        # Валидируем каждый прокси
+        proxy_lines = [line.strip() for line in proxies_text.split('\n') if line.strip()]
+        invalid_proxies = []
+        
+        for line in proxy_lines:
+            if not proxy_manager.validate_proxy_format(line):
+                invalid_proxies.append(line)
+        
+        if invalid_proxies:
+            return {
+                "success": False, 
+                "message": f"Неверный формат прокси: {', '.join(invalid_proxies[:3])}{'...' if len(invalid_proxies) > 3 else ''}"
+            }
+        
+        success = proxy_manager.save_proxies(proxies_text)
+        
+        if success:
+            stats = proxy_manager.get_proxy_stats()
+            return {
+                "success": True, 
+                "message": f"Сохранено {stats['total_proxies']} прокси",
+                "stats": stats
+            }
+        else:
+            return {"success": False, "message": "Ошибка сохранения прокси"}
+            
+    except Exception as e:
+        print(f"Ошибка при сохранении прокси: {e}")
+        return {"success": False, "message": f"Ошибка сервера: {str(e)}"}
+
+@app.post("/api/proxy/add")
+async def add_proxy(request: Request):
+    """Добавление одного прокси"""
+    try:
+        data = await request.json()
+        proxy_url = data.get("proxy", "").strip()
+        
+        if not proxy_url:
+            return {"success": False, "message": "URL прокси не может быть пустым"}
+        
+        if not proxy_manager.validate_proxy_format(proxy_url):
+            return {"success": False, "message": "Неверный формат прокси. Используйте: protocol://[username:password@]host:port"}
+        
+        success = proxy_manager.add_proxy({"proxy": proxy_url})
+        
+        if success:
+            return {"success": True, "message": "Прокси добавлен"}
+        else:
+            return {"success": False, "message": "Прокси уже существует или ошибка добавления"}
+            
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+@app.delete("/api/proxy/{proxy_id}")
+async def delete_proxy(proxy_id: int):
+    """Удаление прокси"""
+    try:
+        success = proxy_manager.remove_proxy(proxy_id)
+        if success:
+            return {"success": True, "message": "Прокси удален"}
+        else:
+            return {"success": False, "message": "Прокси не найден или ошибка удаления"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+@app.get("/api/proxy/stats")
+async def get_proxy_stats():
+    """Получение статистики прокси"""
+    try:
+        stats = proxy_manager.get_proxy_stats()
+        return {"success": True, "stats": stats}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
 @app.get("/api/settings")
 async def get_settings():
     """Получение всех настроек"""

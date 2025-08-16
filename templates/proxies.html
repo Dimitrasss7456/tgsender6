@@ -1,4 +1,3 @@
-
 {% extends "base.html" %}
 
 {% block title %}Управление прокси{% endblock %}
@@ -71,26 +70,63 @@
 </div>
 
 <script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadProxies();
+});
+
+async function loadProxies() {
+    try {
+        const response = await fetch('/api/proxy');
+        const result = await response.json();
+
+        if (result.success) {
+            document.getElementById('proxiesText').value = result.proxies.join('\n');
+            updateProxyStats(result.stats);
+        } else {
+            showAlert('danger', result.message);
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки прокси:', error);
+        showAlert('danger', 'Ошибка загрузки прокси');
+    }
+}
+
+function updateProxyStats(stats) {
+    document.getElementById('totalProxies').textContent = stats.total_proxies;
+    document.getElementById('usedProxies').textContent = stats.used_proxies;
+    document.getElementById('freeProxies').textContent = stats.free_proxies;
+}
+
 document.getElementById('proxiesForm').addEventListener('submit', async function(e) {
     e.preventDefault();
-    
-    const formData = new FormData(this);
+
+    const proxiesText = document.getElementById('proxiesText').value;
+    if (!proxiesText.trim()) {
+        showAlert('danger', 'Введите список прокси');
+        return;
+    }
+
     const submitBtn = this.querySelector('button[type="submit"]');
     const originalText = submitBtn.innerHTML;
-    
+
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Загружаем...';
-    
+
     try {
-        const response = await fetch('/proxies/upload', {
+        const response = await fetch('/api/proxy/save', {
             method: 'POST',
-            body: formData
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ proxies: proxiesText })
         });
-        
+
         const result = await response.json();
-        
-        if (result.status === 'success') {
+        if (result.success) {
             showAlert('success', result.message);
+            if (result.stats) {
+                updateProxyStats(result.stats);
+            }
             setTimeout(() => {
                 window.location.reload();
             }, 1000);
@@ -98,7 +134,8 @@ document.getElementById('proxiesForm').addEventListener('submit', async function
             showAlert('danger', result.message);
         }
     } catch (error) {
-        showAlert('danger', 'Ошибка загрузки прокси: ' + error.message);
+        showAlert('danger', 'Ошибка при сохранении прокси: ' + error.message);
+        console.error(error);
     } finally {
         submitBtn.disabled = false;
         submitBtn.innerHTML = originalText;
@@ -106,16 +143,23 @@ document.getElementById('proxiesForm').addEventListener('submit', async function
 });
 
 function showAlert(type, message) {
+    const existingAlerts = document.querySelectorAll('.alert');
+    existingAlerts.forEach(alert => alert.remove());
+
     const alertDiv = document.createElement('div');
     alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
     alertDiv.innerHTML = `
         ${message}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
-    document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.container').firstChild);
-    
+
+    const container = document.querySelector('.container');
+    container.insertBefore(alertDiv, container.firstChild);
+
     setTimeout(() => {
-        alertDiv.remove();
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
     }, 5000);
 }
 </script>

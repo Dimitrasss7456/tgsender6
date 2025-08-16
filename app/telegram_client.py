@@ -77,6 +77,14 @@ class TelegramManager:
                 except:
                     pass
 
+            # Автоматически назначаем прокси если не указан
+            if not proxy:
+                from app.proxy_manager import proxy_manager
+                auto_proxy = proxy_manager.get_proxy_for_phone(phone)
+                if auto_proxy:
+                    proxy = auto_proxy
+                    print(f"🔗 Автоматически назначен прокси {proxy} для {phone}")
+
             client = Client(session_path,
                             api_id=API_ID,
                             api_hash=API_HASH,
@@ -149,6 +157,14 @@ class TelegramManager:
             client = self.pending_clients.get(session_name)
 
             if not client:
+                # Автоматически получаем прокси если не указан
+                if not proxy:
+                    from app.proxy_manager import proxy_manager
+                    auto_proxy = proxy_manager.get_proxy_for_phone(phone)
+                    if auto_proxy:
+                        proxy = auto_proxy
+                        print(f"🔗 Используем назначенный прокси {proxy} для верификации {phone}")
+
                 session_path = os.path.join(SESSIONS_DIR, session_name)
                 client = Client(
                     session_path,
@@ -229,6 +245,14 @@ class TelegramManager:
             client = self.pending_clients.get(session_name)
 
             if not client:
+                # Автоматически получаем прокси если не указан
+                if not proxy:
+                    from app.proxy_manager import proxy_manager
+                    auto_proxy = proxy_manager.get_proxy_for_phone(phone)
+                    if auto_proxy:
+                        proxy = auto_proxy
+                        print(f"🔗 Используем назначенный прокси {proxy} для 2FA {phone}")
+
                 session_path = os.path.join(SESSIONS_DIR, session_name)
                 client = Client(
                     session_path,
