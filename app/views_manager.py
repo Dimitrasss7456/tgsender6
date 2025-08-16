@@ -159,7 +159,7 @@ class ViewsManager:
             return None
     
     async def view_post(self, account_id: int, chat_id: str, message_id: int) -> Dict:
-        """Просмотр поста (засчитывается как просмотр)"""
+        """Просмотр поста с реальным увеличением счетчика просмотров"""
         try:
             print(f"👁️ Просматриваем пост {message_id} в чате {chat_id} аккаунтом {account_id}")
             
@@ -171,20 +171,54 @@ class ViewsManager:
             if not client.is_connected:
                 await client.connect()
             
-            # Просматриваем пост - получение сообщения засчитывается как просмотр
             try:
-                # Метод 1: Получаем сообщение по ID
-                message = await client.get_messages(chat_id, message_id)
+                # Метод 1: Используем raw API для просмотра канала
+                from pyrogram.raw import functions
                 
-                if message:
-                    print(f"✅ Пост просмотрен аккаунтом {account_id}")
+                # Получаем peer для канала
+                peer = await client.resolve_peer(chat_id)
+                
+                # Отмечаем просмотр конкретного сообщения через GetMessages
+                result = await client.invoke(
+                    functions.channels.GetMessages(
+                        channel=peer,
+                        id=[message_id]
+                    )
+                )
+                
+                if result and result.messages:
+                    message = result.messages[0]
+                    print(f"✅ Сообщение получено через raw API аккаунтом {account_id}")
                     
-                    # Дополнительно отмечаем историю как прочитанную
+                    # Дополнительно: отмечаем как прочитанное с помощью ReadHistory
                     try:
-                        await client.read_chat_history(chat_id, max_id=message_id)
-                        print(f"📖 История чата отмечена как прочитанная до сообщения {message_id}")
+                        await client.invoke(
+                            functions.messages.ReadHistory(
+                                peer=peer,
+                                max_id=message_id
+                            )
+                        )
+                        print(f"📖 История отмечена как прочитанная до сообщения {message_id}")
                     except Exception as read_error:
-                        print(f"⚠️ Не удалось отметить историю как прочитанную: {read_error}")
+                        print(f"⚠️ Ошибка отметки истории: {read_error}")
+                    
+                    # Дополнительно: используем GetHistory для имитации скроллинга
+                    try:
+                        await client.invoke(
+                            functions.messages.GetHistory(
+                                peer=peer,
+                                offset_id=message_id,
+                                offset_date=0,
+                                add_offset=0,
+                                limit=1,
+                                max_id=0,
+                                min_id=0,
+                                hash=0
+                            )
+                        )
+                        print(f"📜 История канала просмотрена")
+                    except Exception as history_error:
+                        print(f"⚠️ Ошибка получения истории: {history_error}")
                     
                     return {
                         "status": "success",
@@ -193,7 +227,22 @@ class ViewsManager:
                         "views": getattr(message, 'views', 'N/A')
                     }
                 else:
-                    return {"status": "error", "message": "Сообщение не найдено"}
+                    # Fallback: стандартный метод
+                    print(f"🔄 Используем fallback метод для аккаунта {account_id}")
+                    message = await client.get_messages(chat_id, message_id)
+                    
+                    if message:
+                        await client.read_chat_history(chat_id, max_id=message_id)
+                        print(f"✅ Fallback просмотр выполнен аккаунтом {account_id}")
+                        
+                        return {
+                            "status": "success",
+                            "message": f"Пост просмотрен аккаунтом {account_id} (fallback)",
+                            "post_id": message_id,
+                            "views": getattr(message, 'views', 'N/A')
+                        }
+                    else:
+                        return {"status": "error", "message": "Сообщение не найдено"}
                     
             except Exception as view_error:
                 error_msg = str(view_error)
@@ -224,6 +273,215 @@ class ViewsManager:
             print(f"❌ Общая ошибка просмотра поста: {e}")
             return {"status": "error", "message": f"Общая ошибка: {str(e)}"}
     
+    async def view_post_telethon(self, account_id: int, chat_id: str, message_id: int) -> Dict:
+        """Альтернативный метод просмотра через Telethon"""
+        try:
+            print(f"📱 Telethon: Просматриваем пост {message_id} в {chat_id} аккаунтом {account_id}")
+            
+            # Получаем данные аккаунта
+            db = next(get_db())
+            try:
+                from app.database import Account
+                account = db.query(Account).filter(Account.id == account_id).first()
+                if not account:
+                    return {"status": "error", "message": "Аккаунт не найден"}
+                
+                # Импортируем Telethon
+                try:
+                    from telethon import TelegramClient
+                    from telethon.tl.functions.messages import GetHistoryRequest
+                    from telethon.tl.functions.channels import GetMessagesRequest
+                    from telethon.tl.types import InputChannel
+                except ImportError:
+                    return {"status": "error", "message": "Telethon не установлен"}
+                
+                # Создаем временную сессию для Telethon
+                import uuid
+                from app.config import API_ID, API_HASH, SESSIONS_DIR
+                import os
+                
+                phone_clean = account.phone.replace('+', '').replace(' ', '').replace('(', '').replace(')', '').replace('-', '')
+                pyrogram_session_file = os.path.join(SESSIONS_DIR, f"session_{phone_clean}.session")
+                
+                if not os.path.exists(pyrogram_session_file):
+                    return {"status": "error", "message": "Файл сессии не найден"}
+                
+                # Создаем уникальную сессию для Telethon
+                unique_session_name = f"telethon_view_{uuid.uuid4().hex[:8]}"
+                telethon_session_file = os.path.join(SESSIONS_DIR, unique_session_name)
+                
+                # Конвертируем сессию для Telethon
+                await self._create_clean_telethon_session(pyrogram_session_file, telethon_session_file)
+                
+                # Создаем Telethon клиент
+                telethon_client = TelegramClient(telethon_session_file, API_ID, API_HASH)
+                
+                try:
+                    await telethon_client.start()
+                    me = await telethon_client.get_me()
+                    print(f"✅ Telethon: Авторизован как {me.first_name}")
+                    
+                    # Нормализуем chat_id
+                    if chat_id.startswith('@'):
+                        target_entity = chat_id
+                    elif chat_id.isdigit() or (chat_id.startswith('-') and chat_id[1:].isdigit()):
+                        target_entity = int(chat_id)
+                    else:
+                        target_entity = chat_id
+                    
+                    # Получаем сущность канала
+                    entity = await telethon_client.get_entity(target_entity)
+                    print(f"📍 Telethon: Получена сущность канала")
+                    
+                    # Метод 1: Получаем конкретное сообщение
+                    try:
+                        if hasattr(entity, 'access_hash'):  # Это канал
+                            input_channel = InputChannel(entity.id, entity.access_hash)
+                            result = await telethon_client(GetMessagesRequest(
+                                channel=input_channel,
+                                id=[message_id]
+                            ))
+                            
+                            if result.messages:
+                                print(f"✅ Telethon: Сообщение получено")
+                                
+                                # Дополнительно: получаем историю вокруг сообщения
+                                await telethon_client(GetHistoryRequest(
+                                    peer=entity,
+                                    offset_id=message_id,
+                                    offset_date=0,
+                                    add_offset=0,
+                                    limit=1,
+                                    max_id=0,
+                                    min_id=0,
+                                    hash=0
+                                ))
+                                print(f"📜 Telethon: История просмотрена")
+                                
+                                return {
+                                    "status": "success",
+                                    "message": f"Telethon: Пост просмотрен аккаунтом {account_id}",
+                                    "post_id": message_id
+                                }
+                        else:
+                            # Для обычных чатов
+                            message = await telethon_client.get_messages(entity, ids=message_id)
+                            if message:
+                                print(f"✅ Telethon: Сообщение в чате получено")
+                                return {
+                                    "status": "success",
+                                    "message": f"Telethon: Сообщение в чате просмотрено аккаунтом {account_id}",
+                                    "post_id": message_id
+                                }
+                            
+                    except Exception as get_error:
+                        print(f"❌ Telethon: Ошибка получения сообщения: {get_error}")
+                        return {"status": "error", "message": f"Telethon: {str(get_error)}"}
+                
+                finally:
+                    await telethon_client.disconnect()
+                    
+                    # Удаляем временную сессию
+                    try:
+                        session_file_path = f"{telethon_session_file}.session"
+                        if os.path.exists(session_file_path):
+                            os.remove(session_file_path)
+                    except:
+                        pass
+                        
+            finally:
+                db.close()
+                
+        except Exception as e:
+            print(f"❌ Telethon: Общая ошибка просмотра: {e}")
+            return {"status": "error", "message": f"Telethon: {str(e)}"}
+    
+    async def _create_clean_telethon_session(self, pyrogram_path: str, telethon_path: str):
+        """Создание чистой сессии Telethon из Pyrogram"""
+        try:
+            import sqlite3
+            import os
+            
+            # Читаем auth_key из Pyrogram сессии
+            conn = sqlite3.connect(pyrogram_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT dc_id, auth_key FROM sessions LIMIT 1")
+            result = cursor.fetchone()
+            conn.close()
+            
+            if not result:
+                raise Exception("Не найдены данные авторизации в Pyrogram сессии")
+            
+            dc_id, auth_key = result
+            
+            # Создаем базу данных Telethon
+            telethon_session_file = f"{telethon_path}.session"
+            if os.path.exists(telethon_session_file):
+                os.remove(telethon_session_file)
+            
+            conn = sqlite3.connect(telethon_session_file)
+            cursor = conn.cursor()
+            
+            # Создаем минимальную структуру для Telethon
+            cursor.execute("CREATE TABLE version (version INTEGER PRIMARY KEY)")
+            cursor.execute("INSERT INTO version VALUES (1)")
+            
+            cursor.execute("""
+                CREATE TABLE sessions (
+                    dc_id INTEGER PRIMARY KEY,
+                    server_address TEXT,
+                    port INTEGER,
+                    auth_key BLOB,
+                    takeout_id INTEGER
+                )
+            """)
+            
+            # Определяем server_address по dc_id
+            dc_servers = {
+                1: "149.154.175.53",
+                2: "149.154.167.51", 
+                3: "149.154.175.100",
+                4: "149.154.167.91",
+                5: "91.108.56.130"
+            }
+            
+            server_address = dc_servers.get(dc_id, "149.154.167.51")
+            
+            cursor.execute("""
+                INSERT INTO sessions (dc_id, server_address, port, auth_key, takeout_id)
+                VALUES (?, ?, ?, ?, NULL)
+            """, (dc_id, server_address, 443, auth_key))
+            
+            cursor.execute("""
+                CREATE TABLE entities (
+                    id INTEGER PRIMARY KEY,
+                    hash INTEGER NOT NULL,
+                    username TEXT,
+                    phone INTEGER,
+                    name TEXT,
+                    date INTEGER
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE sent_files (
+                    md5_digest BLOB,
+                    file_size INTEGER,
+                    type INTEGER,
+                    id INTEGER,
+                    hash INTEGER,
+                    PRIMARY KEY(md5_digest, file_size, type)
+                )
+            """)
+            
+            conn.commit()
+            conn.close()
+            
+        except Exception as e:
+            print(f"❌ Ошибка создания Telethon сессии: {e}")
+            raise e
+
     async def boost_post_views(self, post_url: str, target_views: int, 
                              account_ids: List[int], delay_seconds: int = 10) -> Dict:
         """Накрутка просмотров поста"""
@@ -276,8 +534,13 @@ class ViewsManager:
                 print(f"👁️ Просмотр {views_completed + 1}/{target_views} от аккаунта {account.id} ({account.name})")
                 
                 try:
-                    # Выполняем просмотр
+                    # Выполняем просмотр (пробуем оба метода)
                     result = await self.view_post(account.id, chat_id, message_id)
+                    
+                    # Если Pyrogram не сработал, пробуем Telethon
+                    if result["status"] == "error" and "не удалось" in result["message"].lower():
+                        print(f"🔄 Пробуем Telethon для аккаунта {account.id}")
+                        result = await self.view_post_telethon(account.id, chat_id, message_id)
                     
                     if result["status"] == "success":
                         results["successful_views"] += 1
