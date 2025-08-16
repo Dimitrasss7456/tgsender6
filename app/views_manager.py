@@ -199,19 +199,77 @@ class ViewsManager:
                 
                 # Отмечаем просмотр конкретного сообщения через GetMessages
                 try:
-                    result = await client.invoke(
-                        functions.channels.GetMessages(
-                            channel=peer,
-                            id=[message_id]
-                        )
-                    )
+                    # Сначала получаем сообщение для просмотра
+                    message = await client.get_messages(chat_id, message_id)
+                    if message:
+                        print(f"✅ Сообщение получено через get_messages для просмотра")
+                        
+                        # Дополнительно используем raw API для отметки истории
+                        try:
+                            await client.invoke(
+                                functions.messages.ReadHistory(
+                                    peer=peer,
+                                    max_id=message_id
+                                )
+                            )
+                            print(f"📖 История отмечена как прочитанная до сообщения {message_id}")
+                        except Exception as read_error:
+                            print(f"⚠️ Ошибка отметки истории: {read_error}")
+                        
+                        # Имитируем активное поведение пользователя - получаем историю вокруг сообщения
+                        try:
+                            await client.invoke(
+                                functions.messages.GetHistory(
+                                    peer=peer,
+                                    offset_id=message_id,
+                                    offset_date=0,
+                                    add_offset=0,
+                                    limit=3,  # Получаем несколько сообщений для имитации скроллинга
+                                    max_id=0,
+                                    min_id=0,
+                                    hash=0
+                                )
+                            )
+                            print(f"📜 История канала просмотрена вокруг сообщения {message_id}")
+                        except Exception as history_error:
+                            print(f"⚠️ Ошибка получения истории: {history_error}")
+                        
+                        return {
+                            "status": "success",
+                            "message": f"Пост просмотрен аккаунтом {account_id}",
+                            "post_id": message_id,
+                            "views": getattr(message, 'views', 'N/A')
+                        }
+                    else:
+                        return {"status": "error", "message": "Сообщение не найдено"}
+                        
+                except Exception as invoke_error:
+                    print(f"❌ Ошибка получения сообщения: {invoke_error}")
+                    # Используем альтернативный метод через Telethon
+                    return {"status": "error", "message": f"Pyrogram ошибка: {str(invoke_error)}"}
                 except Exception as invoke_error:
                     print(f"❌ Ошибка вызова GetMessages: {invoke_error}")
                     # Пробуем fallback метод сразу
                     try:
                         message = await client.get_messages(chat_id, message_id)
                         if message:
+                            # Читаем историю чата для увеличения просмотров
                             await client.read_chat_history(chat_id, max_id=message_id)
+                            
+                            # Дополнительно имитируем активность пользователя
+                            await asyncio.sleep(1)  # Небольшая задержка для имитации чтения
+                            
+                            # Получаем контекст вокруг сообщения
+                            try:
+                                context_messages = await client.get_messages(
+                                    chat_id, 
+                                    limit=5, 
+                                    offset_id=message_id + 1
+                                )
+                                print(f"📱 Получен контекст вокруг сообщения для имитации активности")
+                            except:
+                                pass
+                            
                             print(f"✅ Fallback просмотр выполнен аккаунтом {account_id}")
                             return {
                                 "status": "success",
@@ -269,22 +327,55 @@ class ViewsManager:
                         "views": getattr(message, 'views', 'N/A')
                     }
                 else:
-                    # Fallback: стандартный метод
-                    print(f"🔄 Используем fallback метод для аккаунта {account_id}")
-                    message = await client.get_messages(chat_id, message_id)
+                    # Fallback: стандартный метод с улучшенной имитацией активности
+                    print(f"🔄 Используем улучшенный fallback метод для аккаунта {account_id}")
                     
-                    if message:
-                        await client.read_chat_history(chat_id, max_id=message_id)
-                        print(f"✅ Fallback просмотр выполнен аккаунтом {account_id}")
+                    try:
+                        # Получаем сообщение
+                        message = await client.get_messages(chat_id, message_id)
                         
-                        return {
-                            "status": "success",
-                            "message": f"Пост просмотрен аккаунтом {account_id} (fallback)",
-                            "post_id": message_id,
-                            "views": getattr(message, 'views', 'N/A')
-                        }
-                    else:
-                        return {"status": "error", "message": "Сообщение не найдено"}
+                        if message:
+                            # Читаем историю для увеличения просмотров
+                            await client.read_chat_history(chat_id, max_id=message_id)
+                            
+                            # Имитируем активность пользователя - получаем дополнительные сообщения
+                            await asyncio.sleep(1)
+                            
+                            try:
+                                # Получаем несколько сообщений до и после целевого
+                                before_messages = await client.get_messages(
+                                    chat_id, 
+                                    limit=2, 
+                                    offset_id=message_id + 1
+                                )
+                                
+                                after_messages = await client.get_messages(
+                                    chat_id, 
+                                    limit=2, 
+                                    offset_id=message_id - 1
+                                )
+                                
+                                print(f"📱 Контекст сообщений получен для имитации естественного просмотра")
+                            except Exception as context_error:
+                                print(f"⚠️ Не удалось получить контекст: {context_error}")
+                            
+                            # Дополнительная задержка для имитации чтения
+                            await asyncio.sleep(0.5)
+                            
+                            print(f"✅ Улучшенный fallback просмотр выполнен аккаунтом {account_id}")
+                            
+                            return {
+                                "status": "success",
+                                "message": f"Пост просмотрен аккаунтом {account_id} (enhanced fallback)",
+                                "post_id": message_id,
+                                "views": getattr(message, 'views', 'N/A')
+                            }
+                        else:
+                            return {"status": "error", "message": "Сообщение не найдено"}
+                            
+                    except Exception as enhanced_fallback_error:
+                        print(f"❌ Улучшенный fallback тоже не сработал: {enhanced_fallback_error}")
+                        return {"status": "error", "message": f"Не удалось просмотреть пост: {str(enhanced_fallback_error)}"}
                     
             except Exception as view_error:
                 error_msg = str(view_error)
