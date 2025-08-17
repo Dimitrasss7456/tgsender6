@@ -720,7 +720,7 @@ class MessageSender:
         return list(self.scheduled_campaigns.keys())
 
     async def _run_lightning_fast_campaign(self, campaign_id: int, account_ids: List[int], targets: List[str], message: str, attachment_path: Optional[str] = None):
-        """⚡ МОЛНИЕНОСНАЯ РАССЫЛКА - максимальная скорость без ограничений"""
+        """⚡ МОЛНИЕНОСНАЯ РАССЫЛКА - максимальная скорость с разумными ограничениями"""
         try:
             print(f"⚡⚡⚡ НАЧИНАЕМ МОЛНИЕНОСНУЮ РАССЫЛКУ {campaign_id} ⚡⚡⚡")
             print(f"📱 Аккаунты для атаки: {account_ids}")
@@ -750,54 +750,82 @@ class MessageSender:
             finally:
                 db.close()
 
-            # ⚡ МОЛНИЕНОСНОЕ СОЗДАНИЕ ВСЕХ ЗАДАЧ ОДНОВРЕМЕННО ⚡
-            print(f"⚡ СОЗДАЕМ ВСЕ {len(targets)} ЗАДАЧ ОДНОВРЕМЕННО БЕЗ ОГРАНИЧЕНИЙ!")
+            # ⚡ ЭФФЕКТИВНАЯ РАССЫЛКА: 1 сообщение на контакт с ротацией аккаунтов ⚡
+            print(f"⚡ СОЗДАЕМ {len(targets)} ЗАДАЧ (ПО ОДНОЙ НА КОНТАКТ) С РОТАЦИЕЙ АККАУНТОВ!")
             
             all_tasks = []
             
-            # Создаем задачи для ВСЕХ сообщений сразу с использованием всех аккаунтов одновременно
-            for target in targets:
+            # Создаем только по одной задаче на контакт, распределяя по аккаунтам
+            for i, target in enumerate(targets):
                 if not self.active_campaigns.get(campaign_id, False):
                     print(f"🛑 Молниеносная атака остановлена пользователем")
                     break
 
-                # Создаем задачи для КАЖДОГО аккаунта на КАЖДУЮ цель (максимальная интенсивность)
-                for account_id in active_account_ids:
-                    task = asyncio.create_task(
-                        self._lightning_send_message(campaign_id, account_id, target, message, attachment_path)
-                    )
-                    all_tasks.append(task)
+                # Выбираем аккаунт по кругу для равномерного распределения нагрузки
+                account_id = active_account_ids[i % len(active_account_ids)]
+                
+                task = asyncio.create_task(
+                    self._lightning_send_message(campaign_id, account_id, target, message, attachment_path)
+                )
+                all_tasks.append(task)
 
             if not all_tasks:
                 print("❌ Нет задач для молниеносной атаки")
                 return
 
-            print(f"⚡⚡⚡ ЗАПУСКАЕМ {len(all_tasks)} ЗАДАЧ ОДНОВРЕМЕННО БЕЗ ОГРАНИЧЕНИЙ! ⚡⚡⚡")
+            print(f"⚡⚡⚡ ЗАПУСКАЕМ {len(all_tasks)} ЗАДАЧ С ОГРАНИЧЕНИЕМ ДО 50 ОДНОВРЕМЕННЫХ! ⚡⚡⚡")
 
-            # ⚡ ЗАПУСКАЕМ ВСЕ ЗАДАЧИ ОДНОВРЕМЕННО БЕЗ ОГРАНИЧЕНИЙ ⚡
+            # ⚡ ЗАПУСКАЕМ ЗАДАЧИ ПАКЕТАМИ ДЛЯ СТАБИЛЬНОСТИ ⚡
             start_time = asyncio.get_event_loop().time()
-            results = await asyncio.gather(*all_tasks, return_exceptions=True)
-            end_time = asyncio.get_event_loop().time()
-
-            # Подсчитываем результаты
+            
+            # Разбиваем на пакеты по 50 задач для стабильности
+            batch_size = 50
+            total_batches = (len(all_tasks) + batch_size - 1) // batch_size
+            
             success_count = 0
             error_count = 0
-            duplicate_count = 0
-
-            for result in results:
-                if isinstance(result, dict):
-                    if result.get("status") == "success":
-                        success_count += 1
-                    elif result.get("status") == "duplicate":
-                        duplicate_count += 1
+            
+            for batch_num in range(total_batches):
+                if not self.active_campaigns.get(campaign_id, False):
+                    print(f"🛑 Кампания остановлена на пакете {batch_num + 1}/{total_batches}")
+                    break
+                
+                start_idx = batch_num * batch_size
+                end_idx = min(start_idx + batch_size, len(all_tasks))
+                batch_tasks = all_tasks[start_idx:end_idx]
+                
+                print(f"⚡ Пакет {batch_num + 1}/{total_batches}: обработка {len(batch_tasks)} задач...")
+                
+                # Выполняем пакет
+                batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+                
+                # Подсчитываем результаты пакета
+                batch_success = 0
+                batch_errors = 0
+                
+                for result in batch_results:
+                    if isinstance(result, dict) and result.get("status") == "success":
+                        batch_success += 1
                     else:
-                        error_count += 1
-                else:
-                    error_count += 1
+                        batch_errors += 1
+                
+                success_count += batch_success
+                error_count += batch_errors
+                
+                print(f"✅ Пакет {batch_num + 1} завершен: {batch_success} успешно, {batch_errors} ошибок")
+                
+                # Небольшая пауза между пакетами для стабильности
+                if batch_num < total_batches - 1:
+                    await asyncio.sleep(0.5)
 
+            end_time = asyncio.get_event_loop().time()
             execution_time = end_time - start_time
-            print(f"⚡⚡⚡ МОЛНИЕНОСНАЯ АТАКА ЗАВЕРШЕНА ЗА {execution_time:.2f} СЕКУНД! ⚡⚡⚡")
-            print(f"📊 Результаты: ✅ {success_count} успешно, ❌ {error_count} ошибок, 🔄 {duplicate_count} дубликатов")
+            
+            print(f"⚡⚡⚡ МОЛНИЕНОСНАЯ РАССЫЛКА ЗАВЕРШЕНА ЗА {execution_time:.2f} СЕКУНД! ⚡⚡⚡")
+            print(f"📊 ИТОГОВЫЕ РЕЗУЛЬТАТЫ:")
+            print(f"   ✅ Успешно отправлено: {success_count}")
+            print(f"   ❌ Ошибок: {error_count}")
+            print(f"   📈 Успешность: {(success_count/(success_count+error_count)*100):.1f}%" if (success_count+error_count) > 0 else "0%")
 
             # Обновляем статус кампании
             db = next(get_db())
@@ -830,6 +858,8 @@ class MessageSender:
 
         except Exception as e:
             print(f"❌ Критическая ошибка молниеносной атаки {campaign_id}: {str(e)}")
+            import traceback
+            print(f"🔍 Стек ошибки: {traceback.format_exc()}")
 
             # Обновляем статус на ошибку
             db = next(get_db())
@@ -976,17 +1006,32 @@ class MessageSender:
             print(f"Ошибка логирования: {log_error}")
 
     async def _lightning_send_message(self, campaign_id: int, account_id: int, target: str, message: str, attachment_path: Optional[str] = None) -> Dict:
-        """⚡ МОЛНИЕНОСНАЯ отправка одного сообщения без ограничений"""
+        """⚡ МОЛНИЕНОСНАЯ отправка одного сообщения с улучшенной обработкой ошибок"""
         try:
             from app.telegram_client import telegram_manager
             
-            # ⚡ МГНОВЕННАЯ отправка через отложенное сообщение (scheduled для немедленной доставки)
-            result = await telegram_manager.send_message_scheduled_lightning(
+            # Проверяем не отправляли ли уже этому контакту (избегаем дубликатов)
+            db = next(get_db())
+            try:
+                existing_log = db.query(SendLog).filter(
+                    SendLog.campaign_id == campaign_id,
+                    SendLog.recipient == target,
+                    SendLog.status == "sent"
+                ).first()
+                
+                if existing_log:
+                    # Уже отправляли этому контакту, пропускаем
+                    return {"status": "duplicate", "message": "Уже отправлено этому контакту"}
+            finally:
+                db.close()
+            
+            # ⚡ МГНОВЕННАЯ отправка
+            result = await telegram_manager.send_message(
                 account_id,
                 target,
                 message,
                 attachment_path,
-                schedule_seconds=0  # Немедленная отправка через scheduled API
+                schedule_seconds=0  # Немедленная отправка
             )
 
             # Проверяем результат
@@ -995,33 +1040,21 @@ class MessageSender:
             elif not isinstance(result, dict):
                 result = {"status": "error", "message": f"Неизвестный тип результата: {type(result)}"}
 
-            # Проверяем на дубликаты (один контакт = одно сообщение)
-            if result.get("status") == "success":
-                # Проверяем не отправляли ли уже этому контакту
-                db = next(get_db())
-                try:
-                    existing_log = db.query(SendLog).filter(
-                        SendLog.campaign_id == campaign_id,
-                        SendLog.recipient == target,
-                        SendLog.status == "sent"
-                    ).first()
-                    
-                    if existing_log:
-                        # Уже отправляли этому контакту, помечаем как дубликат
-                        result = {"status": "duplicate", "message": "Уже отправлено этому контакту"}
-                    else:
-                        # Логируем первую успешную отправку
-                        self._log_send_result_safe(campaign_id, account_id, target, "private", result)
-                finally:
-                    db.close()
-            else:
-                # Логируем ошибку
-                self._log_send_result_safe(campaign_id, account_id, target, "private", result)
+            # Обрабатываем специальные случаи
+            if result.get("status") == "flood_wait":
+                # Пропускаем FLOOD_WAIT без логирования как ошибку
+                return {"status": "skipped", "message": f"FLOOD_WAIT: {result.get('wait_time', 0)} сек"}
+
+            # Логируем результат
+            self._log_send_result_safe(campaign_id, account_id, target, "private", result)
 
             return result
 
         except Exception as e:
-            error_result = {"status": "error", "message": str(e)}
+            error_str = str(e)
+            print(f"❌ Ошибка отправки сообщения на {target} аккаунтом {account_id}: {error_str}")
+            
+            error_result = {"status": "error", "message": error_str}
             self._log_send_result_safe(campaign_id, account_id, target, "private", error_result)
             return error_result
 
