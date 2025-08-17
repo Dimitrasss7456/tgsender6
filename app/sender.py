@@ -1141,12 +1141,29 @@ class MessageSender:
             elif not isinstance(result, dict):
                 result = {"status": "error", "message": f"Неизвестный тип результата: {type(result)}"}
 
-            # Обрабатываем FLOOD_WAIT
+            # Обрабатываем FLOOD_WAIT и PEER_FLOOD
             if result.get("status") == "flood_wait":
                 wait_time = result.get("wait_time", 30)
                 print(f"⏰ FLOOD_WAIT для {target}: ожидание {wait_time} секунд")
-                # Не логируем как ошибку, просто пропускаем
                 return {"status": "skipped", "message": f"FLOOD_WAIT: {wait_time} секунд"}
+            
+            # Обрабатываем PEER_FLOOD (аккаунт заблокирован)
+            error_msg = result.get("message", "")
+            if "PEER_FLOOD" in error_msg:
+                print(f"🚫 PEER_FLOOD для {target}: аккаунт {account_id} заблокирован")
+                # Помечаем аккаунт как ограниченный
+                try:
+                    db = next(get_db())
+                    try:
+                        account = db.query(Account).filter(Account.id == account_id).first()
+                        if account:
+                            account.status = "limited"
+                            db.commit()
+                    finally:
+                        db.close()
+                except:
+                    pass
+                return {"status": "blocked", "message": f"Аккаунт заблокирован: {error_msg}"}
 
             # Логируем результат с новым соединением
             self._log_send_result_safe(campaign_id, account_id, target, "private", result)
@@ -1173,14 +1190,22 @@ class MessageSender:
             db_gen = get_db()
             db = next(db_gen)
             try:
+                # Определяем статус и сообщение об ошибке
+                status = result.get("status", "unknown")
+                error_message = None
+                
+                if status == "error":
+                    error_message = result.get("message", "Unknown error")
+                elif status == "skipped":
+                    error_message = result.get("message", "Skipped")
+                
                 log_entry = SendLog(
                     campaign_id=campaign_id,
                     account_id=account_id,
                     recipient=recipient,
                     recipient_type=recipient_type,
-                    status=result.get("status", "unknown"),
-                    message=result.get("message", ""),
-                    error_message=result.get("error", "")
+                    status=status,
+                    error_message=error_message
                 )
                 db.add(log_entry)
                 db.commit()
