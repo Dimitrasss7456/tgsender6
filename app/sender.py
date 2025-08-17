@@ -595,51 +595,58 @@ class MessageSender:
     async def start_contacts_campaign(self, account_ids: List[int], message: str, delay_seconds: int = 0,
                                     start_in_minutes: Optional[int] = None, attachment_path: Optional[str] = None,
                                     auto_delete_account: bool = True, delete_delay_minutes: int = 5) -> Dict:
-        """Создание и запуск молниеносной кампании рассылки по контактам с автоудалением аккаунтов"""
+        """Создание и запуск кампании рассылки по контактам каждого аккаунта отдельно"""
         try:
-            print(f"⚡ МОЛНИЕНОСНАЯ РАССЫЛКА: Запуск с аккаунтами: {account_ids}")
+            print(f"⚡ РАССЫЛКА ПО КОНТАКТАМ: Запуск с аккаунтами: {account_ids}")
 
             # Проверяем что переданы аккаунты
             if not account_ids:
                 return {"status": "error", "message": "Не указаны аккаунты для рассылки"}
 
-            # Получаем все контакты из первого аккаунта
-            first_account_id = account_ids[0] if isinstance(account_ids, list) else account_ids
-            print(f"📱 Получаем контакты из аккаунта {first_account_id}")
+            # Собираем контакты от каждого аккаунта отдельно
+            all_account_contacts = {}
+            total_contacts = 0
 
-            contacts_result = await telegram_manager.get_user_contacts(first_account_id)
-            if contacts_result["status"] != "success":
-                return {"status": "error", "message": f"Не удалось получить контакты: {contacts_result.get('message', 'Unknown error')}"}
+            print(f"📱 Получаем контакты от каждого аккаунта...")
+            for account_id in account_ids:
+                print(f"📋 Получаем контакты из аккаунта {account_id}")
+                
+                contacts_result = await telegram_manager.get_user_contacts(account_id)
+                if contacts_result["status"] == "success":
+                    contacts = contacts_result.get("contacts", [])
+                    
+                    # Формируем список получателей для этого аккаунта
+                    targets = []
+                    for contact in contacts:
+                        if contact.get("username"):
+                            targets.append(f"@{contact['username']}")
+                        elif contact.get("id"):
+                            targets.append(str(contact["id"]))
+                    
+                    all_account_contacts[account_id] = targets
+                    total_contacts += len(targets)
+                    print(f"✅ Аккаунт {account_id}: найдено {len(targets)} контактов")
+                else:
+                    print(f"❌ Аккаунт {account_id}: ошибка получения контактов - {contacts_result.get('message')}")
+                    all_account_contacts[account_id] = []
 
-            contacts = contacts_result.get("contacts", [])
-            if not contacts:
-                return {"status": "error", "message": "У аккаунта нет контактов для рассылки"}
+            if total_contacts == 0:
+                return {"status": "error", "message": "Не найдено контактов ни у одного аккаунта"}
 
-            # Формируем список получателей
-            targets = []
-            for contact in contacts:
-                if contact.get("username"):
-                    targets.append(f"@{contact['username']}")
-                elif contact.get("id"):
-                    targets.append(str(contact["id"]))
-
-            if not targets:
-                return {"status": "error", "message": "Не найдено целей для рассылки среди контактов"}
-
-            print(f"🎯 Найдено {len(targets)} контактов для молниеносной рассылки")
+            print(f"🎯 Общее количество контактов: {total_contacts}")
 
             # Создаем кампанию в базе данных
             db = next(get_db())
             try:
                 campaign = Campaign(
-                    name=f"⚡ МОЛНИЕНОСНАЯ РАССЫЛКА {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-                    delay_seconds=0,  # Абсолютно без задержек
+                    name=f"⚡ РАССЫЛКА ПО КОНТАКТАМ {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                    delay_seconds=0,
                     private_message=message,
-                    private_list="\n".join(targets),
+                    private_list=f"Контакты от {len(account_ids)} аккаунтов: {total_contacts} получателей",
                     attachment_path=attachment_path,
-                    account_id=first_account_id,
-                    auto_delete_accounts=True,  # Принудительно включаем автоудаление
-                    delete_delay_minutes=5,     # Удаление через 5 секунд
+                    account_id=account_ids[0],
+                    auto_delete_accounts=auto_delete_account,
+                    delete_delay_minutes=delete_delay_minutes,
                     status="created"
                 )
 
@@ -648,28 +655,28 @@ class MessageSender:
                 db.refresh(campaign)
 
                 campaign_id = campaign.id
-                print(f"✅ Молниеносная кампания создана с ID: {campaign_id}")
+                print(f"✅ Кампания создана с ID: {campaign_id}")
 
             finally:
                 db.close()
 
-            # Запускаем молниеносную рассылку немедленно
-            print(f"⚡ ЗАПУСК МОЛНИЕНОСНОЙ РАССЫЛКИ: {campaign_id} с {len(account_ids)} аккаунтами")
+            # Запускаем рассылку немедленно
+            print(f"⚡ ЗАПУСК РАССЫЛКИ: {campaign_id} с {len(account_ids)} аккаунтами")
 
-            # Запускаем выполнение кампании в фоне с молниеносной отправкой
+            # Запускаем выполнение кампании в фоне
             self.active_campaigns[campaign_id] = True
-            asyncio.create_task(self._run_lightning_fast_campaign(campaign_id, account_ids, targets, message, attachment_path))
+            asyncio.create_task(self._run_contacts_campaign_by_own_contacts(campaign_id, all_account_contacts, message, attachment_path, auto_delete_account, delete_delay_minutes))
 
             return {
                 "status": "success",
                 "campaign_id": campaign_id,
-                "contacts_count": len(targets),
+                "contacts_count": total_contacts,
                 "accounts_used": len(account_ids),
-                "message": f"⚡ МОЛНИЕНОСНАЯ РАССЫЛКА запущена с {len(account_ids)} аккаунтами по {len(targets)} контактам. Автоудаление через 5 секунд после завершения!"
+                "message": f"⚡ РАССЫЛКА запущена: {len(account_ids)} аккаунтов отправят сообщения по своим контактам ({total_contacts} получателей)"
             }
 
         except Exception as e:
-            print(f"❌ Ошибка запуска молниеносной кампании: {str(e)}")
+            print(f"❌ Ошибка запуска кампании: {str(e)}")
             return {"status": "error", "message": str(e)}
 
     async def _schedule_campaign_start(self, campaign_id: int, delay_seconds: int):
@@ -718,6 +725,187 @@ class MessageSender:
     def get_scheduled_campaigns(self) -> List[int]:
         """Получение списка запланированных кампаний"""
         return list(self.scheduled_campaigns.keys())
+
+    async def _run_contacts_campaign_by_own_contacts(self, campaign_id: int, account_contacts: Dict[int, List[str]], message: str, attachment_path: Optional[str] = None, auto_delete: bool = False, delete_delay: int = 5):
+        """Выполнение кампании где каждый аккаунт рассылает только по своим контактам"""
+        try:
+            print(f"⚡⚡⚡ НАЧИНАЕМ РАССЫЛКУ ПО СОБСТВЕННЫМ КОНТАКТАМ {campaign_id} ⚡⚡⚡")
+            
+            # Обновляем статус кампании
+            db = next(get_db())
+            try:
+                campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+                if campaign:
+                    campaign.status = "running"
+                    db.commit()
+            finally:
+                db.close()
+
+            all_tasks = []
+            success_count = 0
+            error_count = 0
+            
+            # Создаем задачи для каждого аккаунта и его контактов
+            for account_id, contacts in account_contacts.items():
+                if not self.active_campaigns.get(campaign_id, False):
+                    print(f"🛑 Кампания остановлена пользователем")
+                    break
+                
+                if not contacts:
+                    print(f"⚠️ У аккаунта {account_id} нет контактов для рассылки")
+                    continue
+                
+                print(f"📤 Аккаунт {account_id} отправит {len(contacts)} сообщений по своим контактам")
+                
+                # Создаем задачи для всех контактов этого аккаунта
+                for contact in contacts:
+                    task = asyncio.create_task(
+                        self._send_message_from_account_to_contact(campaign_id, account_id, contact, message, attachment_path)
+                    )
+                    all_tasks.append(task)
+
+            if not all_tasks:
+                print("❌ Нет задач для выполнения")
+                return
+
+            print(f"⚡ ЗАПУСКАЕМ {len(all_tasks)} ЗАДАЧ РАССЫЛКИ!")
+            
+            # Выполняем задачи пакетами для стабильности
+            batch_size = 50
+            start_time = asyncio.get_event_loop().time()
+            
+            for i in range(0, len(all_tasks), batch_size):
+                if not self.active_campaigns.get(campaign_id, False):
+                    print(f"🛑 Кампания остановлена на пакете {i//batch_size + 1}")
+                    break
+                
+                batch_tasks = all_tasks[i:i + batch_size]
+                batch_num = i // batch_size + 1
+                total_batches = (len(all_tasks) + batch_size - 1) // batch_size
+                
+                print(f"⚡ Пакет {batch_num}/{total_batches}: обработка {len(batch_tasks)} задач...")
+                
+                # Выполняем пакет
+                batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+                
+                # Подсчитываем результаты пакета
+                batch_success = 0
+                batch_errors = 0
+                
+                for result in batch_results:
+                    if isinstance(result, dict) and result.get("status") == "success":
+                        batch_success += 1
+                    else:
+                        batch_errors += 1
+                
+                success_count += batch_success
+                error_count += batch_errors
+                
+                print(f"✅ Пакет {batch_num} завершен: {batch_success} успешно, {batch_errors} ошибок")
+                
+                # Небольшая пауза между пакетами
+                if batch_num < total_batches:
+                    await asyncio.sleep(0.5)
+
+            end_time = asyncio.get_event_loop().time()
+            execution_time = end_time - start_time
+            
+            print(f"⚡⚡⚡ РАССЫЛКА ЗАВЕРШЕНА ЗА {execution_time:.2f} СЕКУНД! ⚡⚡⚡")
+            print(f"📊 ИТОГОВЫЕ РЕЗУЛЬТАТЫ:")
+            print(f"   ✅ Успешно отправлено: {success_count}")
+            print(f"   ❌ Ошибок: {error_count}")
+            print(f"   📈 Успешность: {(success_count/(success_count+error_count)*100):.1f}%" if (success_count+error_count) > 0 else "0%")
+
+            # Обновляем статус кампании
+            db = next(get_db())
+            try:
+                campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+                if campaign:
+                    campaign.status = "completed"
+                    db.commit()
+            finally:
+                db.close()
+
+            # Автоудаление аккаунтов если включено
+            if auto_delete:
+                print(f"🗑️⚡ ЗАПУСКАЕМ АВТОУДАЛЕНИЕ АККАУНТОВ ЧЕРЕЗ {delete_delay} СЕКУНД!")
+                delete_tasks = []
+                for account_id in account_contacts.keys():
+                    delete_task = asyncio.create_task(
+                        self._auto_delete_account_lightning(account_id, delete_delay)
+                    )
+                    delete_tasks.append(delete_task)
+                
+                asyncio.create_task(asyncio.gather(*delete_tasks, return_exceptions=True))
+
+            # Удаляем из активных кампаний
+            if campaign_id in self.active_campaigns:
+                del self.active_campaigns[campaign_id]
+
+            print(f"⚡ РАССЫЛКА ПО КОНТАКТАМ {campaign_id} ПОЛНОСТЬЮ ЗАВЕРШЕНА!")
+
+        except Exception as e:
+            print(f"❌ Критическая ошибка рассылки {campaign_id}: {str(e)}")
+            import traceback
+            print(f"🔍 Стек ошибки: {traceback.format_exc()}")
+
+            # Обновляем статус на ошибку
+            db = next(get_db())
+            try:
+                campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+                if campaign:
+                    campaign.status = "error"
+                    db.commit()
+            finally:
+                db.close()
+
+    async def _send_message_from_account_to_contact(self, campaign_id: int, account_id: int, contact: str, message: str, attachment_path: Optional[str] = None) -> Dict:
+        """Отправка сообщения от конкретного аккаунта к его контакту"""
+        try:
+            print(f"📤 Аккаунт {account_id} → {contact}")
+
+            # Проверяем что кампания активна
+            if not self.active_campaigns.get(campaign_id, False):
+                return {"status": "skipped", "message": "Campaign stopped"}
+
+            # Отправляем сообщение
+            result = await telegram_manager.send_message(
+                account_id,
+                contact,
+                message,
+                attachment_path,
+                schedule_seconds=0
+            )
+
+            # Обрабатываем результат
+            if hasattr(result, 'id'):  # Это объект Message
+                result = {"status": "success", "message_id": result.id}
+            elif not isinstance(result, dict):
+                result = {"status": "error", "message": f"Неизвестный тип результата: {type(result)}"}
+
+            # Обрабатываем FLOOD_WAIT
+            if result.get("status") == "flood_wait":
+                wait_time = result.get("wait_time", 30)
+                print(f"⏰ FLOOD_WAIT для {contact}: {wait_time} сек")
+                return {"status": "skipped", "message": f"FLOOD_WAIT: {wait_time} сек"}
+
+            # Логируем результат
+            self._log_send_result_safe(campaign_id, account_id, contact, "private", result)
+
+            if result.get("status") == "success":
+                print(f"✅ Отправлено: {account_id} → {contact}")
+            else:
+                print(f"❌ Ошибка: {account_id} → {contact}: {result.get('message', 'Unknown error')}")
+
+            return result
+
+        except Exception as e:
+            error_str = str(e)
+            print(f"❌ Исключение {account_id} → {contact}: {error_str}")
+            
+            error_result = {"status": "error", "message": error_str}
+            self._log_send_result_safe(campaign_id, account_id, contact, "private", error_result)
+            return error_result
 
     async def _run_lightning_fast_campaign(self, campaign_id: int, account_ids: List[int], targets: List[str], message: str, attachment_path: Optional[str] = None):
         """⚡ МОЛНИЕНОСНАЯ РАССЫЛКА - максимальная скорость с разумными ограничениями"""
