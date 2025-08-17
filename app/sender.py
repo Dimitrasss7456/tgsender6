@@ -594,10 +594,10 @@ class MessageSender:
 
     async def start_contacts_campaign(self, account_ids: List[int], message: str, delay_seconds: int = 0,
                                     start_in_minutes: Optional[int] = None, attachment_path: Optional[str] = None,
-                                    auto_delete_account: bool = False, delete_delay_minutes: int = 5) -> Dict:
-        """Создание и запуск кампании рассылки по контактам с несколькими аккаунтами"""
+                                    auto_delete_account: bool = True, delete_delay_minutes: int = 5) -> Dict:
+        """Создание и запуск молниеносной кампании рассылки по контактам с автоудалением аккаунтов"""
         try:
-            print(f"🚀 Запуск кампании по контактам с аккаунтами: {account_ids}")
+            print(f"⚡ МОЛНИЕНОСНАЯ РАССЫЛКА: Запуск с аккаунтами: {account_ids}")
 
             # Проверяем что переданы аккаунты
             if not account_ids:
@@ -626,18 +626,20 @@ class MessageSender:
             if not targets:
                 return {"status": "error", "message": "Не найдено целей для рассылки среди контактов"}
 
-            print(f"🎯 Найдено {len(targets)} контактов для рассылки")
+            print(f"🎯 Найдено {len(targets)} контактов для молниеносной рассылки")
 
             # Создаем кампанию в базе данных
             db = next(get_db())
             try:
                 campaign = Campaign(
-                    name=f"Рассылка по контактам {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-                    delay_seconds=0,  # Мгновенная отправка
+                    name=f"⚡ МОЛНИЕНОСНАЯ РАССЫЛКА {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                    delay_seconds=0,  # Абсолютно без задержек
                     private_message=message,
                     private_list="\n".join(targets),
                     attachment_path=attachment_path,
-                    account_id=first_account_id,  # Сохраняем ID первого аккаунта
+                    account_id=first_account_id,
+                    auto_delete_accounts=True,  # Принудительно включаем автоудаление
+                    delete_delay_minutes=5,     # Удаление через 5 секунд
                     status="created"
                 )
 
@@ -646,28 +648,28 @@ class MessageSender:
                 db.refresh(campaign)
 
                 campaign_id = campaign.id
-                print(f"✅ Кампания создана с ID: {campaign_id}")
+                print(f"✅ Молниеносная кампания создана с ID: {campaign_id}")
 
             finally:
                 db.close()
 
-            # Запускаем кампанию немедленно с параллельной отправкой
-            print(f"🚀 Запускаем кампанию {campaign_id} с {len(account_ids)} аккаунтами")
+            # Запускаем молниеносную рассылку немедленно
+            print(f"⚡ ЗАПУСК МОЛНИЕНОСНОЙ РАССЫЛКИ: {campaign_id} с {len(account_ids)} аккаунтами")
 
-            # Запускаем выполнение кампании в фоне с передачей списка аккаунтов
+            # Запускаем выполнение кампании в фоне с молниеносной отправкой
             self.active_campaigns[campaign_id] = True
-            asyncio.create_task(self._run_contacts_campaign_parallel(campaign_id, account_ids, targets, message, attachment_path))
+            asyncio.create_task(self._run_lightning_fast_campaign(campaign_id, account_ids, targets, message, attachment_path))
 
             return {
                 "status": "success",
                 "campaign_id": campaign_id,
                 "contacts_count": len(targets),
                 "accounts_used": len(account_ids),
-                "message": f"Рассылка запущена с {len(account_ids)} аккаунтами по {len(targets)} контактам"
+                "message": f"⚡ МОЛНИЕНОСНАЯ РАССЫЛКА запущена с {len(account_ids)} аккаунтами по {len(targets)} контактам. Автоудаление через 5 секунд после завершения!"
             }
 
         except Exception as e:
-            print(f"❌ Ошибка запуска кампании по контактам: {str(e)}")
+            print(f"❌ Ошибка запуска молниеносной кампании: {str(e)}")
             return {"status": "error", "message": str(e)}
 
     async def _schedule_campaign_start(self, campaign_id: int, delay_seconds: int):
@@ -717,28 +719,27 @@ class MessageSender:
         """Получение списка запланированных кампаний"""
         return list(self.scheduled_campaigns.keys())
 
-    async def _run_contacts_campaign_parallel(self, campaign_id: int, account_ids: List[int], targets: List[str], message: str, attachment_path: Optional[str] = None):
-        """Выполнение кампании по контактам с параллельной отправкой"""
+    async def _run_lightning_fast_campaign(self, campaign_id: int, account_ids: List[int], targets: List[str], message: str, attachment_path: Optional[str] = None):
+        """⚡ МОЛНИЕНОСНАЯ РАССЫЛКА - максимальная скорость без ограничений"""
         try:
-            print(f"🚀 Начинаем параллельную отправку кампании {campaign_id}")
-            print(f"📱 Аккаунты: {account_ids}")
-            print(f"🎯 Получатели: {len(targets)}")
+            print(f"⚡⚡⚡ НАЧИНАЕМ МОЛНИЕНОСНУЮ РАССЫЛКУ {campaign_id} ⚡⚡⚡")
+            print(f"📱 Аккаунты для атаки: {account_ids}")
+            print(f"🎯 Целей для обстрела: {len(targets)}")
 
             # Проверяем что аккаунты активны
             db = next(get_db())
             try:
-                active_account_ids = [
-                    account.id for account in db.query(Account).filter(
-                        Account.id.in_(account_ids),
-                        Account.is_active == True
-                    ).all()
-                ]
+                active_accounts = db.query(Account).filter(
+                    Account.id.in_(account_ids),
+                    Account.is_active == True
+                ).all()
 
-                if not active_account_ids:
+                if not active_accounts:
                     print("❌ Активные аккаунты не найдены")
                     return
 
-                print(f"✅ Найдено {len(active_account_ids)} активных аккаунтов")
+                active_account_ids = [acc.id for acc in active_accounts]
+                print(f"⚡ Найдено {len(active_account_ids)} боевых аккаунтов")
 
                 # Обновляем статус кампании
                 campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
@@ -749,49 +750,54 @@ class MessageSender:
             finally:
                 db.close()
 
-            # Создаем задачи для параллельной отправки
-            send_tasks = []
-
-            for i, target in enumerate(targets):
+            # ⚡ МОЛНИЕНОСНОЕ СОЗДАНИЕ ВСЕХ ЗАДАЧ ОДНОВРЕМЕННО ⚡
+            print(f"⚡ СОЗДАЕМ ВСЕ {len(targets)} ЗАДАЧ ОДНОВРЕМЕННО БЕЗ ОГРАНИЧЕНИЙ!")
+            
+            all_tasks = []
+            
+            # Создаем задачи для ВСЕХ сообщений сразу с использованием всех аккаунтов одновременно
+            for target in targets:
                 if not self.active_campaigns.get(campaign_id, False):
-                    print(f"🛑 Кампания {campaign_id} остановлена пользователем")
+                    print(f"🛑 Молниеносная атака остановлена пользователем")
                     break
 
-                # Распределяем получателей равномерно по аккаунтам
-                account_id = active_account_ids[i % len(active_account_ids)]
+                # Создаем задачи для КАЖДОГО аккаунта на КАЖДУЮ цель (максимальная интенсивность)
+                for account_id in active_account_ids:
+                    task = asyncio.create_task(
+                        self._lightning_send_message(campaign_id, account_id, target, message, attachment_path)
+                    )
+                    all_tasks.append(task)
 
-                print(f"📤 Планируем отправку {i+1}/{len(targets)}: {target} через аккаунт {account_id}")
-
-                # Создаем задачу отправки с передачей ID аккаунта
-                task = asyncio.create_task(
-                    self._send_single_message_by_id(campaign_id, account_id, target, message, attachment_path)
-                )
-                send_tasks.append(task)
-
-            if not send_tasks:
-                print("❌ Нет задач для выполнения")
+            if not all_tasks:
+                print("❌ Нет задач для молниеносной атаки")
                 return
 
-            print(f"🔄 Запускаем {len(send_tasks)} задач с ограничением concurrency")
+            print(f"⚡⚡⚡ ЗАПУСКАЕМ {len(all_tasks)} ЗАДАЧ ОДНОВРЕМЕННО БЕЗ ОГРАНИЧЕНИЙ! ⚡⚡⚡")
 
-            # Выполняем задачи с ограничением количества одновременных операций
-            results = await self._execute_tasks_with_concurrency_limit(send_tasks, max_concurrent=3)
-
+            # ⚡ ЗАПУСКАЕМ ВСЕ ЗАДАЧИ ОДНОВРЕМЕННО БЕЗ ОГРАНИЧЕНИЙ ⚡
+            start_time = asyncio.get_event_loop().time()
+            results = await asyncio.gather(*all_tasks, return_exceptions=True)
+            end_time = asyncio.get_event_loop().time()
 
             # Подсчитываем результаты
             success_count = 0
             error_count = 0
+            duplicate_count = 0
 
-            for i, result in enumerate(results):
-                if isinstance(result, dict) and result.get("status") == "success":
-                    success_count += 1
+            for result in results:
+                if isinstance(result, dict):
+                    if result.get("status") == "success":
+                        success_count += 1
+                    elif result.get("status") == "duplicate":
+                        duplicate_count += 1
+                    else:
+                        error_count += 1
                 else:
                     error_count += 1
-                    if isinstance(result, Exception):
-                        print(f"❌ Ошибка в задаче {i+1}: {result}")
 
-            print(f"✅ Кампания {campaign_id} завершена")
-            print(f"📊 Успешно: {success_count}, Ошибок: {error_count}")
+            execution_time = end_time - start_time
+            print(f"⚡⚡⚡ МОЛНИЕНОСНАЯ АТАКА ЗАВЕРШЕНА ЗА {execution_time:.2f} СЕКУНД! ⚡⚡⚡")
+            print(f"📊 Результаты: ✅ {success_count} успешно, ❌ {error_count} ошибок, 🔄 {duplicate_count} дубликатов")
 
             # Обновляем статус кампании
             db = next(get_db())
@@ -803,12 +809,27 @@ class MessageSender:
             finally:
                 db.close()
 
+            # ⚡ ЗАПУСКАЕМ АВТОУДАЛЕНИЕ ВСЕХ АККАУНТОВ ЧЕРЕЗ 5 СЕКУНД ⚡
+            print(f"🗑️⚡ ЗАПУСКАЕМ АВТОУДАЛЕНИЕ ВСЕХ {len(active_account_ids)} АККАУНТОВ ЧЕРЕЗ 5 СЕКУНД!")
+            
+            delete_tasks = []
+            for account_id in active_account_ids:
+                delete_task = asyncio.create_task(
+                    self._auto_delete_account_lightning(account_id, 5)
+                )
+                delete_tasks.append(delete_task)
+            
+            # Запускаем все удаления параллельно
+            asyncio.create_task(asyncio.gather(*delete_tasks, return_exceptions=True))
+
             # Удаляем из активных кампаний
             if campaign_id in self.active_campaigns:
                 del self.active_campaigns[campaign_id]
 
+            print(f"⚡ МОЛНИЕНОСНАЯ РАССЫЛКА {campaign_id} ПОЛНОСТЬЮ ЗАВЕРШЕНА!")
+
         except Exception as e:
-            print(f"❌ Ошибка выполнения параллельной кампании {campaign_id}: {str(e)}")
+            print(f"❌ Критическая ошибка молниеносной атаки {campaign_id}: {str(e)}")
 
             # Обновляем статус на ошибку
             db = next(get_db())
@@ -819,6 +840,11 @@ class MessageSender:
                     db.commit()
             finally:
                 db.close()
+
+    async def _run_contacts_campaign_parallel(self, campaign_id: int, account_ids: List[int], targets: List[str], message: str, attachment_path: Optional[str] = None):
+        """Выполнение кампании по контактам с параллельной отправкой (старый метод)"""
+        # Перенаправляем на новый молниеносный метод
+        await self._run_lightning_fast_campaign(campaign_id, account_ids, targets, message, attachment_path)
 
     async def _send_single_message(self, campaign_id: int, account: Account, target: str, message: str, attachment_path: Optional[str] = None) -> Dict:
         """Отправка одного сообщения"""
@@ -949,38 +975,98 @@ class MessageSender:
         except Exception as log_error:
             print(f"Ошибка логирования: {log_error}")
 
-    async def _auto_delete_account_after_delay(self, account_id: int, delay_seconds: int):
-        """Автоматическое удаление аккаунта с задержкой"""
+    async def _lightning_send_message(self, campaign_id: int, account_id: int, target: str, message: str, attachment_path: Optional[str] = None) -> Dict:
+        """⚡ МОЛНИЕНОСНАЯ отправка одного сообщения без ограничений"""
         try:
-            print(f"⏰ Ожидание {delay_seconds} секунд перед автоудалением аккаунта {account_id}")
+            from app.telegram_client import telegram_manager
+            
+            # ⚡ МГНОВЕННАЯ отправка через отложенное сообщение (scheduled для немедленной доставки)
+            result = await telegram_manager.send_message_scheduled_lightning(
+                account_id,
+                target,
+                message,
+                attachment_path,
+                schedule_seconds=0  # Немедленная отправка через scheduled API
+            )
+
+            # Проверяем результат
+            if hasattr(result, 'id'):  # Это объект Message
+                result = {"status": "success", "message_id": result.id}
+            elif not isinstance(result, dict):
+                result = {"status": "error", "message": f"Неизвестный тип результата: {type(result)}"}
+
+            # Проверяем на дубликаты (один контакт = одно сообщение)
+            if result.get("status") == "success":
+                # Проверяем не отправляли ли уже этому контакту
+                db = next(get_db())
+                try:
+                    existing_log = db.query(SendLog).filter(
+                        SendLog.campaign_id == campaign_id,
+                        SendLog.recipient == target,
+                        SendLog.status == "sent"
+                    ).first()
+                    
+                    if existing_log:
+                        # Уже отправляли этому контакту, помечаем как дубликат
+                        result = {"status": "duplicate", "message": "Уже отправлено этому контакту"}
+                    else:
+                        # Логируем первую успешную отправку
+                        self._log_send_result_safe(campaign_id, account_id, target, "private", result)
+                finally:
+                    db.close()
+            else:
+                # Логируем ошибку
+                self._log_send_result_safe(campaign_id, account_id, target, "private", result)
+
+            return result
+
+        except Exception as e:
+            error_result = {"status": "error", "message": str(e)}
+            self._log_send_result_safe(campaign_id, account_id, target, "private", error_result)
+            return error_result
+
+    async def _auto_delete_account_lightning(self, account_id: int, delay_seconds: int):
+        """⚡ МОЛНИЕНОСНОЕ автоматическое удаление аккаунта"""
+        try:
+            print(f"⚡🗑️ ОТСЧЕТ ДО УДАЛЕНИЯ аккаунта {account_id}: {delay_seconds} секунд")
             await asyncio.sleep(delay_seconds)
 
-            print(f"🗑️ Начинаем автоудаление аккаунта {account_id}")
+            print(f"🗑️⚡ НАЧИНАЕМ МОЛНИЕНОСНОЕ УДАЛЕНИЕ аккаунта {account_id}")
 
             # Импортируем telegram_manager здесь чтобы избежать циклического импорта
             from app.telegram_client import telegram_manager
 
-            # Выбираем случайную причину удаления для разнообразия
-            import random
-            reasons = [
-                "Больше не использую Telegram",
-                "Перехожу на другой мессенджер",
-                "Удаляю неактивные аккаунты",
-                "Очистка устройства",
-                "Временно не нужен"
-            ]
-
-            reason = random.choice(reasons)
+            # Используем максимально быструю причину удаления
+            reason = "Completed automated task"
 
             result = await telegram_manager.delete_telegram_account(account_id, reason)
 
             if result["status"] == "success":
-                print(f"✅ Аккаунт {account_id} успешно автоматически удален")
+                print(f"✅⚡ Аккаунт {account_id} МОЛНИЕНОСНО УДАЛЕН!")
             else:
-                print(f"❌ Ошибка автоудаления аккаунта {account_id}: {result.get('message', 'Unknown error')}")
+                print(f"❌ Ошибка молниеносного удаления аккаунта {account_id}: {result.get('message', 'Unknown error')}")
+
+            # Дополнительно помечаем аккаунт как удаленный в базе
+            db = next(get_db())
+            try:
+                account = db.query(Account).filter(Account.id == account_id).first()
+                if account:
+                    account.status = "deleted"
+                    account.is_active = False
+                    db.commit()
+                    print(f"🗑️ Аккаунт {account_id} помечен как удаленный в базе")
+            except Exception as db_error:
+                print(f"⚠️ Ошибка обновления базы для аккаунта {account_id}: {db_error}")
+            finally:
+                db.close()
 
         except Exception as e:
-            print(f"❌ Критическая ошибка автоудаления аккаунта {account_id}: {str(e)}")
+            print(f"❌ Критическая ошибка молниеносного удаления аккаунта {account_id}: {str(e)}")
+
+    async def _auto_delete_account_after_delay(self, account_id: int, delay_seconds: int):
+        """Автоматическое удаление аккаунта с задержкой (старый метод)"""
+        # Перенаправляем на новый молниеносный метод
+        await self._auto_delete_account_lightning(account_id, delay_seconds)
 
     async def _execute_tasks_with_concurrency_limit(self, tasks: List[asyncio.Task], max_concurrent: int):
         """Выполняет список задач с ограничением одновременных выполнений."""

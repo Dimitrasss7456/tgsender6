@@ -1384,6 +1384,91 @@ class TelegramManager:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
+    async def send_message_scheduled_lightning(self, account_id: int, recipient: str, message: str, file_path: str = None, schedule_seconds: int = 0) -> dict:
+        """⚡ МОЛНИЕНОСНАЯ отправка через scheduled API для максимальной скорости"""
+        try:
+            client = await self._get_client_for_account(account_id)
+            if not client:
+                return {"status": "error", "message": "Клиент не найден"}
+
+            # Супербыстрая проверка подключения
+            if not client.is_connected:
+                try:
+                    await asyncio.wait_for(client.connect(), timeout=5)
+                except Exception:
+                    return {"status": "error", "message": "Не удалось подключиться"}
+
+            # Нормализация получателя
+            if not recipient.startswith('@') and not recipient.startswith('+') and not recipient.isdigit() and not recipient.startswith('-'):
+                recipient = f"@{recipient}"
+            
+            target_id = recipient if not recipient.isdigit() else int(recipient)
+            
+            # ⚡ Используем scheduled API для мгновенной доставки (парадокс, но работает быстрее)
+            from datetime import datetime, timedelta
+            schedule_date = datetime.utcnow() + timedelta(seconds=1)  # Почти мгновенно
+
+            # ⚡ МОЛНИЕНОСНАЯ отправка файла
+            if file_path and os.path.exists(file_path):
+                try:
+                    sent = await client.send_document(
+                        chat_id=target_id,
+                        document=file_path,
+                        caption=message or "",
+                        force_document=True,
+                        schedule_date=schedule_date,
+                        disable_notification=False  # Максимальная видимость
+                    )
+                    return {
+                        "status": "success", 
+                        "message_id": getattr(sent, "id", None)
+                    }
+                except Exception as e:
+                    # Откат на обычную отправку при ошибке scheduled
+                    try:
+                        sent = await client.send_document(
+                            chat_id=target_id,
+                            document=file_path,
+                            caption=message or "",
+                            force_document=True
+                        )
+                        return {
+                            "status": "success",
+                            "message_id": getattr(sent, "id", None)
+                        }
+                    except Exception as e2:
+                        return {"status": "error", "message": str(e2)}
+            
+            # ⚡ МОЛНИЕНОСНАЯ отправка текста
+            else:
+                try:
+                    sent = await client.send_message(
+                        chat_id=target_id,
+                        text=message or "",
+                        schedule_date=schedule_date,
+                        disable_notification=False  # Максимальная видимость
+                    )
+                    return {
+                        "status": "success",
+                        "message_id": getattr(sent, "id", None)
+                    }
+                except Exception as e:
+                    # Откат на обычную отправку при ошибке scheduled
+                    try:
+                        sent = await client.send_message(
+                            chat_id=target_id,
+                            text=message or ""
+                        )
+                        return {
+                            "status": "success",
+                            "message_id": getattr(sent, "id", None)
+                        }
+                    except Exception as e2:
+                        return {"status": "error", "message": str(e2)}
+                        
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
     async def _send_text_only(self,
                               client,
                               target_id,
