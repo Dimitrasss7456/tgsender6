@@ -1,7 +1,7 @@
 [project]
-name = "python-template"
+name = "telegram-sender"
 version = "0.1.0"
-description = ""
+description = "Telegram messaging application"
 authors = [
     {name = "Your Name", email = "you@example.com"}
 ]
@@ -19,3 +19,6 @@ dependencies = [
     "tgcrypto>=1.2.5",
     "uvicorn>=0.35.0",
 ]
+
+[tool.setuptools]
+packages = ["app"]
