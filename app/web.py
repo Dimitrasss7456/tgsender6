@@ -27,6 +27,20 @@ os.makedirs("static", exist_ok=True)
 os.makedirs("templates", exist_ok=True)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/manifest.json")
+async def get_manifest():
+    """PWA Manifest"""
+    with open("static/manifest.json", "r", encoding="utf-8") as f:
+        manifest_content = f.read()
+    return JSONResponse(content=json.loads(manifest_content), media_type="application/json")
+
+@app.get("/sw.js")
+async def get_service_worker():
+    """Service Worker"""
+    with open("static/sw.js", "r", encoding="utf-8") as f:
+        sw_content = f.read()
+    return Response(content=sw_content, media_type="application/javascript")
 templates = Jinja2Templates(directory="templates")
 
 # Страницы аутентификации
