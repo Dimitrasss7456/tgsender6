@@ -12,8 +12,8 @@ SECRET_KEY = os.getenv("SECRET_KEY", "your_secret_key_here")
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", "")
 
 # Настройки Telegram API
-API_ID = os.getenv("API_ID", "")
-API_HASH = os.getenv("API_HASH", "")
+API_ID = int(os.getenv("API_ID", os.getenv("TELEGRAM_API_ID", "24599932")))
+API_HASH = os.getenv("API_HASH", os.getenv("TELEGRAM_API_HASH", "51bec1393e6f753d6dfcf48bb9c4119d"))
 
 # Настройки рассылки
 DEFAULT_DELAY_SECONDS = 3

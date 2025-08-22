@@ -10,6 +10,13 @@ from sqlalchemy.orm import Session
 from app.database import Account, Campaign, SendLog, get_db
 from app.config import API_ID, API_HASH, SESSIONS_DIR, ENCRYPTION_KEY
 
+# Проверяем что API ключи загружены
+if not API_ID or not API_HASH:
+    raise ValueError("API_ID и API_HASH должны быть установлены в файле .env")
+
+print(f"API_ID загружен: {API_ID}")
+print(f"API_HASH загружен: {'*' * (len(str(API_HASH)) - 4) + str(API_HASH)[-4:]}")
+
 
 class Progress:
 
